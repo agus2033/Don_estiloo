@@ -751,6 +751,7 @@ function prep(v) {
   cx = null;
   dn = null;
   EV = null;
+  cliSel = null;
 }
 window.addEventListener("hashchange", () => {
   const v = rtView();
@@ -1165,7 +1166,7 @@ const W = {
         h: "Turno reservado",
         b:
           "Te esperamos. Sumás " + PTSv + " puntos cuando se complete el corte." + (MP_LINK ? ` También podés <a href="${esc(MP_LINK)}" target="_blank" rel="noopener">dejar la seña por Mercado Pago</a>.` : ""),
-        ok: wa ? "Avisar por WhatsApp" : "Listo",
+        ok: wa ? '<img src="assets/whatsapp.png" alt="" width="22" style="vertical-align:-5px;margin-right:6px">Avisar por WhatsApp' : "Listo",
         no: wa ? "Cerrar" : "",
         fn: wa ? () => open(wa, "_blank", "noopener") : null,
       });
@@ -1202,7 +1203,7 @@ const W = {
         k: "w",
         h: "Ya no podés cancelar online",
         b: `Faltan menos de ${CHSv} horas para tu turno. Escribile a la barbería para avisar.`,
-        ok: wa ? "Escribir por WhatsApp" : "Entendido",
+        ok: wa ? '<img src="assets/whatsapp.png" alt="" width="22" style="vertical-align:-5px;margin-right:6px">Escribir por WhatsApp' : "Entendido",
         no: wa ? "Cerrar" : "",
         fn: wa ? () => open(wa, "_blank", "noopener") : null,
       });
@@ -1782,6 +1783,55 @@ Object.assign(W, {
       err(e);
     }
   },
+  addBar() {
+    if (!isOwner()) return;
+    M({
+      h: "Agregar barbero",
+      b: `<div style="text-align:left;margin-top:6px"><small style="display:block">Nombre</small><input id="nbN" maxlength="30" placeholder="Nombre del barbero" style="width:100%"><small style="display:block;margin-top:10px">% del dueño</small><input id="nbP" inputmode="numeric" maxlength="3" value="${esc(String(FN.pd))}" style="width:100%"><small style="display:block;margin-top:6px">El barbero se queda con el resto. Para que un barbero entre con su cuenta, usá “Hacer barbero” en Clientes.</small></div>`,
+      ok: "Agregar",
+      no: "Cancelar",
+      fn: async () => {
+        const n = String(($("#nbN") || {}).value || "")
+            .slice(0, 30)
+            .trim(),
+          pd = String(($("#nbP") || {}).value || "")
+            .replace(/\D/g, "")
+            .slice(0, 3);
+        if (!n || pd === "" || +pd < 0 || +pd > 100)
+          return M({
+            k: "w",
+            h: "Revisá los datos",
+            b: "Necesitás un nombre y un porcentaje entre 0 y 100.",
+          });
+        if (FN.bs.length >= 10)
+          return M({ k: "w", h: "Máximo 10 barberos", b: "Quitá alguno antes de agregar otro." });
+        const bs = [...FN.bs, { id: "b" + Date.now().toString(36), n, pd: +pd }].map(
+          (x) => ({
+            id: x.id,
+            ...(x.uid ? { uid: x.uid } : {}),
+            n: x.n.trim(),
+            pd: +x.pd,
+          }),
+        );
+        const b = writeBatch(db);
+        b.set(doc(db, "config", "finanzas"), { pd: FN.pd, bs });
+        bs.filter((x) => x.uid).forEach((x) =>
+          b.set(doc(db, "staff", x.uid), { n: x.n, pd: x.pd }),
+        );
+        try {
+          await b.commit();
+          msg = "Barbero agregado.";
+          R();
+        } catch (e) {
+          err(e);
+        }
+      },
+    });
+    setTimeout(() => {
+      const el = $("#nbN");
+      if (el) el.focus();
+    }, 60);
+  },
   askBar(uid) {
     const u = UA.find((x) => x.id === uid);
     if (!u) return;
@@ -1955,6 +2005,10 @@ Object.assign(W, {
     R();
   },
   async cliSel(id) {
+    if (cliSel === id) {
+      cliSel = null;
+      return R();
+    }
     cliSel = id;
     if (!isOwner()) return R();
     if (CH[id] === undefined) {
@@ -2039,6 +2093,13 @@ document.addEventListener("click", (e) => {
   }
   if (navOpen && !e.target.closest('[data-act="toggleNav"],#nmenu,#mebadge')) {
     navOpen = 0;
+    if (!el) R();
+  }
+  if (
+    cliSel &&
+    !e.target.closest('#cliDet,[data-act="cliSel"],[data-act="cliMas"]')
+  ) {
+    cliSel = null;
     if (!el) R();
   }
   if (el) dRun(el, "act");
@@ -2303,7 +2364,7 @@ function turH() {
 }
 const wal = (p, txt) =>
   waNum(p)
-    ? `<a href="https://wa.me/${waNum(p)}?text=${encodeURIComponent(txt)}" target="_blank" rel="noopener">WhatsApp</a>`
+    ? `<a href="https://wa.me/${waNum(p)}?text=${encodeURIComponent(txt)}" target="_blank" rel="noopener" aria-label="Chat de WhatsApp"><img src="assets/whatsapp.png" alt="Chat de WhatsApp" width="34"></a>`
     : "<small>sin teléfono</small>";
 const recH = () => {
   const hoy = ymd(),
@@ -2485,7 +2546,7 @@ function barsH() {
     .filter((b) => b.uid)
     .map((b) => ({ b, u: UA.find((x) => x.id === b.uid) }));
   return (
-    `<div class="head" style="margin-top:0"><div><h1 style="margin-bottom:4px">Barberos</h1><small>${L.length + FN.bs.filter((b) => !b.uid).length} barberos en el equipo</small></div><button class="main" style="width:auto;margin-top:0" data-act="go" data-args="${A("cfg")}">+ Agregar barbero</button></div>` +
+    `<div class="head" style="margin-top:0"><div><h1 style="margin-bottom:4px">Barberos</h1><small>${L.length + FN.bs.filter((b) => !b.uid).length} barberos en el equipo</small></div><button class="main" style="width:auto;margin-top:0" data-act="addBar">+ Agregar barbero</button></div>` +
     (FN.bs.length
       ? `<div class="cols3">` +
         FN.bs.map((b) => {
@@ -2538,7 +2599,7 @@ function cliH() {
           ? `<div style="text-align:center;margin-top:12px"><button data-act="cliMas">Ver más (${L.length - cliN} restantes)</button></div>`
           : "")
       : `<p><small>No hay clientes ${cliQ ? "que coincidan con la búsqueda" : "registrados"}.</small></p>`) +
-      `</div><div>${(() => {
+      `</div><div id="cliDet">${(() => {
         const selU = UA.find((u) => u.id === cliSel),
           hsel = selU ? CH[selU.id] : null;
         if (!selU)
@@ -2556,7 +2617,7 @@ function cliH() {
                   )
                   .join("")
               : "<small>Todavía no tiene cortes.</small>") +
-          `<div style="margin-top:14px"><a class="pillb" style="display:block;text-align:center;padding:12px;text-decoration:none" href="https://wa.me/${waNum(selU.ph)}" target="_blank" rel="noopener">WhatsApp</a>${own && !FN.bs.some((b) => b.uid === selU.id) ? `<button class="pillb" style="width:100%;margin-top:10px;padding:12px" data-act="askBar" data-args="${A(selU.id)}">Hacer barbero</button>` : ""}</div></div>`;
+          `<div style="margin-top:14px"><a href="https://wa.me/${waNum(selU.ph)}" target="_blank" rel="noopener" aria-label="Chat de WhatsApp"><img src="assets/whatsapp.png" alt="Chat de WhatsApp" width="50"></a>${own && !FN.bs.some((b) => b.uid === selU.id) ? `<button class="pillb" style="width:100%;margin-top:10px;padding:12px" data-act="askBar" data-args="${A(selU.id)}">Hacer barbero</button>` : ""}</div></div>`;
       })()}</div></div>`
   );
 }
@@ -2718,7 +2779,7 @@ function footer() {
       .map((d) => D[d])
       .join(" · ");
   $("#ft").innerHTML =
-    `<div class="ft"><div><div class="fb"><img src="${LOGO}" alt="" width="48" height="48"><div><b>${esc(NOMBRE)}</b><small>Turnos online y puntos por cada visita</small></div></div></div><div><h4>Horarios</h4><p>${dd}</p><p>${hm(CF.a)} a ${hm(CF.c)} hs</p></div><div><h4>Contacto</h4>${WHATSAPP ? `<p><a href="https://wa.me/${esc(WHATSAPP)}" target="_blank" rel="noopener">WhatsApp ${esc(WHATSAPP)}</a></p>` : ""}<p>Reservá desde la web, sin llamadas.</p></div></div><div class="fz">© ${new Date().getFullYear()} ${esc(NOMBRE)} · Desarrollado por <b>${esc(AUTOR)}</b> · <a href="#" data-act="go" data-args="${A("priv")}" style="color:#cbd3dc">Privacidad</a></div>`;
+    `<div class="ft"><div><div class="fb"><img src="${LOGO}" alt="" width="48" height="48"><div><b>${esc(NOMBRE)}</b><small>Turnos online y puntos por cada visita</small></div></div></div><div><h4>Horarios</h4><p>${dd}</p><p>${hm(CF.a)} a ${hm(CF.c)} hs</p></div><div><h4>Contacto</h4>${WHATSAPP ? `<p><a href="https://wa.me/${esc(WHATSAPP)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none"><img src="assets/whatsapp.png" alt="Chat de WhatsApp" width="26">WhatsApp ${esc(WHATSAPP)}</a></p>` : ""}<p>Reservá desde la web, sin llamadas.</p></div></div><div class="fz">© ${new Date().getFullYear()} ${esc(NOMBRE)} · Desarrollado por <b>${esc(AUTOR)}</b> · <a href="#" data-act="go" data-args="${A("priv")}" style="color:#cbd3dc">Privacidad</a></div>`;
 }
 function R() {
   let h,
