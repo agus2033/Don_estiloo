@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>Tests de lógica</title>
+  </head>
+  <body>
+    <h1>Tests</h1>
+    <pre id="out"></pre>
+    <script type="module">
+      const out = document.getElementById("out");
+      const log = console.log,
+        error = console.error;
+      console.log = (...a) => (out.textContent += a.join(" ") + "\n");
+      console.error = (...a) => (out.textContent += a.join(" ") + "\n");
+      import("./logic.test.mjs").catch((e) => {
+        out.textContent += "\n" + e.message;
+      });
+    </script>
+  </body>
+</html>

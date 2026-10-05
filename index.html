@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>Barbería · Turnos y puntos</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <!-- CSP (opcional): ahora que no hay onclick= ni scripts en línea se puede activar. Probala primero con la consola abierta.
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://www.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com; frame-src https://www.google.com https://*.firebaseapp.com; base-uri 'self'; form-action 'self'; object-src 'none'" />
+    -->
+    <link rel="stylesheet" href="src/styles.css" />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#141c26" />
+    <link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
+    <link rel="icon" href="assets/icon-192.png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="assets/icon-192.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+  </head>
+  <body>
+    <div id="ld" role="status" aria-live="polite">
+      <div class="bp"><i></i></div>
+      <span id="ldt">Cargando…</span>
+    </div>
+    <header>
+      <div class="hd">
+        <div class="bw"><img id="lg" class="lg" alt="" width="38" height="38" /><span class="logo" id="brand"></span></div>
+        <nav id="nav"></nav>
+        <button id="hamb" data-act="toggleNav" aria-label="Menú" aria-expanded="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+        </button>
+        <div id="mebadge" hidden>
+          <span id="mefn"></span>
+          <span class="med" id="med"></span>
+        </div>
+        <button id="lo" hidden data-act="salir" aria-label="Cerrar sesión">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <path d="M16 17l5-5-5-5" />
+            <path d="M21 12H9" /></svg
+          ><span>Cerrar sesión</span>
+        </button>
+      </div>
+    </header>
+    <div id="app"></div>
+    <div id="nmenu" hidden></div>
+    <footer id="ft"></footer>
+    <div id="mo" hidden></div>
+    <script type="module" src="src/main.js"></script>
+    <script src="src/boot.js"></script>
+  </body>
+</html>

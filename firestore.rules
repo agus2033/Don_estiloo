@@ -1,0 +1,272 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function logueado() { return request.auth != null; }
+    // DUEÑO: único con acceso total. Debe coincidir con ADMIN_UID / OWNER_UID de config.js
+    // (es el único valor que las reglas no pueden leer de config.js).
+    function esAdmin() { return logueado() && request.auth.uid == 'LQ7IkEfxEKNXajx4SEs378n390i2'; }
+    function esProp() { return esAdmin(); }
+    function esDueno(uid) { return logueado() && request.auth.uid == uid; }
+    // BARBERO con cuenta propia: existe un documento staff/{uid} creado por el dueño.
+    function esStaff() { return logueado() && exists(/databases/$(database)/documents/staff/$(request.auth.uid)); }
+    function esBar() { return esAdmin() || esStaff(); }
+    function stPd() { return get(/databases/$(database)/documents/staff/$(request.auth.uid)).data.pd; }
+    function verificado() { return true; } // antes pedía email verificado; hoy se deja pasar a cualquier usuario logueado
+
+    // ====== Valores de negocio ======
+    // costs / pts / cancelHs los publica el dueño desde config.js (config/reglas) al abrir la app.
+    // Los valores de abajo solo rigen hasta que el dueño abra la app por primera vez.
+    function reglas() {
+      return exists(/databases/$(database)/documents/config/reglas)
+        ? get(/databases/$(database)/documents/config/reglas).data
+        : {'costs': [25, 50, 100], 'pts': 5, 'cancelHs': 2, 'grid': 30};
+    }
+    function grid() { return reglas().get('grid', 30); }
+    function horario() {
+      return exists(/databases/$(database)/documents/config/horario)
+        ? get(/databases/$(database)/documents/config/horario).data
+        : {'a': 540, 'c': 1020, 'dias': [1, 2, 3, 4, 5, 6], 'libres': [], 'al': 0, 'ah': 0};
+    }
+    // Horario del barbero del turno: el suyo propio si existe en .por, si no el general
+    function horarioB(d) {
+      return horario().get('por', {}).get(d.get('bid', ''), horario());
+    }
+
+    // ====== Tiempo (hora de Argentina = UTC-3, sin horario de verano) ======
+    function ahoraAR() { return request.time - duration.value(3, 'h'); }
+    function p2(n) { return (n < 10 ? '0' : '') + string(n); }
+    function hoyAR() { return string(ahoraAR().year()) + '-' + p2(ahoraAR().month()) + '-' + p2(ahoraAR().day()); }
+    function minAR() { return ahoraAR().hours() * 60 + ahoraAR().minutes(); }
+    // GRID (config.js) = 30 o 15 minutos; la app lo publica en config/reglas
+    function hhmm(x) { return p2(math.floor(x / 60)) + p2(x % 60); }
+    // la hora que manda el cliente (ya corregida con el reloj del servidor) puede diferir hasta 10 min
+    function ahora(v) {
+      return v is number
+        && v >= request.time.toMillis() - 600000
+        && v <= request.time.toMillis() + 600000;
+    }
+    // inicio del turno como timestamp UTC
+    function inicioTurno(d) {
+      return timestamp.date(int(d.d[0:4]), int(d.d[5:7]), int(d.d[8:10]))
+        + duration.value(int(d.t[0:2]) * 60 + int(d.t[3:5]), 'm')
+        + duration.value(3, 'h');
+    }
+
+    // ====== Validación de un turno nuevo ======
+    function turnoValido(t, d) {
+      return d.d is string && d.d.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && d.t is string && d.t.matches('^[0-9]{2}:[0-9]{2}$')
+        && d.d > hoyAR()
+        && d.bl is list && d.bl.size() >= 1 && d.bl.size() * grid() <= 180 && d.bl.size() <= 12
+        && d.sl in [1, 2]
+        && existeOcupadoEnLote(d)
+        && existeActivoEnLote(t, d);
+    }
+    function oc(d, i) {
+      return d.bl.size() <= i
+        || existsAfter(/databases/$(database)/documents/ocupados/$(d.bl[i]));
+    }
+    function existeOcupadoEnLote(d) {
+      return d.bl.size() <= 12
+        && oc(d, 0) && oc(d, 1) && oc(d, 2) && oc(d, 3)
+        && oc(d, 4) && oc(d, 5) && oc(d, 6) && oc(d, 7)
+        && oc(d, 8) && oc(d, 9) && oc(d, 10) && oc(d, 11);
+    }
+    function existeActivoEnLote(t, d) {
+      return existsAfter(/databases/$(database)/documents/activos/$(d.uid + '_' + string(d.sl)))
+        && getAfter(/databases/$(database)/documents/activos/$(d.uid + '_' + string(d.sl))).data.tu == t;
+    }
+
+    // ¿este cobro (turno o venta manual) justifica sumar puntos al usuario u?
+    function cobroLigado(u, uc) {
+      return uc is string && uc.size() > 0 && (
+        (uc.matches('^v:.+')
+          && !exists(/databases/$(database)/documents/ventas/$(uc[2:uc.size()]))
+          && existsAfter(/databases/$(database)/documents/ventas/$(uc[2:uc.size()]))
+          && getAfter(/databases/$(database)/documents/ventas/$(uc[2:uc.size()])).data.get('uid', '') == u)
+        || (!uc.matches('^v:.+')
+          && get(/databases/$(database)/documents/turnos/$(uc)).data.st == 'pend'
+          && getAfter(/databases/$(database)/documents/turnos/$(uc)).data.st == 'hecho'
+          && getAfter(/databases/$(database)/documents/turnos/$(uc)).data.uid == u));
+    }
+
+    match /users/{u} {
+      allow read: if esDueno(u) || esBar();
+      allow create: if esDueno(u)
+        && request.resource.data.keys().hasOnly(['nm', 'ph', 'pt'])
+        && request.resource.data.pt == 0
+        && request.resource.data.nm is string && request.resource.data.nm.size() <= 40
+        && request.resource.data.ph is string && request.resource.data.ph.size() <= 15;
+      allow update: if esAdmin()
+        // el barbero solo puede SUMAR los puntos de un cobro (config.js PTS) y debe haber cobrado en el mismo lote
+        || (esStaff()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pt', 'uc'])
+          && request.resource.data.pt - resource.data.pt == reglas().pts
+          && cobroLigado(u, request.resource.data.uc))
+        // el cliente solo puede BAJAR sus puntos (al canjear)
+        || (esDueno(u)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pt'])
+          && request.resource.data.pt < resource.data.pt
+          && request.resource.data.pt >= 0)
+        // solo el barbero puede sumar de a uno el contador de ausencias
+        || (esStaff()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ns'])
+          && request.resource.data.ns == resource.data.get('ns', 0) + 1)
+        // el cliente puede solicitar el borrado de sus datos personales
+        || (esDueno(u)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nm', 'ph', 'pt', 'borrado'])
+          && request.resource.data.borrado == true
+          && request.resource.data.pt == 0
+          && request.resource.data.ph == '');
+    }
+
+    match /turnos/{t} {
+      allow read: if esAdmin()
+        || (esStaff() && (resource.data.st == 'pend' || resource.data.get('bid', '') == request.auth.uid))
+        || (logueado() && resource.data.uid == request.auth.uid);
+      allow create: if logueado()
+        && request.resource.data.keys().hasOnly(['uid', 'nm', 's', 'sid', 'd', 't', 'st', 'bl', 'sn', 'sp', 'sm', 'sl', 'bid'])
+        && request.resource.data.uid is string && request.resource.data.uid.size() > 0 && request.resource.data.uid.size() <= 40
+        && (request.resource.data.uid == request.auth.uid
+          ? verificado()
+          : esBar() && (!esStaff() || request.resource.data.bid == request.auth.uid))
+        && request.resource.data.st == 'pend'
+        && request.resource.data.nm is string && request.resource.data.nm.size() <= 40
+        && request.resource.data.bid is string && request.resource.data.bid.size() > 0 && request.resource.data.bid.size() <= 40
+        && (!('sn' in request.resource.data) || (request.resource.data.sn is string && request.resource.data.sn.size() <= 40))
+        && (!('sp' in request.resource.data) || (request.resource.data.sp is number && request.resource.data.sp >= 0))
+        && (!('sm' in request.resource.data) || (request.resource.data.sm is string && request.resource.data.sm.size() <= 20))
+        && verificado()
+        && turnoValido(t, request.resource.data);
+      allow update: if esAdmin()
+        // barbero: cobrar o cancelar turnos pendientes, siempre a su nombre y con su porcentaje
+        || (esStaff()
+          && resource.data.st == 'pend'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['st', 'precio', 'lista', 'serv', 'medio', 'bid', 'bn', 'pd', 'hechoEn', 'mot', 'por', 'canEn'])
+          && request.resource.data.get('bid', request.auth.uid) == request.auth.uid
+          && request.resource.data.get('pd', stPd()) == stPd()
+          && (request.resource.data.st != 'hecho' || ahora(request.resource.data.hechoEn))
+          && (request.resource.data.st != 'cancel' || ahora(request.resource.data.canEn)))
+        // cliente: cancelar el suyo con motivo, con la anticipación mínima (config.js CANCEL_HS)
+        || (logueado()
+          && resource.data.uid == request.auth.uid
+          && resource.data.st == 'pend'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['st', 'mot', 'por', 'canEn'])
+          && request.resource.data.st == 'cancel'
+          && request.resource.data.por == 'cli'
+          && request.resource.data.mot is string
+          && request.resource.data.mot.size() > 0 && request.resource.data.mot.size() <= 80
+          && ahora(request.resource.data.canEn)
+          && (request.resource.data.mot == "Cuenta eliminada"
+            || request.time < inicioTurno(resource.data) - duration.value(reglas().cancelHs, 'h')))
+        // el cliente puede anonimizar su nombre en sus turnos (borrado de datos)
+        || (logueado()
+          && resource.data.uid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nm'])
+          && request.resource.data.nm == 'Cliente eliminado');
+    }
+
+    // Cupo de turnos activos por cliente. Se crea al reservar y se borra al cancelar o cobrar.
+    match /activos/{a} {
+      allow read: if esBar();
+      allow create: if logueado()
+        && request.resource.data.keys().hasOnly(['uid', 'tu'])
+        && request.resource.data.uid is string
+        && (a == request.resource.data.uid + '_1' || a == request.resource.data.uid + '_2')
+        && existsAfter(/databases/$(database)/documents/turnos/$(request.resource.data.tu))
+        && getAfter(/databases/$(database)/documents/turnos/$(request.resource.data.tu)).data.uid == request.resource.data.uid
+        && (request.resource.data.uid == request.auth.uid ? verificado() : esBar())
+        && string(getAfter(/databases/$(database)/documents/turnos/$(request.resource.data.tu)).data.sl) == a[a.size() - 1:a.size()];
+      // borrar para liberar el cupo (cancelaciones, borrados, limpiezas)
+      allow delete: if esAdmin()
+        || resource.data.uid == request.auth.uid
+        || esBar();
+    }
+
+    // Cargas manuales (cobros sin turno)
+    match /ventas/{v} {
+      allow read: if esAdmin() || (esStaff() && resource.data.get('bid', '') == request.auth.uid);
+      allow create: if esAdmin()
+        || (esStaff()
+          && request.resource.data.keys().hasOnly(['nm', 'uid', 'serv', 'precio', 'lista', 'medio', 'd', 't', 'bid', 'bn', 'pd', 'hechoEn'])
+          && request.resource.data.bid == request.auth.uid
+          && request.resource.data.pd == stPd()
+          && ahora(request.resource.data.hechoEn));
+      allow update: if esAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['precio', 'lista', 'medio', 'serv', 'nm', 'd', 't']);
+      allow delete: if esAdmin();
+    }
+
+    // Gastos: solo el dueño
+    match /gastos/{g} {
+      allow read, write: if esAdmin();
+    }
+
+    // Barberos con cuenta: los crea/quita solo el dueño; cada uno lee el suyo
+    match /staff/{s} {
+      allow read: if esAdmin() || esDueno(s);
+      allow write: if esProp();
+    }
+
+    // Lista de espera: el cliente se anota (1 por día); el barbero ve y quita
+    match /espera/{e} {
+      allow read: if esBar() || (logueado() && resource.data.uid == request.auth.uid);
+      allow create: if logueado()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'nm', 'ph', 'd', 'en', 'bid'])
+        && request.resource.data.d is string
+        && request.resource.data.d.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && request.resource.data.bid is string && request.resource.data.bid.size() > 0 && request.resource.data.bid.size() <= 40
+        && ahora(request.resource.data.en)
+        && verificado()
+        && e == request.auth.uid + '_' + request.resource.data.bid + '_' + request.resource.data.d;
+      allow delete: if esBar() || (logueado() && resource.data.uid == request.auth.uid);
+    }
+
+    // Horarios ocupados: solo se crean junto a un turno propio (mismo lote) y solo se liberan
+    // cuando ese turno deja de estar pendiente.
+    match /ocupados/{o} {
+      allow read: if logueado();
+      allow create: if logueado()
+        && o.matches('^[A-Za-z0-9]+_[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{4}$')
+        && request.resource.data.keys().hasOnly(['uid', 'd', 't', 'tu', 'g', 'bid'])
+        && request.resource.data.uid is string
+        && (request.resource.data.uid == request.auth.uid ? verificado() : esBar())
+        && request.resource.data.d is string && request.resource.data.t is string
+        && request.resource.data.bid is string && request.resource.data.bid.size() <= 40
+        && o == request.resource.data.bid + '_' + request.resource.data.d + '_' + request.resource.data.t.replace(':', '')
+        && existsAfter(/databases/$(database)/documents/turnos/$(request.resource.data.tu))
+        && getAfter(/databases/$(database)/documents/turnos/$(request.resource.data.tu)).data.uid == request.resource.data.uid
+        && getAfter(/databases/$(database)/documents/turnos/$(request.resource.data.tu)).data.bid == request.resource.data.bid
+        && o in getAfter(/databases/$(database)/documents/turnos/$(request.resource.data.tu)).data.bl;
+      allow delete: if esAdmin()
+        || ((esBar() || resource.data.uid == request.auth.uid)
+            && (resource.data.get('tu', '') == ''   // documentos viejos, anteriores a esta regla
+                || getAfter(/databases/$(database)/documents/turnos/$(resource.data.tu)).data.st != 'pend'));
+    }
+
+    // config: horarios, servicios y reglas las lee cualquier usuario logueado; 'finanzas' solo el dueño.
+    match /config/{c} {
+      allow read: if (logueado() && c != 'finanzas') || (c == 'finanzas' && esAdmin());
+      allow write: if (c != 'finanzas' && esAdmin()) || (c == 'finanzas' && esProp());
+    }
+
+    match /canjes/{c} {
+      allow read: if esBar() || (logueado() && resource.data.uid == request.auth.uid);
+      allow create: if logueado()
+        && request.resource.data.keys().hasOnly(['uid', 'nm', 'pr', 'cost', 'c', 'used'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.used == false
+        && request.resource.data.cost in reglas().costs
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.pt
+           == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.pt - request.resource.data.cost;
+      allow update: if esBar()
+        && resource.data.used == false
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['used', 'usadoEn'])
+        && request.resource.data.used == true
+        && ahora(request.resource.data.usadoEn);
+      allow delete: if esBar() || (logueado() && resource.data.uid == request.auth.uid);
+    }
+  }
+}
