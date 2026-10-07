@@ -2170,7 +2170,7 @@ body.no-scroll{overflow:hidden}
 
 .lnd-split{max-width:1200px;margin:0 auto;padding:0 24px;display:grid;grid-template-columns:1fr 360px;gap:24px;align-items:start}
 .lnd-main{background:#10171F;border:1px solid #2E3C4E;border-radius:16px;padding:24px}
-.lnd-side{position:sticky;top:96px}
+.lnd-side{position:relative;margin-top:0}
 .lnd-biz-card{background:#1F2A38;border:1px solid #2E3C4E;border-radius:16px;padding:22px;text-align:center;box-shadow:0 12px 28px rgba(0,0,0,.35)}
 .lnd-biz-m{display:none;margin:0 0 18px}
 @media(max-width:1000px){

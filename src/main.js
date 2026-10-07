@@ -2475,8 +2475,16 @@ function landingH() {
         <h3 style="font-family:'Barlow Condensed',sans-serif;font-size:1.8rem;margin:8px 0 2px">Codigo Barber 1</h3>
         <div style="color:#F5F0E6;font-weight:600">5.0 <span style="color:#D4A84B">★★★★★</span> <small style="color:#9AA6B4;font-weight:400">(100+ visitas)</small></div>
         <a class="lnd-cta" href="${RESERVAR_URL}" style="width:100%;max-width:240px;margin:12px auto 4px">Reservar ahora</a>
-        <div style="color:#9AA6B4;font-size:.9rem;margin-top:8px">◴ Abierto todos los días · 09:00 a 17:00</div>
-        <div style="color:#9AA6B4;font-size:.9rem">📍 201 Huanukui Rd, Chartwell Mall (ejemplo)</div>
+        <div style="color:#9AA6B4;font-size:.9rem;margin-top:8px"><b style="color:#F5F0E6">Lun · Mar · Mié · Jue</b><br/>09:00 a 17:00 hs</div>
+        <div style="margin-top:14px;text-align:left;color:#9AA6B4;font-size:.9rem">
+          <small style="letter-spacing:.14em;text-transform:uppercase">Escribinos</small>
+          <div class="soc-row" style="margin-top:6px;background:transparent">
+            <span class="soc"><a href="https://wa.me/${esc(WHATSAPP)}" target="_blank" rel="noopener" aria-label="WhatsApp"><img src="assets/whatsapp.png" alt="WhatsApp" width="34" height="34"></a><span class="soc-t">${esc(WHATSAPP)}</span></span>
+            <span class="soc"><a href="https://www.instagram.com/${esc(INSTAGRAM)}" target="_blank" rel="noopener" aria-label="Instagram"><img src="assets/instagram.png" alt="Instagram" width="34" height="34"></a><span class="soc-t">@${esc(INSTAGRAM)}</span></span>
+          </div>
+          <p style="margin-top:10px"><small>Reservá desde la web, sin llamadas.</small></p>
+        </div>
+        <div style="color:#9AA6B4;font-size:.9rem;margin-top:8px">📍 201 Huanukui Rd, Chartwell Mall (ejemplo)</div>
       </div>`;
   return `<div class="lnd">
   <header class="lnd-hd">
@@ -2574,35 +2582,21 @@ function landingH() {
     <small>VISITANOS</small>
     <h2>CONTACTO</h2>
     <div class="lnd-cols">
-      <div class="lnd-cont-card">
-        <small>HORARIOS</small>
-        <p><b>${daysTxt}</b><br>09:00 a 17:00 hs</p>
-        <small>ESCRIBINOS</small>
-        <div class="soc-row">
-          <span class="soc"><a href="https://wa.me/${esc(WHATSAPP)}" target="_blank" rel="noopener" aria-label="WhatsApp"><img src="assets/whatsapp.png" alt="WhatsApp" width="34" height="34"></a><span class="soc-t">${esc(WHATSAPP)}</span></span>
-          <span class="soc"><a href="https://www.instagram.com/${esc(INSTAGRAM)}" target="_blank" rel="noopener" aria-label="Instagram"><img src="assets/instagram.png" alt="Instagram" width="34" height="34"></a><span class="soc-t">@${esc(INSTAGRAM)}</span></span>
-        </div>
-        <p><small>Reservá desde la web, sin llamadas.</small></p>
-      </div>
       <div class="lnd-map">
         <iframe title="Ubicación" loading="lazy" src="${MAP_IFRAME}" allowfullscreen></iframe>
         <p class="lnd-map-cap">[Mapa · Google Maps]([DIRECCIÓN])</p>
       </div>
-    </div>
-  </section>
-  <section id="contacto-form" class="lnd-alter reveal">
-    <div class="lnd-sec lnd-contacto-grid">
       <div>
         <small>CONSULTAS</small>
-        <h2>DEJANOS TU MENSAJE</h2>
-        <p>Contános qué necesitás y te respondemos por email lo antes posible.</p>
-      </div>
-      <div>
-        <h3>Nombre</h3><input type="text" id="cf-name" placeholder="Nombre" autocomplete="name">
-        <h3>Email <b class="red">*</b></h3><input type="email" id="cf-email" placeholder="Email" autocomplete="email" required>
-        <h3>Mensaje</h3><textarea id="cf-msg" rows="5" placeholder="Mensaje"></textarea>
-        <button class="lnd-cta big lnd-send" id="cfSend" data-act="enviarContacto">ENVIAR MENSAJE</button>
-        <p id="cf-status" role="status" aria-live="polite"></p>
+        <h2 style="margin-top:4px">DEJANOS TU MENSAJE</h2>
+        <p style="color:#9AA6B4;margin:0 0 16px">Contános qué necesitás y te respondemos por email lo antes posible.</p>
+        <div class="lnd-contacto-grid" style="grid-template-columns:1fr;gap:10px;margin-top:0">
+          <h3>Nombre</h3><input type="text" id="cf-name" placeholder="Nombre" autocomplete="name">
+          <h3>Email <b class="red">*</b></h3><input type="email" id="cf-email" placeholder="Email" autocomplete="email" required>
+          <h3>Mensaje</h3><textarea id="cf-msg" rows="5" placeholder="Mensaje"></textarea>
+          <button class="lnd-cta big lnd-send" id="cfSend" data-act="enviarContacto">ENVIAR MENSAJE</button>
+          <p id="cf-status" role="status" aria-live="polite"></p>
+        </div>
       </div>
     </div>
   </section>
