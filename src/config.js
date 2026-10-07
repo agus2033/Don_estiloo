@@ -25,6 +25,9 @@
       export const MB = ["El cliente avisó que no viene", "No se presentó", "Imprevisto del barbero", "Otro motivo"]; // motivos (barbero)
       export const MP = ["Efectivo", "Transferencia"]; // medios de pago
       export const WHATSAPP = "5493757644751"; // número con código de país, sin + ni espacios. Ej: "5491122334455"
+export const INSTAGRAM = "codigobarber_1"; // usuario de Instagram (sin @)
+export const RESERVAR_URL = "#login"; // destino único y configurable de los botones "Reservar ahora"
+export const MAP_IFRAME = "https://www.google.com/maps?q=-25.618,-54.5701752&z=15&output=embed"; // iframe de ubicación
 export const RECAPTCHA_KEY = ""; // clave de sitio reCAPTCHA v3 para App Check (vacío = desactivado)
 export const CANCEL_HS = 2; // horas mínimas de anticipación para que el cliente cancele
 export const LOGO = "assets/logo.svg"; // logo provisorio: reemplazá el archivo assets/logo.svg (o poné "assets/logo.png") por el tuyo

@@ -7,7 +7,17 @@ import {
   signOut,
   sendPasswordResetEmail,
   sendEmailVerification,
+  signInWithPopup,
+  GoogleAuthProvider,
+  FacebookAuthProvider,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import {
+  getStorage,
+  ref,
+  uploadBytes,
+  getDownloadURL,
+  deleteObject,
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js";
 import {
   initializeFirestore,
   persistentLocalCache,
@@ -24,6 +34,8 @@ import {
   deleteDoc,
   getDoc,
   getDocs,
+  addDoc,
+  serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 import {
@@ -38,6 +50,9 @@ import {
   MB,
   MP,
   WHATSAPP,
+  INSTAGRAM,
+  RESERVAR_URL,
+  MAP_IFRAME,
   RECAPTCHA_KEY,
   CANCEL_HS,
   LOGO,
@@ -49,6 +64,7 @@ import {
 
 const app = initializeApp(firebaseConfig),
   auth = getAuth(app),
+  storage = getStorage(app),
   db = initializeFirestore(app, {
     localCache: persistentLocalCache({
       tabManager: persistentMultipleTabManager(),
@@ -152,7 +168,7 @@ const durP = (v) => {
 const nsv = (x, i) => {
   const d = String(x.d ?? x.m),
     p = durP(d) || { m: 30, tx: "30 min" };
-  return { id: x.id || "s" + i, n: x.n, p: +x.p || 0, d, m: p.m, tx: p.tx };
+  return { id: x.id || "s" + i, n: x.n, p: +x.p || 0, d, m: p.m, tx: p.tx, img: x.img || "" };
 };
 let S = S0.map(nsv);
 let PRv = PR.map((p) => ({ ...p })),
@@ -357,7 +373,9 @@ let CA = [],
   cliN = 40, // clientes visibles (se amplía con "Ver más")
   cliSel = null, // cliente seleccionado en Clientes
   bf = "", // filtro de barbero en Agenda
-  EV = null; // edición de carga manual (dashboard)
+  EV = null, // edición de carga manual (dashboard)
+  GAL = [], // galería pública de trabajos
+  authOpen = 0; // 1 = mostrando login/registro (landing visible si 0)
 const daysFor = (bid) => {
   const o = [];
   const h = ymd();
@@ -553,7 +571,7 @@ function setup(a) {
     U = x.exists() ? x.data() : null;
     // DB limpia/cuenta nueva: creá el perfil básico si no existe
     if (!x.exists() && me && !isAdm())
-      setDoc(doc(db, "users", id), { nm: me.displayName || "Nuevo cliente", ph: "", pt: 10 }).catch(() => {});
+      setDoc(doc(db, "users", id), { nm: me.displayName || "Nuevo cliente", ph: "", pt: 20 }).catch(() => {});
   });
   ls(
     query(
@@ -660,7 +678,11 @@ function setup(a) {
           };
           if (!FN.bs.some((b) => b.id === dbi)) dbi = FN.bs.length ? FN.bs[0].id : '';
           // Publicá la lista de barberos para que los clientes puedan elegir
-          const pub = FN.bs.map((b) => ({ id: b.id, n: b.n }));
+          const pub = FN.bs.map((b) => ({
+            id: b.id,
+            n: b.n,
+            foto: (BARS.find((x) => x.id === b.id) || {}).foto || (b.uid === me.uid && SB && SB.foto) || "",
+          }));
           setDoc(doc(db, "config", "barberos"), { l: pub }).catch(() => {});
         },
         () => {},
@@ -673,6 +695,31 @@ function setup(a) {
     );
   occ();
 }
+/* Datos públicos para la landing (sin login): servicios, barberos, horarios y galería */
+onSnapshot(doc(db, "config", "servicios"), (x) => {
+  if (!me) {
+    S = x.exists() && x.data().l && x.data().l.length ? x.data().l.map(nsv) : S0.map(nsv);
+    R();
+  }
+});
+onSnapshot(doc(db, "config", "barberos"), (x) => {
+  if (!me) {
+    BARS = x.exists() && x.data().l ? x.data().l : [];
+    R();
+  }
+});
+onSnapshot(doc(db, "config", "horario"), (x) => {
+  if (!me) {
+    CF = x.exists() ? { ...CFD, ...x.data() } : { ...CFD };
+    R();
+  }
+});
+onSnapshot(collection(db, "galeria"), (x) => {
+  GAL = x.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  if (!me) R();
+});
 onAuthStateChanged(auth, (a) => {
   ready = 1;
   unsub();
@@ -718,14 +765,15 @@ const RT = {
   fin: "finanzas",
   cfg: "ajustes",
   priv: "privacidad",
+  gal: "galeria",
 };
 const rtOk = (v) =>
   !!me &&
   !!rd &&
   (isAdm()
     ? isOwner()
-      ? ["bar", "cli", "bars", "dash", "fin", "cfg", "priv"]
-      : ["bar", "cli", "fin", "priv"]
+      ? ["bar", "cli", "bars", "dash", "fin", "cfg", "priv", "gal"]
+      : ["bar", "cli", "fin", "priv", "gal"]
     : ["home", "res", "tur", "priv"]
   ).includes(v);
 const rtView = () => Object.keys(RT).find((k) => "#/" + RT[k] === location.hash);
@@ -744,7 +792,7 @@ function prep(v) {
     cb = "";
     const c = CFB("");
     cd = { a: c.a, c: c.c, dias: [...c.dias], libres: [...c.libres], al: c.al, ah: c.ah };
-    sd = S.map((x) => ({ id: x.id, n: x.n, p: String(x.p), d: x.d }));
+    sd = S.map((x) => ({ id: x.id, n: x.n, p: String(x.p), d: x.d, img: x.img || "" }));
   }
   if (v === "fin") fe = JSON.parse(JSON.stringify(FN));
   cf = -1;
@@ -754,11 +802,51 @@ function prep(v) {
   cliSel = null;
 }
 window.addEventListener("hashchange", () => {
+  if (!me && location.hash === RESERVAR_URL && !authOpen) {
+    authOpen = 1;
+    R();
+  }
   const v = rtView();
   if (v && v !== view && rtOk(v)) {
     prep(v);
     R();
   }
+});
+function setupReveal() {
+  requestAnimationFrame(() => {
+    document.querySelectorAll(".reveal").forEach((el) => {
+      const o = new IntersectionObserver(
+        (entries) => {
+          if (entries[0].isIntersecting) {
+            el.classList.add("visible");
+            o.disconnect();
+          }
+        },
+        { rootMargin: "0px 0px -60px 0px" },
+      );
+      o.observe(el);
+    });
+  });
+}
+function cerrarMenuLnd() {
+  const m = document.getElementById("lndMenu"),
+    h = document.getElementById("lndHamb");
+  if (m) m.classList.remove("open");
+  if (h) {
+    h.classList.remove("open");
+    h.setAttribute("aria-expanded", "false");
+    h.setAttribute("aria-label", "Abrir menú");
+  }
+  document.body.classList.remove("no-scroll");
+}
+document.addEventListener("click", (e) => {
+  if (e.target.closest("#lndMenu a")) cerrarMenuLnd();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") cerrarMenuLnd();
+});
+window.addEventListener("resize", () => {
+  if (window.innerWidth > 900) cerrarMenuLnd();
 });
 const W = {
   rgPts(el) {
@@ -788,6 +876,57 @@ const W = {
   },
   async verPrec() {
     M({ h: "Servicios y precios", b: `<div style="margin-top:6px">${lines()}</div>` });
+  },
+  toggleLndMenu() {
+    const m = document.getElementById("lndMenu"),
+      h = document.getElementById("lndHamb");
+    if (!m || !h) return;
+    const open = m.classList.toggle("open");
+    h.classList.toggle("open", open);
+    h.setAttribute("aria-expanded", open ? "true" : "false");
+    h.setAttribute("aria-label", open ? "Cerrar menú" : "Abrir menú");
+    document.body.classList.toggle("no-scroll", open);
+  },
+  async enviarContacto() {
+    if (enviarContacto.estado === "enviando") return;
+    const nombre = ($("#cf-name") || {}).value || "",
+      email = (($("#cf-email") || {}).value || "").trim(),
+      mensaje = (($("#cf-msg") || {}).value || "").trim(),
+      okE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
+      btn = $("#cfSend"),
+      st = $("#cf-status");
+    if (!okE || !mensaje) {
+      if (st) st.textContent = "Revisá el email y el mensaje.";
+      return;
+    }
+    enviarContacto.estado = "enviando";
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "ENVIANDO…";
+    }
+    if (st) st.textContent = "Enviando…";
+    try {
+      await addDoc(collection(db, "mensajes"), {
+        nombre: nombre.trim(),
+        email,
+        mensaje,
+        fecha: serverTimestamp(),
+      });
+      if (st) st.textContent = "¡Mensaje enviado! Te respondemos pronto.";
+      const n1 = $("#cf-name"), n2 = $("#cf-email"), n3 = $("#cf-msg");
+      if (n1) n1.value = "";
+      if (n2) n2.value = "";
+      if (n3) n3.value = "";
+    } catch (e) {
+      console.error(e);
+      if (st) st.textContent = "No se pudo enviar el mensaje. Probá de nuevo.";
+    } finally {
+      enviarContacto.estado = "";
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "ENVIAR MENSAJE";
+      }
+    }
   },
   ver(btn) {
     const inp = btn.closest(".clave").querySelector("input");
@@ -945,6 +1084,93 @@ const W = {
     tab = t;
     R();
   },
+  goLogin(m) {
+    authOpen = 1;
+    if (m) tab = m;
+    R();
+  },
+  backLanding() {
+    authOpen = 0;
+    R();
+  },
+  openPol() {
+    const x = $("#po");
+    x.innerHTML = polH();
+    x.hidden = false;
+  },
+  cerrarPol() {
+    $("#po").hidden = true;
+  },
+  pickFoto(cb) {
+    const i = document.createElement("input");
+    i.type = "file";
+    i.accept = "image/*";
+    i.onchange = () => i.files && i.files[0] && cb(i.files[0]);
+    i.click();
+  },
+  async subirFoto(f, carpeta) {
+    busy(1, "Subiendo imagen…");
+    try {
+      const ext = (String(f.name).split(".").pop() || "jpg").toLowerCase();
+      const r = ref(storage, carpeta + "/" + Date.now().toString(36) + "." + ext);
+      await uploadBytes(r, f);
+      return { url: await getDownloadURL(r), ruta: r.fullPath };
+    } finally {
+      busy(0);
+    }
+  },
+  svImg(i) {
+    W.pickFoto(async (f) => {
+      const x = await W.subirFoto(f, "servicios/" + sd[i].id);
+      sd[i].img = x.url;
+      R();
+      M({ k: "ok", h: "Imagen lista", b: "Tocá “Guardar servicios” para que se aplique." });
+    });
+  },
+  galUp() {
+    W.pickFoto(async (f) => {
+      const x = await W.subirFoto(f, "galeria");
+      await addDoc(collection(db, "galeria"), {
+        url: x.url,
+        ruta: x.ruta,
+        ts: Date.now(),
+        por: me ? me.uid : "",
+      });
+      R();
+    });
+  },
+  async galDel(id, ruta) {
+    try {
+      await deleteDoc(doc(db, "galeria", id));
+      if (ruta) await deleteObject(ref(storage, ruta)).catch(() => {});
+      R();
+    } catch (e) {
+      err(e);
+    }
+  },
+  async fotoTomar() {
+    W.pickFoto(async (f) => {
+      const x = await W.subirFoto(f, "perfil");
+      const u = { foto: x.url };
+      await setDoc(doc(db, "users", me.uid), u, { merge: true });
+      if (SB) {
+        SB.foto = x.url;
+        await setDoc(doc(db, "staff", me.uid), { foto: x.url }, { merge: true }).catch(() => {});
+      }
+      // también espejo en config/barberos para que lo vean los clientes
+      const l = BARS.map((b) => ({ ...b, foto: b.id === me.uid ? x.url : b.foto || "" }));
+      await setDoc(doc(db, "config", "barberos"), { l }, { merge: true }).catch(() => {});
+      R();
+    });
+  },
+  async fotoBarbero(bid) {
+    W.pickFoto(async (f) => {
+      const x = await W.subirFoto(f, "perfil");
+      const l = BARS.map((b) => ({ ...b, foto: b.id === bid ? x.url : b.foto || "" }));
+      await setDoc(doc(db, "config", "barberos"), { l }, { merge: true });
+      R();
+    });
+  },
   async entrar() {
     if (!$("#ie").value.trim() || !$("#ip").value)
       return M({
@@ -962,7 +1188,31 @@ const W = {
       err(e);
     }
   },
+  async red(p) {
+    try {
+      const prov =
+        p === "google"
+          ? new GoogleAuthProvider()
+          : new FacebookAuthProvider();
+      const r = await signInWithPopup(auth, prov);
+      const s = await getDoc(doc(db, "users", r.user.uid));
+      if (!s.exists())
+        await setDoc(doc(db, "users", r.user.uid), {
+          nm: r.user.displayName || "Nuevo cliente",
+          ph: "",
+          pt: 20,
+        });
+    } catch (e) {
+      err(e);
+    }
+  },
   async registro() {
+    if (!$("#spol") || !$("#spol").checked)
+      return M({
+        k: "w",
+        h: "Aceptá las políticas",
+        b: "Para crear tu cuenta tenés que aceptar las Políticas y privacidad y las condiciones del servicio.",
+      });
     const nm = $("#nm").value.trim(),
       ph = $("#ph").value.replace(/\D/g, "");
     if (nm.length < 2 || nm.length > 40 || ph.length < 8 || ph.length > 15) {
@@ -995,7 +1245,7 @@ const W = {
       await setDoc(doc(db, "users", c.user.uid), {
         nm: nm,
         ph: ph,
-        pt: 10,
+        pt: 20,
       });
       sendEmailVerification(c.user).catch(() => {});
       M({
@@ -1024,7 +1274,10 @@ const W = {
       b: "Vas a tener que ingresar de nuevo para ver tus turnos.",
       ok: "Cerrar sesión",
       no: "Quedarme",
-      fn: () => signOut(auth),
+      fn: () => {
+        authOpen = 0;
+        signOut(auth);
+      },
     });
   },
   setDay(d) {
@@ -1441,7 +1694,7 @@ Object.assign(W, {
   },
   svAdd() {
     if (sd.length >= 12) return;
-    sd.push({ id: "s" + Date.now().toString(36), n: "", p: "", d: "30" });
+    sd.push({ id: "s" + Date.now().toString(36), n: "", p: "", d: "30", img: "" });
     R();
   },
   svDel(i) {
@@ -1470,6 +1723,7 @@ Object.assign(W, {
           p: +x.p,
           d: String(x.d).trim(),
           m: durP(x.d).m,
+          ...(x.img ? { img: x.img } : {}),
         })),
       });
       msg =
@@ -2134,7 +2388,7 @@ const lines = () =>
     (s) =>
       `<div class="line"><span><b>${esc(s.n)}</b> <small>${esc(s.tx)}</small></span><span class="price">${$$(s.p)}</span></div>`,
   ).join("");
-function authH() {
+function loginH() {
   const up = tab === "up",
     rec = tab === "rec";
   return `<div class="franja" aria-hidden="true"></div>
@@ -2160,25 +2414,32 @@ function authH() {
     </div>
     <div class="tarjeta">
       <div class="vista" id="ingresar" ${up || rec ? "hidden" : ""}>
-        <h1>Ingresá</h1>
+        <h1>INGRESÁ</h1>
         <p class="sub">Reservá tu turno y sumá puntos en cada visita</p>
         <div class="campo"><label for="ie">Email</label><input class="entrada" id="ie" name="email" type="email" autocomplete="email" inputmode="email" placeholder="sofia@correo.com"></div>
-        <div class="campo"><label for="ip"><span>Contraseña</span><button type="button" class="enlace" style="min-height:24px;font-size:14px" data-act="setTab" data-args="${A("rec")}">Olvidé mi contraseña</button></label><div class="clave"><input class="entrada" id="ip" name="password" type="password" autocomplete="current-password" placeholder="Tu contraseña"><button type="button" class="ver" data-act="ver" data-args="${A("@el")}">Ver</button></div></div>
+        <div class="campo"><label for="ip">Contraseña</label><div class="clave"><input class="entrada" id="ip" name="password" type="password" autocomplete="current-password" placeholder="Tu contraseña"><button type="button" class="ver" data-act="ver" data-args="${A("@el")}">Ver</button></div></div>
+        <p style="text-align:right;margin:-4px 0 12px"><button type="button" class="enlace" style="min-height:0;padding:0;font-size:14px;color:var(--brass)" data-act="setTab" data-args="${A("rec")}">Olvidé mi contraseña</button></p>
         <button class="boton primario" data-act="entrar">Ingresar</button>
-        <div class="o">¿Primera vez?</div>
-        <button class="boton secundario" type="button" data-act="setTab" data-args="${A("up")}">Crear cuenta</button>
+        <div class="o">o continuá con</div>
+        <div style="display:flex;gap:10px">
+          <button class="boton secundario" type="button" data-act="red" data-args="${A("google")}" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px"><img src="assets/google.png" alt="" width="20" height="20">Google</button>
+          <button class="boton secundario" type="button" data-act="red" data-args="${A("facebook")}" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px"><img src="assets/facebook.png" alt="" width="20" height="20">Facebook</button>
+        </div>
       </div>
       <div class="vista" id="registro" ${up ? "" : "hidden"}>
-        <h1>Creá tu cuenta</h1>
-        <p class="sub">Reservá tu turno en menos de un minuto</p>
+        <h1>CREÁ TU CUENTA</h1>
+        <p class="sub">Reservá tu turno en menos de un minuto · Al registrarte te cargamos 20 puntos</p>
         <div class="campo"><label for="nm">Nombre</label><input class="entrada" id="nm" name="nombre" type="text" autocomplete="name" placeholder="Tu nombre"></div>
         <div class="campo"><label for="ph">Teléfono</label><input class="entrada" id="ph" name="telefono" type="tel" autocomplete="tel" inputmode="tel" placeholder="Tu teléfono"></div>
         <div class="campo"><label for="em">Email</label><input class="entrada" id="em" name="email" type="email" autocomplete="email" inputmode="email" placeholder="sofia@correo.com"></div>
         <div class="campo"><label for="pw">Contraseña</label><div class="clave"><input class="entrada" id="pw" name="password" type="password" autocomplete="new-password" placeholder="Tu contraseña" data-in="pwLive"><button type="button" class="ver" data-act="ver" data-args="${A("@el")}">Ver</button></div><ul class="reglas" id="pwl">${pwHtml("", "")}</ul></div>
         <div class="campo"><label for="pw2">Repetí la contraseña</label><div class="clave"><input class="entrada" id="pw2" name="password2" type="password" autocomplete="new-password" placeholder="Repetí la contraseña"><button type="button" class="ver" data-act="ver" data-args="${A("@el")}">Ver</button></div></div>
+        <div class="campo"><label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;line-height:1.4"><input type="checkbox" id="spol" style="width:auto;margin-top:4px;flex:0 0 auto"><span>Leí y acepto las <a href="#" data-act="openPol" style="color:var(--brass);font-weight:700;text-decoration:underline">políticas y privacidad</a> y las condiciones del servicio.</span></label></div>
         <button class="boton primario" data-act="registro">Crear cuenta</button>
-        <div class="pie" style="margin-top:12px">
-          <button class="enlace dorado" type="button" data-act="setTab" data-args="${A("in")}">Ya tengo cuenta</button>
+        <div class="o" style="margin-top:14px">o continuá con</div>
+        <div style="display:flex;gap:10px">
+          <button class="boton secundario" type="button" data-act="red" data-args="${A("google")}" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px"><img src="assets/google.png" alt="" width="20" height="20">Google</button>
+          <button class="boton secundario" type="button" data-act="red" data-args="${A("facebook")}" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px"><img src="assets/facebook.png" alt="" width="20" height="20">Facebook</button>
         </div>
       </div>
       <div class="vista" id="recuperar" ${rec ? "" : "hidden"}>
@@ -2186,12 +2447,173 @@ function authH() {
         <p class="sub">Te mandamos un enlace para elegir una contraseña nueva</p>
         <div class="campo"><label for="cem">Email</label><input class="entrada" id="cem" name="email" type="email" autocomplete="email" inputmode="email" placeholder="sofia@correo.com"></div>
         <button class="boton primario" data-act="olvide">Enviar enlace</button>
-        <div class="pie" style="margin-top:12px"><button class="enlace dorado" type="button" data-act="setTab" data-args="${A("in")}">Volver a ingresar</button></div>
       </div>
+    </div>
+    <div style="text-align:center;margin-top:18px">
+      ${up
+        ? `<p>¿Ya tenés cuenta? <button type="button" data-act="setTab" data-args="${A("in")}" style="min-height:0;padding:0;background:none;border:0;color:var(--brass);font-weight:700;cursor:pointer;text-decoration:underline">Ingresá</button></p>`
+        : rec
+          ? `<p><button type="button" data-act="setTab" data-args="${A("in")}" style="min-height:0;padding:0;background:none;border:0;color:var(--brass);font-weight:700;cursor:pointer;text-decoration:underline">Volver a ingresar</button></p>`
+          : `<p>¿Primera vez? <button type="button" data-act="setTab" data-args="${A("up")}" style="min-height:0;padding:0;background:none;border:0;color:var(--brass);font-weight:700;cursor:pointer;text-decoration:underline">Creá tu cuenta</button></p>`}
+      <p style="margin-top:8px"><small>Al ingresar aceptás las <a href="#" data-act="openPol" style="color:var(--brass);text-decoration:underline">políticas y privacidad</a> de ${esc(NOMBRE)}.</small></p>
     </div>
     <div class="pie verPrecMobile"><button class="enlace" type="button" data-act="verPrec">Ver servicios y precios</button></div>
   </section>
 </main>`;
+}
+function authH() {
+  return authOpen ? loginH() : landingH();
+}
+function landingH() {
+  const daysTxt = [1, 2, 3, 4, 5, 6, 0]
+      .filter((d) => CF.dias.includes(d))
+      .map((d) => ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"][d])
+      .join(" · "),
+    mapQ = "-25.618,-54.5701752",
+    bizCard = `<div class="lnd-biz-card">
+        <img class="lnd-biz-ico" src="${LOGO}" alt="" width="120" height="120" style="border-radius:18px"/>
+        <h3 style="font-family:'Barlow Condensed',sans-serif;font-size:1.8rem;margin:8px 0 2px">Codigo Barber 1</h3>
+        <div style="color:#F5F0E6;font-weight:600">5.0 <span style="color:#D4A84B">★★★★★</span> <small style="color:#9AA6B4;font-weight:400">(100+ visitas)</small></div>
+        <a class="lnd-cta" href="${RESERVAR_URL}" style="width:100%;max-width:240px;margin:12px auto 4px">Reservar ahora</a>
+        <div style="color:#9AA6B4;font-size:.9rem;margin-top:8px">◴ Abierto todos los días · 09:00 a 17:00</div>
+        <div style="color:#9AA6B4;font-size:.9rem">📍 201 Huanukui Rd, Chartwell Mall (ejemplo)</div>
+      </div>`;
+  return `<div class="lnd">
+  <header class="lnd-hd">
+    <a class="lnd-br" href="#inicio"><img src="${LOGO}" alt="" width="54" height="54"><b>${esc(NOMBRE)}</b></a>
+    <nav class="lnd-nv" id="lndMenu">
+      <a href="#inicio">Inicio</a><a href="#acerca">Acerca de</a><a href="#servicios">Servicios</a><a href="#galeria">Galería</a><a href="#contacto">Contacto</a>
+      <a class="lnd-nv-cta" href="${RESERVAR_URL}">Reservar ahora</a>
+    </nav>
+    <button class="lnd-hamb" id="lndHamb" data-act="toggleLndMenu" aria-label="Abrir menú" aria-expanded="false" aria-controls="lndMenu">
+      <span></span><span></span><span></span>
+    </button>
+    <a class="lnd-nav-cta" href="${RESERVAR_URL}">Reservar ahora</a>
+  </header>
+  <section id="inicio" class="lnd-hero reveal">
+    <div class="lnd-hero-tx">
+      <small>BARBERÍA · TURNOS ONLINE</small>
+      <h1>Tu turno,<br>sin esperas.</h1>
+      <p>Reservá en menos de un minuto y sumá puntos en cada visita.</p>
+      <div class="lnd-ctas">
+        <a class="lnd-cta big" href="${RESERVAR_URL}">Reservar ahora</a>
+      </div>
+      <p class="lnd-note"><b>20 puntos</b> de bienvenida<br><small>Canjealo por descuentos o un corte gratis</small></p>
+    </div>
+    <div class="lnd-hero-img">
+      <div class="lnd-pole"><svg width="92" height="220" viewBox="0 0 92 220" aria-hidden="true"><rect x="14" y="0" width="64" height="18" rx="9" fill="#C9A24B"/><rect x="14" y="202" width="64" height="18" rx="9" fill="#C9A24B"/><rect x="20" y="22" width="52" height="176" fill="#eef1f5" stroke="#2E3C4E"/><path d="M20 22 72 62v34L20 56ZM20 78 72 118v34L20 112ZM20 134 72 174v24L20 158Z" fill="#B3382C"/><path d="M20 56v22L72 44v22ZM20 112v22L72 100v22ZM20 158v16L72 150v24Z" fill="#2F5C9E"/></svg></div>
+      <small>20 puntos de bienvenida<br>Canjealo por descuentos o un corte gratis</small>
+    </div>
+  </section>
+  <div class="lnd-split">
+    <div class="lnd-main">
+  <section class="lnd-sec reveal">
+    <small>PASO A PASO</small>
+    <h2>CÓMO FUNCIONA</h2>
+    <div class="lnd-steps">
+      <div class="lnd-step"><b>01</b><h3>Elegí tu servicio</h3><p>Corte, barba o los dos. El precio final se muestra al confirmar.</p></div>
+      <div class="lnd-step"><b>02</b><h3>Reservá tu horario</h3><p>Turnos online, sin llamadas. Si no hay lugar ese día, sumate a la lista de espera.</p></div>
+      <div class="lnd-step"><b>03</b><h3>Sumá puntos</h3><p>Sumás puntos por cada corte que canjeás por descuentos o un corte gratis.</p></div>
+    </div>
+  </section>
+  <section id="acerca" class="lnd-sec reveal">
+    <small>QUIÉNES SOMOS</small>
+    <h2>ACERCA DE</h2>
+    <div class="lnd-cols">
+      <p>En <b>${esc(NOMBRE)}</b> te atendemos con turnos online para que no pierdas tiempo esperando. Los barberos cargan tu perfil. Los clientes suman puntos por cada corte y los canjeás por descuentos o un corte gratis.</p>
+      <div class="lnd-about-cards">
+        <div class="lnd-mini"><i>🕒</i><div><b>Lista de espera</b><p>Si no hay horario ese día, podés sumarte a la lista: te avisamos apenas se libere uno.</p></div></div>
+        <div class="lnd-mini"><i>🔔</i><div><b>Avisos por WhatsApp</b><p>Los barberos te avisan con anticipación para cancelar: así lo harías lo libera.</p></div></div>
+      </div>
+    </div>
+  </section>
+  <section id="servicios" class="lnd-sec reveal">
+    <small>LO QUE HACEMOS</small>
+    <h2>SERVICIOS</h2>
+    <p class="lnd-note-right">El precio final se muestra al confirmar.</p>
+    <div class="lnd-biz-m">${bizCard}</div>
+    <div class="lnd-svs">
+      ${S.map(
+        (x) => `<div class="lnd-sv">
+          <i class="lnd-svc-ico">${x.img ? `<img class="lnd-sv-img" src="${esc(x.img)}" alt="${esc(x.n)}" loading="lazy">` : `<span>✂</span>`}</i>
+          <b>${esc(x.n)}</b>
+          <small>${esc(x.tx)}${x.p ? "" : ""}</small>
+          ${x.tag ? `<em class="lnd-tag">${esc(x.tag)}</em>` : ""}
+          <div class="lnd-sv-ft">
+            <b class="lnd-price">${$$(x.p)}</b>
+            <button class="lnd-rtt" data-act="goLogin">Reservar</button>
+          </div>
+        </div>`,
+      ).join("")}
+    </div>
+  </section>
+  <section class="lnd-sec reveal" id="cta">
+    <div class="lnd-cta-card">
+      <div>
+        <h2>¿LISTO PARA TU PRÓXIMO CORTE?</h2>
+        <p>Reservá online y arrancá sumando puntos desde tu primera visita.</p>
+      </div>
+      <a class="lnd-cta big" href="${RESERVAR_URL}">Reservar ahora</a>
+    </div>
+  </section>
+  <section id="galeria" class="lnd-sec reveal">
+    <small>NUESTRO TRABAJO</small>
+    <h2>GALERÍA</h2>
+    <p class="lnd-note-right">${GAL && GAL.length ? "" : "Todavía no hay fotos publicadas: las 4 fotos placeholders se verán cuando las cargues."}</p>
+    <div class="lnd-gal">
+      ${GAL && GAL.length
+        ? GAL.map((g) => `<img src="${esc(g.url)}" alt="Trabajo de la barbería" loading="lazy">`).join("")
+        : [1, 2, 3, 4]
+            .map(
+              (i) => `<figure class="lnd-ph"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-7 7"/></svg><figcaption>[ FOTO ${i} ]</figcaption></figure>`,
+            )
+            .join("")}
+    </div>
+  </section>
+  <section id="contacto" class="lnd-sec reveal">
+    <small>VISITANOS</small>
+    <h2>CONTACTO</h2>
+    <div class="lnd-cols">
+      <div class="lnd-cont-card">
+        <small>HORARIOS</small>
+        <p><b>${daysTxt}</b><br>09:00 a 17:00 hs</p>
+        <small>ESCRIBINOS</small>
+        <div class="soc-row">
+          <span class="soc"><a href="https://wa.me/${esc(WHATSAPP)}" target="_blank" rel="noopener" aria-label="WhatsApp"><img src="assets/whatsapp.png" alt="WhatsApp" width="34" height="34"></a><span class="soc-t">${esc(WHATSAPP)}</span></span>
+          <span class="soc"><a href="https://www.instagram.com/${esc(INSTAGRAM)}" target="_blank" rel="noopener" aria-label="Instagram"><img src="assets/instagram.png" alt="Instagram" width="34" height="34"></a><span class="soc-t">@${esc(INSTAGRAM)}</span></span>
+        </div>
+        <p><small>Reservá desde la web, sin llamadas.</small></p>
+      </div>
+      <div class="lnd-map">
+        <iframe title="Ubicación" loading="lazy" src="${MAP_IFRAME}" allowfullscreen></iframe>
+        <p class="lnd-map-cap">[Mapa · Google Maps]([DIRECCIÓN])</p>
+      </div>
+    </div>
+  </section>
+  <section id="contacto-form" class="lnd-alter reveal">
+    <div class="lnd-sec lnd-contacto-grid">
+      <div>
+        <small>CONSULTAS</small>
+        <h2>DEJANOS TU MENSAJE</h2>
+        <p>Contános qué necesitás y te respondemos por email lo antes posible.</p>
+      </div>
+      <div>
+        <h3>Nombre</h3><input type="text" id="cf-name" placeholder="Nombre" autocomplete="name">
+        <h3>Email <b class="red">*</b></h3><input type="email" id="cf-email" placeholder="Email" autocomplete="email" required>
+        <h3>Mensaje</h3><textarea id="cf-msg" rows="5" placeholder="Mensaje"></textarea>
+        <button class="lnd-cta big lnd-send" id="cfSend" data-act="enviarContacto">ENVIAR MENSAJE</button>
+        <p id="cf-status" role="status" aria-live="polite"></p>
+      </div>
+    </div>
+  </section>
+    </div>
+    <aside class="lnd-side">${bizCard}</aside>
+  </div>
+  <footer class="lnd-ft">
+    <p><b>${esc(NOMBRE)}</b> · Desarrollado por ${esc(AUTOR)}</p>
+    <p><a href="#" data-act="openPol">Políticas</a> · <a href="#" data-act="openPol">Privacidad</a></p>
+  </footer>
+</div>`;
 }
 const vn = () =>
   me.emailVerified
@@ -2206,8 +2628,11 @@ function homeH() {
     .sort((a, b) => (b.d + b.t).localeCompare(a.d + a.t))[0];
   const hh = new Date().getHours();
   const sal = hh < 13 ? "Buenos días" : hh < 20 ? "Buenas tardes" : "Buenas noches";
+  const hf = U.foto
+    ? `<img src="${esc(U.foto)}" alt="" width="64" height="64" style="border-radius:50%;object-fit:cover;border:2px solid var(--brass);flex:0 0 auto">`
+    : `<span class="aval" style="width:64px;height:64px;font-size:28px;flex:0 0 auto">${esc((U.nm || "?")[0].toUpperCase())}</span>`;
   return (
-    `${vn()}<small style="color:var(--mut)">${sal}</small><h1 style="font-size:clamp(38px,7vw,56px);margin:0 0 18px">HOLA, ${esc((U.nm || "").split(" ")[0]).toUpperCase()}</h1>` +
+    `${vn()}<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">${hf}<div style="flex:1;min-width:0"><small style="color:var(--mut)">${sal}</small><h1 style="font-size:clamp(34px,6vw,50px);margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">HOLA, ${esc((U.nm || "").split(" ")[0]).toUpperCase()}</h1></div><button data-act="fotoTomar" style="flex:0 0 auto;margin-top:0">Cambiar foto</button></div>` +
     `<div class="card" style="padding:22px"><div style="display:flex;justify-content:space-between;align-items:baseline"><b class="big" style="font-size:clamp(48px,10vw,68px);margin:0">${U.pt}</b><span style="color:var(--mut)">puntos acumulados</span></div><div class="bar" style="margin-top:10px"><i style="width:${pct}%"></i></div><p style="margin:10px 0 0">${nx ? `Te faltan <b>${nx.p - U.pt}</b> puntos para “${nx.n}”` : "Ya podés canjear cualquier premio"}</p></div>` +
     `<h3 class="lab">Premios</h3><div class="card" style="padding:0">` +
     PRv.map((p, i) => {
@@ -2257,7 +2682,7 @@ function resH() {
       (BARS.length
         ? BARS.map(
             (b) =>
-              `<button class="barber ${b.id === sel.b ? "on" : ""}" data-act="setBar" data-args="${A(b.id)}"><span class="b">${esc((b.n || "?")[0].toUpperCase())}</span><span><b>${esc(b.n)}</b><br><small>Barbero</small></span></button>`,
+              `<button class="barber ${b.id === sel.b ? "on" : ""}" data-act="setBar" data-args="${A(b.id)}"><span class="b">${b.foto ? `<img src="${esc(b.foto)}" alt="" width="100%" height="100%" style="border-radius:50%;object-fit:cover;display:block">` : esc((b.n || "?")[0].toUpperCase())}</span><span><b>${esc(b.n)}</b><br><small>Barbero</small></span></button>`,
           ).join("")
         : "<small>Todavía no hay barberos disponibles.</small>") +
       `<button class="main" style="margin-top:18px" data-act="resNext">Continuar</button>`;
@@ -2267,7 +2692,7 @@ function resH() {
       `<h1>ELEGÍ EL SERVICIO</h1><small style="color:var(--mut)">Con ${esc(barberName)}</small>` +
       S.map(
         (x, i) =>
-          `<button class="svc ${i == sel.s ? "on" : ""}" style="width:100%;text-align:left" data-act="selS" data-args="${A(i)}"><div class="r"><span><b>${x.n}</b><br><small>${esc(x.tx)}</small></span><span class="pr">${$$(x.p)}</span></div></button>`,
+          `<button class="svc ${i == sel.s ? "on" : ""}" style="width:100%;text-align:left" data-act="selS" data-args="${A(i)}"><div class="r">${x.img ? `<img src="${esc(x.img)}" alt="" width="56" height="56" style="border-radius:10px;object-fit:cover;flex:0 0 auto">` : ""}<span><b>${x.n}</b><br><small>${esc(x.tx)}</small></span><span class="pr">${$$(x.p)}</span></div></button>`,
       ).join("") +
       `<button class="main" style="margin-top:18px" data-act="resNext">Continuar</button>`;
   else if (resStep === 3)
@@ -2294,6 +2719,60 @@ const US = (list) =>
   );
 function privH() {
   return `<h1>Privacidad</h1><div class="card" style="max-width:640px"><p><small>Guardamos tu nombre, teléfono y email solo para gestionar tus turnos y tus puntos.<br><br>No compartimos tus datos con terceros.<br><br>Podés pedir que los borremos cuando quieras.</small></p></div><div class="card" style="max-width:640px;margin-top:14px"><p><small>Si borrás tus datos, se elimina tu cuenta, tus turnos y tus puntos. No se puede deshacer.</small></p><button class="main danger" data-act="borrarAsk">Borrar mis datos</button></div>`;
+}
+function galH() {
+  return (
+    `<h1>Galería</h1><small>Fotos de trabajos que se muestran en la web.</small><div class="card" style="margin-top:10px;max-width:640px"><button class="main" data-act="galUp">+ Subir foto</button><small style="display:block;margin-top:8px">Cualquier barbero o el dueño puede subir; las ves en la sección Galería de la página.</small></div>` +
+    (GAL.length
+      ? `<div class="lnd-gal" style="margin-top:14px">${GAL.map(
+          (g) =>
+            `<figure style="position:relative;margin:0"><img src="${esc(g.url)}" alt="" loading="lazy" style="width:100%;height:180px;object-fit:cover;border-radius:10px;display:block;border:1px solid var(--line)"><button data-act="galDel" data-args="${A(g.id, g.ruta || "")}" style="position:absolute;top:6px;right:6px;min-height:0;padding:4px 9px" aria-label="Borrar foto">✕</button></figure>`,
+        ).join("")}</div>`
+      : "<p><small>Todavía no hay fotos publicadas.</small></p>")
+  );
+}
+function polH() {
+  const it = (t, d) => `<div class="pol-card"><h4>${t}</h4><p>${d}</p></div>`;
+  return `<div class="polbox" role="dialog" aria-modal="true" aria-label="Políticas y privacidad">
+  <div class="pol-hd">
+    <img src="${LOGO}" alt="" width="36" height="36" style="border-radius:8px">
+    <div style="flex:1;min-width:0"><h2>POLÍTICAS Y PRIVACIDAD</h2><small>Versión 1.0 · Actualizadas el 7 de octubre de 2026 · Ley 25.326 de Protección de los Datos Personales</small></div>
+    <button class="pol-x" data-act="cerrarPol" aria-label="Cerrar">✕</button>
+  </div>
+  <div class="pol-body">
+    <h3>EN RESUMEN</h3>
+    <div class="pol-grid">
+      ${it("No vendemos tus datos", "Solo usamos tu nombre, teléfono y email para gestionar tus turnos y tus puntos.")}
+      ${it("Pedimos lo mínimo", "Solo lo necesario para reservar. Nada de datos sensibles.")}
+      ${it("Tu contraseña va cifrada", "Nadie del local puede verla.")}
+      ${it("Borrás tu cuenta cuando quieras", "Desde Privacidad → «Borrar mis datos».")}
+    </div>
+    <h3>PRIVACIDAD</h3>
+    <ol class="pol-list">
+      <li><b>Quién es responsable.</b> ${esc(NOMBRE)} es el responsable de tus datos personales.</li>
+      <li><b>Qué datos recopilamos.</b> Nombre, teléfono y email para la cuenta; fechas y estados de turnos; puntos, canjes y faltas; y montos de cobros. <b>No guardamos datos de tarjetas.</b></li>
+      <li><b>Para qué los usamos.</b> Crear y gestionar tu cuenta, reservar y cancelar turnos, llevar tus puntos y canjes, y enviarte recordatorios por WhatsApp.</li>
+      <li><b>Con quién los compartimos.</b> Con el equipo del local para trabajar, con Firebase para guardar los datos, y con WhatsApp para los avisos. No los vendemos ni alquilamos.</li>
+      <li><b>Cuánto tiempo los guardamos.</b> Mientras tu cuenta esté activa. Si borrás tu cuenta, se elimina todo.</li>
+      <li><b>Cómo los protegemos.</b> Contraseña cifrada y conexión cifrada (HTTPS).</li>
+      <li><b>Tus derechos.</b> Podés pedir acceso, rectificación, actualización o supresión de tu cuenta.</li>
+      <li><b>Menores de edad.</b> Si sos menor de 18 años, reservá con autorización de tu padre, madre o tutor.</li>
+    </ol>
+    <h3>CONDICIONES DEL SERVICIO</h3>
+    <ol class="pol-list">
+      <li><b>Turnos, cancelaciones y faltas.</b> Podés cancelar o reprogramar hasta ${CHSv} horas antes. Si no te presentás, se registra una falta; con faltas repetidas, el local puede pedirte una seña.</li>
+      <li><b>Puntos y premios.</b> Sumás ${PTSv} puntos por corte completado. Los premios no tienen valor en dinero ni se transfieren, y pueden cambiar con previo aviso.</li>
+      <li><b>Pagos y precios.</b> Los precios se muestran antes de confirmar. Podés pagar en efectivo o transferencia; si se usa seña, se abona con Mercado Pago.</li>
+      <li><b>Avisos por WhatsApp.</b> Solo te escribimos para hablar de tus turnos. Si no querés recibirlos, avisanos.</li>
+    </ol>
+    <h3>CAMBIOS</h3>
+    <p>Estas políticas pueden cambiar. Te avisamos en la app con la fecha de la última actualización.</p>
+  </div>
+  <div class="pol-ft">
+    <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="polOk" style="width:auto;margin:0"> Leí y acepto las Políticas y privacidad y las condiciones del servicio.</label>
+    <div><button data-act="cerrarPol">Cerrar</button> <button class="lnd-cta" data-act="cerrarPol">Aceptar y continuar</button></div>
+  </div>
+</div>`;
 }
 const quien = (t) =>
   t.por === "bar"
@@ -2397,7 +2876,9 @@ function barH() {
       .filter((t) => !ag || t.d === ag)
       .filter((t) => !SB || isOwner() || t.bid === me.uid)
       .sort((a, b) => (a.d + a.t).localeCompare(b.d + b.t));
+  const mySBFoto = SB && SB.foto ? SB.foto : "";
   return (
+    `<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;max-width:640px">${mySBFoto ? `<img src="${esc(mySBFoto)}" alt="" width="44" height="44" style="border-radius:50%;object-fit:cover">` : `<span class="aval" style="width:44px;height:44px;font-size:20px;flex:0 0 auto">${esc(((SB && SB.n) || (me && me.displayName) || "?")[0].toUpperCase())}</span>`}<div style="flex:1"><b>${esc((SB && SB.n) || (me && me.displayName) || "Tu barbería")}</b><br><small>Tu foto aparece para los clientes al reservar.</small></div><button data-act="fotoTomar" style="flex:0 0 auto">Cambiar foto</button></div>` +
     `<div class="head" style="margin-top:0;flex-wrap:wrap"><div><h1 style="margin-bottom:4px">Agenda</h1><small>${ag ? fd(ag) : "Todos los días"} · ${p.length} ${p.length === 1 ? "turno" : "turnos"}</small></div><div class="chips" style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px">${[["", "Todos"], ...[...new Set([hoy, ...days()])].sort().map((d) => [d, d === hoy ? "Hoy" : fd(d)])].map((a) => `<button class="chip ${ag === a[0] ? "on" : ""}" aria-pressed="${!!(ag === a[0])}" data-act="setAg" data-args="${A(a[0])}" style="border:0">${a[1]}</button>`).join("")}</div><div class="chips"><button data-act="openMan">+ Carga manual</button><button data-act="agOpen">+ Agendar turno</button></div></div>${manH()}${agT ? agH() : ""}<div class="chips" style="margin-bottom:14px">${isOwner() ? [["", "Todos"], ...FN.bs.map((b) => [b.id, b.n])].map((x) => `<button class="chip ${bf === x[0] ? "on" : ""}" data-act="setBf" data-args="${A(x[0])}">${esc(x[1])}</button>`).join("") : ""}</div>` +
     `<div class="cols3">${barbers
       .concat(
@@ -2407,7 +2888,7 @@ function barH() {
       )
       .map((b) => {
         const tt = p.filter((t) => (b.id === "__x" ? !t.bid || !FN.bs.some((x) => x.id === t.bid) : t.bid === b.id));
-        return `<div class="bcol"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span><span class="aval" style="width:30px;height:30px;font-size:15px;display:inline-grid;vertical-align:middle;margin-right:8px">${esc((b.n || "?")[0].toUpperCase())}</span><b>${esc(b.n)}</b></span><small>${tt.length} turnos</small></div>` +
+        return `<div class="bcol"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span>${(BARS.find((x) => x.id === b.id) || {}).foto ? `<img src="${esc((BARS.find((x) => x.id === b.id) || {}).foto)}" alt="" width="30" height="30" style="border-radius:50%;object-fit:cover;display:inline-grid;vertical-align:middle;margin-right:8px">` : `<span class="aval" style="width:30px;height:30px;font-size:15px;display:inline-grid;vertical-align:middle;margin-right:8px">${esc((b.n || "?")[0].toUpperCase())}</span>`}<b>${esc(b.n)}</b></span><small>${tt.length} turnos</small></div>` +
           (tt.length
             ? tt
                 .map(
@@ -2552,7 +3033,8 @@ function barsH() {
         FN.bs.map((b) => {
           const u = UA.find((x) => x.id === b.uid),
             cortes = HA().filter((t) => t.bid === b.id && t.d.startsWith(ymd().slice(0, 7))).length;
-          return `<div class="card" style="text-align:center"><div class="aval" style="margin:0 auto 12px">${esc((b.n || "?")[0].toUpperCase())}</div><h2 style="margin:0">${esc(b.n)}</h2><small>Dueño ${b.pd}% · Barbero ${100 - b.pd}%</small><div style="margin:12px 0"><span class="pill st-hecho">Activo</span></div><div class="line" style="justify-content:space-around"><span><small>Porcentaje</small><br><b style="color:var(--brass)">${100 - b.pd} %</b></span><span><small>Este mes</small><br><b>${cortes} cortes</b></span></div><div class="chips" style="margin-top:14px"><button style="flex:1" data-act="go" data-args="${A("fin")}">✎ Editar</button>${b.uid ? `<button style="flex:1" data-act="askQuitBar" data-args="${A(b.uid)}">Quitar</button>` : ""}</div></div>`;
+          const farmFoto = (BARS.find((x) => x.id === b.id) || {}).foto || "";
+          return `<div class="card" style="text-align:center">${farmFoto ? `<img src="${esc(farmFoto)}" alt="" width="64" height="64" style="border-radius:50%;object-fit:cover;margin:0 auto 12px;display:block">` : `<div class="aval" style="margin:0 auto 12px">${esc((b.n || "?")[0].toUpperCase())}</div>`}<h2 style="margin:0">${esc(b.n)}</h2><small>Dueño ${b.pd}% · Barbero ${100 - b.pd}%</small><div style="margin:12px 0"><span class="pill st-hecho">Activo</span></div><div class="line" style="justify-content:space-around"><span><small>Porcentaje</small><br><b style="color:var(--brass)">${100 - b.pd} %</b></span><span><small>Este mes</small><br><b>${cortes} cortes</b></span></div><div class="chips" style="margin-top:14px"><button style="flex:1" data-act="go" data-args="${A("fin")}">✎ Editar</button><button style="flex:1" data-act="fotoBarbero" data-args="${A(b.id)}">📷 Foto</button>${b.uid ? `<button style="flex:1" data-act="askQuitBar" data-args="${A(b.uid)}">Quitar</button>` : ""}</div></div>`;
         }).join("") +
         `</div>`
       : "<p><small>Todavía no hay barberos con cuenta. Entrá a Clientes y tocá “Hacer barbero” en alguien que ya se registró.</small></p>")
@@ -2604,7 +3086,7 @@ function cliH() {
           hsel = selU ? CH[selU.id] : null;
         if (!selU)
           return `<div class="card"><small>Elegí un cliente de la lista para ver su detalle.</small></div>`;
-        return `<div class="card"><div style="display:flex;gap:14px;align-items:center;margin-bottom:14px"><span class="aval">${esc((selU.nm || "?")[0].toUpperCase())}</span><div><b style="font:700 26px 'Barlow Condensed';text-transform:uppercase">${esc(selU.nm)}</b><br><small>${esc(selU.ph || "—")}</small></div></div><div class="grid3"><div class="kv"><small>Puntos</small><b>${selU.pt}</b></div><div class="kv"><small>Cortes</small><b>${(hsel || []).length}</b></div><div class="kv"><small>Faltas</small><b>${selU.ns || 0}</b></div></div><h3 class="lab">Historial</h3>` +
+        return `<div class="card"><div style="display:flex;gap:14px;align-items:center;margin-bottom:14px">${selU.foto ? `<img src="${esc(selU.foto)}" alt="" width="64" height="64" style="border-radius:50%;object-fit:cover;border:2px solid var(--brass)">` : `<span class="aval">${esc((selU.nm || "?")[0].toUpperCase())}</span>`}<div><b style="font:700 26px 'Barlow Condensed';text-transform:uppercase">${esc(selU.nm)}</b><br><small>${esc(selU.ph || "—")}</small></div></div><div class="grid3"><div class="kv"><small>Puntos</small><b>${selU.pt}</b></div><div class="kv"><small>Cortes</small><b>${(hsel || []).length}</b></div><div class="kv"><small>Faltas</small><b>${selU.ns || 0}</b></div></div><h3 class="lab">Historial</h3>` +
           (!own
             ? `<small>Este detalle lo administra el dueño.</small>`
             : hsel == null
@@ -2633,7 +3115,7 @@ const svH = () =>
   `<h2>Servicios y precios</h2><div class="card">${(sd || [])
     .map(
       (x, i) =>
-        `<div class="svr"><input id="sn${i}" aria-label="Nombre del servicio" placeholder="Nombre" maxlength="40" value="${esc(x.n)}" data-in="svIn" data-args="${A(i, "n", "@el")}"><div class="two"><input id="sp${i}" aria-label="Precio" inputmode="numeric" placeholder="Precio $" value="${esc(x.p)}" data-in="svIn" data-args="${A(i, "p", "@el")}"><input id="sd${i}" aria-label="Duración en minutos" placeholder="Ej: 30-45" value="${esc(x.d)}" data-in="svIn" data-args="${A(i, "d", "@el")}"></div><div class="svf"><small>Duración en minutos</small><button data-act="svDel" data-args="${A(i)}" ${sd.length < 2 ? "disabled" : ""}>Quitar</button></div></div>`,
+        `<div class="svr" style="display:flex;gap:10px;align-items:flex-start"><button type="button" style="flex:0 0 auto;width:74px;height:74px;border-radius:8px;border:1px dashed var(--line);background:#141c26;color:var(--brass);overflow:hidden;padding:0" data-act="svImg" data-args="${A(i)}" aria-label="Imagen del servicio">${x.img ? `<img src="${esc(x.img)}" alt="" width="74" height="74" style="object-fit:cover;display:block">` : '<span style="font-size:22px">📷</span>'}</button><div style="flex:1"><input id="sn${i}" aria-label="Nombre del servicio" placeholder="Nombre" maxlength="40" value="${esc(x.n)}" data-in="svIn" data-args="${A(i, "n", "@el")}"><div class="two"><input id="sp${i}" aria-label="Precio" inputmode="numeric" placeholder="Precio $" value="${esc(x.p)}" data-in="svIn" data-args="${A(i, "p", "@el")}"><input id="sd${i}" aria-label="Duración en minutos" placeholder="Ej: 30-45" value="${esc(x.d)}" data-in="svIn" data-args="${A(i, "d", "@el")}"></div><div class="svf"><small>Duración en minutos</small><button data-act="svDel" data-args="${A(i)}" ${sd.length < 2 ? "disabled" : ""}>Quitar</button></div></div></div>`,
     )
     .join(
       "",
@@ -2779,7 +3261,7 @@ function footer() {
       .map((d) => D[d])
       .join(" · ");
   $("#ft").innerHTML =
-    `<div class="ft"><div><div class="fb"><img src="${LOGO}" alt="" width="48" height="48"><div><b>${esc(NOMBRE)}</b><small>Turnos online y puntos por cada visita</small></div></div></div><div><h4>Horarios</h4><p>${dd}</p><p>${hm(CF.a)} a ${hm(CF.c)} hs</p></div><div><h4>Contacto</h4>${WHATSAPP ? `<p><a href="https://wa.me/${esc(WHATSAPP)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none"><img src="assets/whatsapp.png" alt="Chat de WhatsApp" width="26">WhatsApp ${esc(WHATSAPP)}</a></p>` : ""}<p>Reservá desde la web, sin llamadas.</p></div></div><div class="fz">© ${new Date().getFullYear()} ${esc(NOMBRE)} · Desarrollado por <b>${esc(AUTOR)}</b> · <a href="#" data-act="go" data-args="${A("priv")}" style="color:#cbd3dc">Privacidad</a></div>`;
+    `<div class="ft"><div><div class="fb"><img src="${LOGO}" alt="" width="48" height="48"><div><b>${esc(NOMBRE)}</b><small>Turnos online y puntos por cada visita</small></div></div></div><div><h4>Horarios</h4><p>${dd}</p><p>${hm(CF.a)} a ${hm(CF.c)} hs</p></div><div><h4>Contacto</h4>${WHATSAPP ? `<p><a href="https://wa.me/${esc(WHATSAPP)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none"><img src="assets/whatsapp.png" alt="Chat de WhatsApp" width="26">WhatsApp ${esc(WHATSAPP)}</a></p>` : ""}<p><a href="https://www.instagram.com/codigobarber_1" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none"><img src="assets/instagram.png" alt="Instagram" width="26" height="26" style="border-radius:6px">@codigobarber_1</a></p><p>Reservá desde la web, sin llamadas.</p></div></div><div class="fz">© ${new Date().getFullYear()} ${esc(NOMBRE)} · Desarrollado por <b>${esc(AUTOR)}</b> · <a href="#" data-act="openPol" style="color:#cbd3dc">Políticas</a> · <a href="#" data-act="openPol" style="color:#cbd3dc">Privacidad</a></div>`;
 }
 function R() {
   let h,
@@ -2825,14 +3307,16 @@ function R() {
     rtPush(view, !v);
   }
   try {
+  if (!me && location.hash === RESERVAR_URL && !authOpen) authOpen = 1;
   if (!me) h = authH();
   else if (!rd) h = "";
   else if (isAdm()) {
     h =
       (isOwner()
-        ? { dash: dashH, cli: cliH, bars: barsH, cfg: cfgH, fin: finH }
-        : { cli: cliH, fin: finH })[view]?.() ?? barH();
+        ? { dash: dashH, cli: cliH, bars: barsH, cfg: cfgH, fin: finH, gal: galH }
+        : { cli: cliH, fin: finH, gal: galH })[view]?.() ?? barH();
     if (view === "priv") h = privH();
+    if (view === "gal") h = galH();
     const own = isOwner(),
       sec = own
         ? [
@@ -2842,11 +3326,13 @@ function R() {
             ["bars", "Barberos"],
             ["fin", "Finanzas"],
             ["cfg", "Ajustes"],
+            ["gal", "Galería"],
           ]
         : [
             ["bar", "Agenda"],
             ["cli", "Clientes"],
             ["fin", "Mis ganancias"],
+            ["gal", "Galería"],
           ],
       extra = [],
       bt1 = (a) =>
@@ -2863,13 +3349,11 @@ function R() {
       home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>',
       res: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
       tur: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
-      priv: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.2 7.4-8 9-4.8-1.6-8-4.5-8-9V6z"/></svg>',
     };
     nv = [
       ["home", "Inicio"],
       ["res", "Reservar"],
       ["tur", "Mis turnos"],
-      ["priv", "Privacidad"],
     ]
       .map(
         (a) =>
@@ -2877,7 +3361,7 @@ function R() {
       )
       .join("");
     nm =
-      `<button data-act="go" data-args="${A("priv")}">Privacidad</button><button class="salir" data-act="salir">Cerrar sesión</button>`;
+      `<button data-act="openPol">Políticas</button><button data-act="openPol">Privacidad</button><button class="salir" data-act="salir">Cerrar sesión</button>`;
   }
   } catch (e) {
     console.error("render", e);
@@ -2893,6 +3377,7 @@ function R() {
   hb.hidden = !me || !rd || !isAdm();
   hb.setAttribute("aria-expanded", navOpen ? "true" : "false");
   $("#app").innerHTML = (msg ? `<p class="msg">${esc(msg)}</p>` : "") + h;
+  setupReveal();
   footer();
   msg = "";
   if (aid) {

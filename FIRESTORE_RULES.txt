@@ -1,0 +1,74 @@
+// Pega estas reglas en Firebase Console > Firestore Database > Reglas
+// Proyecto: barberia-taccu
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() { return request.auth != null; }
+    function isOwner() { return isSignedIn() && request.auth.uid == 'LQ7IkEfxEKNXajx4SEs378n390i2'; }
+    function isStaff() { return isSignedIn() && exists(/databases/$(database)/documents/staff/$(request.auth.uid)); }
+    function isBarberoOrOwner() { return isOwner() || isStaff(); }
+
+    match /config/{docId} {
+      allow read: if true;
+      allow write: if isBarberoOrOwner();
+    }
+
+    match /galeria/{docId} {
+      allow read: if true;
+      allow create, update, delete: if isBarberoOrOwner();
+    }
+
+    match /users/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isStaff() || isOwner());
+      allow create: if isSignedIn() && request.auth.uid == uid;
+      allow update, delete: if isSignedIn() && (request.auth.uid == uid || isStaff() || isOwner());
+    }
+
+    match /mensajes/{id} {
+      allow create: if true;
+      allow read, update, delete: if isOwner();
+    }
+
+    match /staff/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isStaff() || isOwner());
+      allow write: if isOwner();
+    }
+
+    match /turnos/{id} {
+      allow read: if isSignedIn() && (resource.data.uid == request.auth.uid || isBarberoOrOwner());
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isBarberoOrOwner() || (isSignedIn() && resource.data.uid == request.auth.uid);
+    }
+
+    match /ocupados/{id} {
+      allow read: if true;
+      allow create: if isSignedIn() && (request.resource.data.uid == request.auth.uid || isBarberoOrOwner());
+      allow update, delete: if isSignedIn() && (resource.data.uid == request.auth.uid || isBarberoOrOwner());
+    }
+
+    match /activos/{id} {
+      allow read, write: if isSignedIn() && (request.auth.uid == resource.data.uid || request.auth.uid == id.split('_')[0] || isBarberoOrOwner());
+    }
+
+    match /espera/{id} {
+      allow read: if isSignedIn() && (resource.data.uid == request.auth.uid || isBarberoOrOwner());
+      allow create: if isSignedIn() && (request.resource.data.uid == request.auth.uid || isBarberoOrOwner());
+      allow update, delete: if isSignedIn() && (resource.data.uid == request.auth.uid || isBarberoOrOwner());
+    }
+
+    match /canjes/{id} {
+      allow read: if isSignedIn() && (resource.data.uid == request.auth.uid || isBarberoOrOwner());
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isBarberoOrOwner();
+    }
+
+    match /ventas/{id} {
+      allow read, write: if isBarberoOrOwner();
+    }
+
+    match /gastos/{id} {
+      allow read, write: if isBarberoOrOwner();
+    }
+  }
+}
