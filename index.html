@@ -14,10 +14,10 @@
     <!-- CSP (opcional): ahora que no hay onclick= ni scripts en línea se puede activar. Probala primero con la consola abierta.
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://www.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com; frame-src https://www.google.com https://*.firebaseapp.com; base-uri 'self'; form-action 'self'; object-src 'none'" />
     -->
-    <link rel="stylesheet" href="src/styles.css" />
+    <link rel="stylesheet" href="src/styles.css?v=3" />
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#141c26" />
-    <link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
+    <link rel="icon" href="assets/logo.png" type="image/png" />
     <link rel="icon" href="assets/icon-192.png" sizes="192x192" />
     <link rel="apple-touch-icon" href="assets/icon-192.png" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -39,6 +39,7 @@
           <span id="mefn"></span>
           <span class="med" id="med"></span>
         </div>
+        <button id="thm" aria-label="Cambiar tema claro oscuro">☀︎</button>
         <button id="lo" hidden data-act="salir" aria-label="Cerrar sesión">
           <svg
             viewBox="0 0 24 24"

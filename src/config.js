@@ -28,9 +28,13 @@
 export const INSTAGRAM = "codigobarber_1"; // usuario de Instagram (sin @)
 export const RESERVAR_URL = "#login"; // destino único y configurable de los botones "Reservar ahora"
 export const MAP_IFRAME = "https://www.google.com/maps?q=-25.618,-54.5701752&z=15&output=embed"; // iframe de ubicación
+export const CLOUD_NAME = "lvrsdw0h"; // Cloudinary
+export const CLOUD_PRESET = "codigo_barber_1"; // Upload Preset unsigned
+export const CLOUD_FOLDER = "codigo-barber-1"; // carpeta destino en Cloudinary
+export const EMAIL = "hola@codigobarber1.com"; // email de contacto visible en la landing
 export const RECAPTCHA_KEY = ""; // clave de sitio reCAPTCHA v3 para App Check (vacío = desactivado)
 export const CANCEL_HS = 2; // horas mínimas de anticipación para que el cliente cancele
-export const LOGO = "assets/logo.svg"; // logo provisorio: reemplazá el archivo assets/logo.svg (o poné "assets/logo.png") por el tuyo
+export const LOGO = "assets/logo.png"; // logo provisorio: reemplazá el archivo assets/logo.svg (o poné "assets/logo.png") por el tuyo
 export const OWNER_UID = ADMIN_UID; // único usuario que puede editar los porcentajes de ganancia (el dueño)
 export const PD_DEF = 40; // % que se queda el dueño por defecto en cada corte (editable desde Finanzas)
 export const GRID = 30; // grilla de horarios en minutos: 30 o 15. Pasá a 15 solo cuando no queden turnos pendientes viejos (ver notas)

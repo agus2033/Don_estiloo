@@ -12,13 +12,6 @@ import {
   FacebookAuthProvider,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
-  getStorage,
-  ref,
-  uploadBytes,
-  getDownloadURL,
-  deleteObject,
-} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js";
-import {
   initializeFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
@@ -53,6 +46,10 @@ import {
   INSTAGRAM,
   RESERVAR_URL,
   MAP_IFRAME,
+  CLOUD_NAME,
+  CLOUD_PRESET,
+  CLOUD_FOLDER,
+  EMAIL,
   RECAPTCHA_KEY,
   CANCEL_HS,
   LOGO,
@@ -64,7 +61,6 @@ import {
 
 const app = initializeApp(firebaseConfig),
   auth = getAuth(app),
-  storage = getStorage(app),
   db = initializeFirestore(app, {
     localCache: persistentLocalCache({
       tabManager: persistentMultipleTabManager(),
@@ -124,6 +120,20 @@ const $ = (s) => document.querySelector(s),
     );
 const A = (...a) => esc(JSON.stringify(a)); // argumentos de data-act (delegación de eventos)
 const $$ = (n) => "$" + n.toLocaleString("es-AR");
+// Tema claro/oscuro
+(function () {
+  const cur = localStorage.getItem("theme");
+  if (cur) document.body.dataset.theme = cur;
+  const btn = document.getElementById("thm");
+  if (!btn) return;
+  btn.textContent = cur === "light" ? "☾" : "☀︎";
+  btn.addEventListener("click", () => {
+    const next = document.body.dataset.theme === "light" ? "" : "light";
+    document.body.dataset.theme = next;
+    localStorage.setItem("theme", next);
+    btn.textContent = next === "light" ? "☾" : "☀︎";
+  });
+})();
 /* Fechas y horas siempre en hora de Argentina y con el reloj del servidor (no el del celular) */
 const TZ = "America/Argentina/Buenos_Aires";
 let skew = 0; // diferencia entre el reloj del servidor y el del dispositivo
@@ -357,6 +367,9 @@ const CFD = {
 }; // horario por defecto
 let UA = [],
   CF = { ...CFD },
+  revStep = 1,
+  revS = 0,
+  revText = "",
   cd = null,
   cb = "", // barbero cuyo horario se edita en Ajustes ("" = general)
   agT = null, // formulario de turno agendado por el barbero
@@ -375,6 +388,7 @@ let CA = [],
   bf = "", // filtro de barbero en Agenda
   EV = null, // edición de carga manual (dashboard)
   GAL = [], // galería pública de trabajos
+  TESTS = [], // reseñas públicas
   authOpen = 0; // 1 = mostrando login/registro (landing visible si 0)
 const daysFor = (bid) => {
   const o = [];
@@ -720,6 +734,13 @@ onSnapshot(collection(db, "galeria"), (x) => {
     .sort((a, b) => (b.ts || 0) - (a.ts || 0));
   if (!me) R();
 });
+onSnapshot(collection(db, "resenas"), (x) => {
+  TESTS = x.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => ((b.fecha && b.fecha.toMillis()) || 0) - ((a.fecha && a.fecha.toMillis()) || 0))
+    .slice(0, 6);
+  if (!me) R();
+});
 onAuthStateChanged(auth, (a) => {
   ready = 1;
   unsub();
@@ -766,6 +787,7 @@ const RT = {
   cfg: "ajustes",
   priv: "privacidad",
   gal: "galeria",
+  rev: "resena",
 };
 const rtOk = (v) =>
   !!me &&
@@ -774,7 +796,7 @@ const rtOk = (v) =>
     ? isOwner()
       ? ["bar", "cli", "bars", "dash", "fin", "cfg", "priv", "gal"]
       : ["bar", "cli", "fin", "priv", "gal"]
-    : ["home", "res", "tur", "priv"]
+    : ["home", "res", "tur", "priv", "rev"]
   ).includes(v);
 const rtView = () => Object.keys(RT).find((k) => "#/" + RT[k] === location.hash);
 const rtPush = (v, rep) => {
@@ -1111,64 +1133,137 @@ const W = {
   async subirFoto(f, carpeta) {
     busy(1, "Subiendo imagen…");
     try {
-      const ext = (String(f.name).split(".").pop() || "jpg").toLowerCase();
-      const r = ref(storage, carpeta + "/" + Date.now().toString(36) + "." + ext);
-      await uploadBytes(r, f);
-      return { url: await getDownloadURL(r), ruta: r.fullPath };
+      const toWebp = (file) =>
+        new Promise((resolve) => {
+          const img = new Image();
+          img.src = URL.createObjectURL(file);
+          img.onload = () => {
+            const canvas = document.createElement("canvas"),
+              ctx = canvas.getContext("2d");
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            ctx.drawImage(img, 0, 0);
+            canvas.toBlob(
+              (blob) => {
+                if (!blob || blob.size >= file.size) resolve(file);
+                else resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".webp"), { type: "image/webp" }));
+              },
+              "image/webp",
+              0.85,
+            );
+          };
+          img.onerror = () => resolve(file);
+        });
+      const newFile = await toWebp(f);
+      const fd = new FormData();
+      fd.append("file", newFile, newFile.name.replace(/\.[^.]+$/, ".webp"));
+      fd.append("upload_preset", CLOUD_PRESET);
+      fd.append("folder", CLOUD_FOLDER + "/" + carpeta);
+      fd.append("public_id", newFile.name.replace(/\.[^.]+$/, "") + "-" + Date.now().toString(36));
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, { method: "POST", body: fd });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error?.message || "No se pudo subir a Cloudinary");
+      if (!json.secure_url) throw new Error("Cloudinary no devolvió URL destino");
+      return { url: json.secure_url, ruta: json.public_id };
     } finally {
       busy(0);
     }
   },
   svImg(i) {
     W.pickFoto(async (f) => {
-      const x = await W.subirFoto(f, "servicios/" + sd[i].id);
-      sd[i].img = x.url;
-      R();
-      M({ k: "ok", h: "Imagen lista", b: "Tocá “Guardar servicios” para que se aplique." });
+      try {
+        const x = await W.subirFoto(f, "servicios/" + sd[i].id);
+        sd[i].img = x.url;
+        R();
+        M({ k: "ok", h: "Imagen lista", b: "Tocá “Guardar servicios” para que se aplique." });
+      } catch (e) { err(e); }
     });
   },
   galUp() {
     W.pickFoto(async (f) => {
-      const x = await W.subirFoto(f, "galeria");
-      await addDoc(collection(db, "galeria"), {
-        url: x.url,
-        ruta: x.ruta,
-        ts: Date.now(),
-        por: me ? me.uid : "",
-      });
-      R();
+      try {
+        const x = await W.subirFoto(f, "galeria");
+        await addDoc(collection(db, "galeria"), {
+          url: x.url,
+          ruta: x.ruta,
+          ts: Date.now(),
+          por: me ? me.uid : "",
+        });
+        R();
+      } catch (e) { err(e); }
     });
   },
   async galDel(id, ruta) {
     try {
       await deleteDoc(doc(db, "galeria", id));
-      if (ruta) await deleteObject(ref(storage, ruta)).catch(() => {});
       R();
+    } catch (e) {
+      err(e);
+    }
+  },
+  revStars(n) {
+    revS = n;
+    if (revStep === 1) revStep = 2;
+    R();
+  },
+  revBack() {
+    if (revStep > 1) revStep--;
+    R();
+  },
+  revNext() {
+    if (revStep === 1 && !revS)
+      return M({ k: "w", h: "Elegí una calificación", b: "Tocá alguna estrella para continuar." });
+    if (revStep === 2) {
+      revText = ($("#revText") || {}).value || "";
+      if (!revText.trim()) return M({ k: "w", h: "Escribí algo", b: "Contanos en una frase cómo te fue." });
+    }
+    revStep++;
+    R();
+  },
+  async revSend() {
+    try {
+      await addDoc(collection(db, "resenas"), {
+        uid: me.uid,
+        nm: U && U.nm ? U.nm : "Cliente",
+        foto: U && U.foto ? U.foto : "",
+        estrellas: revS || 5,
+        texto: revText || "Muy conforme con la atención.",
+        fecha: serverTimestamp(),
+      });
+      msg = "¡Gracias! Ya registramos tu reseña.";
+      revStep = 1;
+      revS = 0;
+      revText = "";
+      R();
+      W.goNow("home");
     } catch (e) {
       err(e);
     }
   },
   async fotoTomar() {
     W.pickFoto(async (f) => {
-      const x = await W.subirFoto(f, "perfil");
-      const u = { foto: x.url };
-      await setDoc(doc(db, "users", me.uid), u, { merge: true });
-      if (SB) {
-        SB.foto = x.url;
-        await setDoc(doc(db, "staff", me.uid), { foto: x.url }, { merge: true }).catch(() => {});
-      }
-      // también espejo en config/barberos para que lo vean los clientes
-      const l = BARS.map((b) => ({ ...b, foto: b.id === me.uid ? x.url : b.foto || "" }));
-      await setDoc(doc(db, "config", "barberos"), { l }, { merge: true }).catch(() => {});
-      R();
+      try {
+        const x = await W.subirFoto(f, "perfil");
+        const u = { foto: x.url };
+        await setDoc(doc(db, "users", me.uid), u, { merge: true });
+        if (SB) {
+          SB.foto = x.url;
+          await setDoc(doc(db, "staff", me.uid), { foto: x.url }, { merge: true }).catch(() => {});
+        }
+        const l = BARS.map((b) => ({ ...b, foto: b.id === me.uid ? x.url : b.foto || "" }));
+        if (l.length) await setDoc(doc(db, "config", "barberos"), { l }, { merge: true }).catch(() => {});
+        R();
+      } catch (e) { err(e); }
     });
   },
   async fotoBarbero(bid) {
     W.pickFoto(async (f) => {
-      const x = await W.subirFoto(f, "perfil");
-      const l = BARS.map((b) => ({ ...b, foto: b.id === bid ? x.url : b.foto || "" }));
-      await setDoc(doc(db, "config", "barberos"), { l }, { merge: true });
-      R();
+      try {
+        const x = await W.subirFoto(f, "perfil");
+        const l = BARS.map((b) => ({ ...b, foto: b.id === bid ? x.url : b.foto || "" }));
+        if (l.length) await setDoc(doc(db, "config", "barberos"), { l }, { merge: true });
+        R();
+      } catch (e) { err(e); }
     });
   },
   async entrar() {
@@ -2476,15 +2571,7 @@ function landingH() {
         <div style="color:#F5F0E6;font-weight:600">5.0 <span style="color:#D4A84B">★★★★★</span> <small style="color:#9AA6B4;font-weight:400">(100+ visitas)</small></div>
         <a class="lnd-cta" href="${RESERVAR_URL}" style="width:100%;max-width:240px;margin:12px auto 4px">Reservar ahora</a>
         <div style="color:#9AA6B4;font-size:.9rem;margin-top:8px"><b style="color:#F5F0E6">Lun · Mar · Mié · Jue</b><br/>09:00 a 17:00 hs</div>
-        <div style="margin-top:14px;text-align:left;color:#9AA6B4;font-size:.9rem">
-          <small style="letter-spacing:.14em;text-transform:uppercase">Escribinos</small>
-          <div class="soc-row" style="margin-top:6px;background:transparent">
-            <span class="soc"><a href="https://wa.me/${esc(WHATSAPP)}" target="_blank" rel="noopener" aria-label="WhatsApp"><img src="assets/whatsapp.png" alt="WhatsApp" width="34" height="34"></a><span class="soc-t">${esc(WHATSAPP)}</span></span>
-            <span class="soc"><a href="https://www.instagram.com/${esc(INSTAGRAM)}" target="_blank" rel="noopener" aria-label="Instagram"><img src="assets/instagram.png" alt="Instagram" width="34" height="34"></a><span class="soc-t">@${esc(INSTAGRAM)}</span></span>
-          </div>
-          <p style="margin-top:10px"><small>Reservá desde la web, sin llamadas.</small></p>
-        </div>
-        <div style="color:#9AA6B4;font-size:.9rem;margin-top:8px">📍 201 Huanukui Rd, Chartwell Mall (ejemplo)</div>
+        <div class="lnd-biz-addr"><span class="lnd-biz-addr-ic">📍</span><div><small>Dirección</small><b>201 Huanukui Rd, Chartwell Mall (ejemplo)</b></div></div>
       </div>`;
   return `<div class="lnd">
   <header class="lnd-hd">
@@ -2508,9 +2595,9 @@ function landingH() {
       </div>
       <p class="lnd-note"><b>20 puntos</b> de bienvenida<br><small>Canjealo por descuentos o un corte gratis</small></p>
     </div>
-    <div class="lnd-hero-img">
-      <div class="lnd-pole"><svg width="92" height="220" viewBox="0 0 92 220" aria-hidden="true"><rect x="14" y="0" width="64" height="18" rx="9" fill="#C9A24B"/><rect x="14" y="202" width="64" height="18" rx="9" fill="#C9A24B"/><rect x="20" y="22" width="52" height="176" fill="#eef1f5" stroke="#2E3C4E"/><path d="M20 22 72 62v34L20 56ZM20 78 72 118v34L20 112ZM20 134 72 174v24L20 158Z" fill="#B3382C"/><path d="M20 56v22L72 44v22ZM20 112v22L72 100v22ZM20 158v16L72 150v24Z" fill="#2F5C9E"/></svg></div>
-      <small>20 puntos de bienvenida<br>Canjealo por descuentos o un corte gratis</small>
+    <div class="lnd-hero-img" style="background:linear-gradient(180deg,#192431,#10171F);display:flex;flex-direction:column;justify-content:center;gap:6px">
+      <h3 style="font-family:'Barlow Condensed',sans-serif;font-size:1.8rem;margin:0;color:#F5F0E6">20 puntos de bienvenida</h3>
+      <p style="margin:0;color:#9AA6B4">Regístrate y canjearlos por descuentos o un corte gratis en tu primera visita.</p>
     </div>
   </section>
   <div class="lnd-split">
@@ -2564,6 +2651,27 @@ function landingH() {
       <a class="lnd-cta big" href="${RESERVAR_URL}">Reservar ahora</a>
     </div>
   </section>
+  <section id="testimonios" class="lnd-sec reveal">
+    <small>Reseñas</small>
+    <h2>TESTIMONIOS</h2>
+    <div class="lnd-g" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px">
+      ${TESTS && TESTS.length
+        ? TESTS.slice(0,3)
+            .map(
+              (t) => `
+        <article style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;gap:10px;align-items:flex-start">
+          ${t.foto ? `<img src="${esc(t.foto)}" alt="" width="44" height="44" style="border-radius:50%;object-fit:cover;flex:0 0 auto"/>` : `<div class="aval" style="width:44px;height:44px;font-size:18px;flex:0 0 auto">${esc((t.nm || "?")[0].toUpperCase())}</div>`}
+          <div style="flex:1;min-width:0">
+            <b>${esc(t.nm || "Cliente")}</b><br/>
+            <small style="color:var(--brass)">${"★".repeat(Math.min(5, Math.max(1, t.estrellas || 5)))}${"☆".repeat(5 - Math.min(5, Math.max(1, t.estrellas || 5)))}</small><br/>
+            <p style="margin:6px 0 0;color:var(--mut)">${esc(t.texto || "Muy conforme con la atención.")}</p>
+          </div>
+        </article>`,
+            )
+            .join("")
+        : `<p><small>Todavía no hay testimonios. Cuando un cliente deja una reseña se muestra acá.</small></p>`}
+    </div>
+  </section>
   <section id="galeria" class="lnd-sec reveal">
     <small>NUESTRO TRABAJO</small>
     <h2>GALERÍA</h2>
@@ -2581,16 +2689,32 @@ function landingH() {
   <section id="contacto" class="lnd-sec reveal">
     <small>VISITANOS</small>
     <h2>CONTACTO</h2>
-    <div class="lnd-cols">
-      <div class="lnd-map">
-        <iframe title="Ubicación" loading="lazy" src="${MAP_IFRAME}" allowfullscreen></iframe>
-        <p class="lnd-map-cap">[Mapa · Google Maps]([DIRECCIÓN])</p>
+    <div class="lnd-card" style="margin-bottom:24px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap">
+        <div style="min-effort:0">
+          <small>ESCRIBINOS</small>
+          <h3 style="margin:6px 0 10px">¿Querés coordinar turno rápido?</h3>
+          <p style="margin:0;color:var(--mut)">Reservá desde la web, sin llamadas.</p>
+        </div>
+        <div class="contact-cta">
+          <a class="btn-contact" href="https://wa.me/${esc(WHATSAPP)}" target="_blank" rel="noopener" aria-label="Chatear por WhatsApp"><img src="assets/whatsapp.png" alt="" width="20" height="20"> WhatsApp</a>
+          <a class="btn-contact" href="https://www.instagram.com/${esc(INSTAGRAM)}" target="_blank" rel="noopener" aria-label="Instagram"><img src="assets/instagram.png" alt="" width="20" height="20"> Instagram</a>
+          <a class="btn-contact" href="mailto:${esc(EMAIL)}" aria-label="Enviar email">✉️ Correo</a>
+        </div>
       </div>
-      <div>
+    </div>
+    <div class="lnd-cols">
+      <div class="lnd-card">
+        <div class="lnd-map">
+          <iframe title="Ubicación" loading="lazy" src="${MAP_IFRAME}" allowfullscreen></iframe>
+          <p class="lnd-map-cap"><span>📍 <b>[DIRECCIÓN]</b></span><a href="https://www.google.com/maps/search/?api=1&query=-25.618,-54.5701752" target="_blank" rel="noopener" style="margin-left:auto;color:var(--brass);font-weight:600;text-decoration:none">CÓMO LLEGAR →</a></p>
+        </div>
+      </div>
+      <div class="lnd-card">
         <small>CONSULTAS</small>
         <h2 style="margin-top:4px">DEJANOS TU MENSAJE</h2>
-        <p style="color:#9AA6B4;margin:0 0 16px">Contános qué necesitás y te respondemos por email lo antes posible.</p>
-        <div class="lnd-contacto-grid" style="grid-template-columns:1fr;gap:10px;margin-top:0">
+        <p style="color:var(--mut);margin:0 0 16px">Contános qué necesitás y te respondemos por email lo antes posible.</p>
+        <div class="lnd-contacto-grid" style="grid-template-columns:1fr;gap:12px;margin-top:0">
           <h3>Nombre</h3><input type="text" id="cf-name" placeholder="Nombre" autocomplete="name">
           <h3>Email <b class="red">*</b></h3><input type="email" id="cf-email" placeholder="Email" autocomplete="email" required>
           <h3>Mensaje</h3><textarea id="cf-msg" rows="5" placeholder="Mensaje"></textarea>
@@ -2720,9 +2844,28 @@ function galH() {
     (GAL.length
       ? `<div class="lnd-gal" style="margin-top:14px">${GAL.map(
           (g) =>
-            `<figure style="position:relative;margin:0"><img src="${esc(g.url)}" alt="" loading="lazy" style="width:100%;height:180px;object-fit:cover;border-radius:10px;display:block;border:1px solid var(--line)"><button data-act="galDel" data-args="${A(g.id, g.ruta || "")}" style="position:absolute;top:6px;right:6px;min-height:0;padding:4px 9px" aria-label="Borrar foto">✕</button></figure>`,
+            `<figure style="position:relative;margin:0"><img src="${esc(g.url)}" alt="" loading="lazy" style="width:100%;height:auto;max-height:240px;object-fit:contain;border-radius:10px;display:block;border:1px solid var(--line);background:#10171F"><button data-act="galDel" data-args="${A(g.id, g.ruta || "")}" style="position:absolute;top:6px;right:6px;min-height:0;padding:4px 9px" aria-label="Borrar foto">✕</button></figure>`,
         ).join("")}</div>`
       : "<p><small>Todavía no hay fotos publicadas.</small></p>")
+  );
+}
+function revH() {
+  const stars = [1, 2, 3, 4, 5]
+    .map(
+      (n) =>
+        `<button type="button" aria-label="${n} estrellas" data-act="revStars" data-args="${A(n)}" style="background:none;border:0;font-size:30px;color:${n <= revS ? "var(--brass)" : "var(--mut)"};cursor:pointer">★</button>`,
+    )
+    .join("");
+  if (revStep === 1)
+    return (
+      `<h1>Tu reseña</h1><div class="card" style="max-width:520px;margin-top:10px"><h2 style="margin-top:0">¿Qué te pareció el corte?</h2><div style="text-align:center;padding:10px 0">${stars}</div><button class="main" data-act="revNext">Continuar</button></div>`
+    );
+  if (revStep === 2)
+    return (
+      `<h1>Tu reseña</h1><div class="card" style="max-width:520px;margin-top:10px"><h2 style="margin-top:0">¿Qué nos contás?</h2><textarea id="revText" placeholder="Contanos qué te gustó o qué cambiarías" style="width:100%;min-height:130px">${esc(revText)}</textarea><div class="chips" style="margin-top:14px"><button data-act="revBack">Volver</button><button class="main" data-act="revNext">Siguiente</button></div></div>`
+    );
+  return (
+    `<h1>Revisar reseña</h1><div class="card" style="max-width:520px;margin-top:10px"><div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">${U && U.foto ? `<img src="${esc(U.foto)}" alt="" width="60" height="60" style="border-radius:50%;object-fit:cover;border:2px solid var(--brass)">` : `<div class="aval" style="width:60px;height:60px;font-size:26px;flex:0 0 auto">${esc((U && U.nm && U.nm[0] ? U.nm[0] : "?").toUpperCase())}</div>`}<div><b>${esc(U && U.nm ? U.nm : "Tu nombre")}</b><br><small style="color:var(--brass)">${"★".repeat(Math.min(5, Math.max(1, revS)))}${"☆".repeat(5 - Math.min(5, Math.max(1, revS)))}</small></div></div><p>${esc(revText || 'Aún no escribiste tu reseña.')}</p><div class="chips"><button data-act="revBack">Editar</button><button class="main" data-act="revSend">Guardar reseña</button></div></div>`
   );
 }
 function polH() {
@@ -3285,6 +3428,12 @@ function R() {
   $("#mebadge").hidden = !me;
   $("#mefn").textContent = mn2;
   $("#med").textContent = (mn2 || "?").trim()[0].toUpperCase();
+  (function () {
+    const foto = (SB && SB.foto) || (U && U.foto);
+    if (foto) {
+      document.querySelector("#med").innerHTML = `<img src="${esc(foto)}" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover;display:block">`;
+    }
+  })();
   if (me && (!rd || (!isAdm() && !U))) {
     pnd = 1;
     busy(1, "Cargando tu cuenta…");
@@ -3338,16 +3487,18 @@ function R() {
   } else if (!U) h = "<p><small>Cargando tu cuenta…</small></p>";
   else {
     h =
-      view === "res" ? resH() : view === "tur" ? turH() : view === "priv" ? privH() : homeH();
+      view === "res" ? resH() : view === "tur" ? turH() : view === "priv" ? privH() : view === "rev" ? revH() : homeH();
     const ICO = {
       home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>',
       res: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
       tur: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+      rev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>',
     };
     nv = [
       ["home", "Inicio"],
       ["res", "Reservar"],
       ["tur", "Mis turnos"],
+      ["rev", "Reseña"],
     ]
       .map(
         (a) =>
