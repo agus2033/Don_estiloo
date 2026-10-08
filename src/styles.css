@@ -2188,9 +2188,9 @@ body.no-scroll{overflow:hidden}
 .lnd-biz-addr b{color:#F5F0E6}
 .lnd-biz-addr-ic{font-size:18px}
 .lnd-map-cap{display:flex;align-items:center;gap:8px;justify-content:center;padding:12px 14px;color:#F5F0E6;border-top:1px solid #2E3C4E;margin:0;font:600 14px 'Barlow Condensed',sans-serif;letter-spacing:.03em}
-#contacto .lnd-card{align-self:start;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:0 4px 18px rgba(0,0,0,0.22)}
-#contacto .lnd-map{border-radius:20px;min-height:360px}
-#contacto .lnd-map iframe{min-height:360px}
+#contacto .lnd-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:0 4px 18px rgba(0,0,0,0.22)}
+#contacto .lnd-map{border-radius:20px;min-height:420px}
+#contacto .lnd-map iframe{min-height:420px}
 #contacto .lnd-map-cap{margin:12px 0 0;padding:14px 0 0;border-top:1px solid var(--line);font-size:1rem;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 #contacto .lnd-map-cap span{display:flex;align-items:center;gap:8px}
 .btn-contact{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:10px 16px;background:var(--bg);color:#F5F0E6;font-weight:600;text-decoration:none;min-height:44px;white-space:nowrap}
@@ -2211,7 +2211,6 @@ body.no-scroll{overflow:hidden}
   .btn-contact{padding:8px 10px;font-size:.92rem;justify-content:center}
   #contacto .lnd-map{min-height:260px}
   #contacto .lnd-map iframe{min-height:260px}
-  #contacto .lnd-card{padding:16px}
 }
 @media(min-width:1001px){.lnd-biz-m{display:none}}
 
