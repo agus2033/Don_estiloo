@@ -352,6 +352,7 @@ let me = null,
   cf = -1,
   sel = { s: 0, d: "", t: "", b: "" },
   navOpen = 0,
+  verWeb = 0, // 1 = viendo la landing con sesión (botón "ver la web")
   resStep = 1;
 const isAdm = () => me && (me.uid === ADMIN_UID || !!SB); // barbero: dueño o cuenta de barbero
 let H = [],
@@ -1128,6 +1129,26 @@ const W = {
   },
   backLanding() {
     authOpen = 0;
+    /* Hay que sacar el hash #login: con él puesto, el render vuelve a abrir
+       el login en el ciclo siguiente y el botón no hace nada. Por eso esta
+       acción estaba escrita pero ningún botón la usaba. */
+    if (location.hash === RESERVAR_URL)
+      history.replaceState(null, "", location.pathname + location.search);
+    R();
+  },
+  /* Ver la landing sin cerrar sesión. No se toca el hash: la ruta sigue
+     apuntando al panel, así que al volver no se pierde el estado. */
+  verWebOn() {
+    if (!me) return;
+    verWeb = 1;
+    navOpen = 0;
+    if (location.hash === "#login") history.replaceState(null, "", "#/" + RT.res);
+    document.body.classList.add("ver-web");
+    R();
+  },
+  verWebOff() {
+    verWeb = 0;
+    document.body.classList.remove("ver-web");
     R();
   },
   openPol() {
@@ -1394,6 +1415,16 @@ const W = {
       no: "Quedarme",
       fn: () => {
         authOpen = 0;
+        /* Al salir hay que borrar la ruta: si queda (#/dashboard, #/agenda...)
+           la barra de direcciones sigue diciendo que estás en un panel que ya
+           no existe, el link se comparte roto y al volver a entrar el router
+           te manda directo a esa vista. */
+        verWeb = 0;
+        document.body.classList.remove("ver-web");
+        view = "home";
+        if (location.hash !== RESERVAR_URL)
+          history.replaceState(null, "", location.pathname + location.search);
+        rtInit = 0;
         signOut(auth);
       },
     });
@@ -2527,8 +2558,9 @@ function loginH() {
   </section>
   <section class="panel">
     <div class="marca">
-      <span class="sello" aria-hidden="true"><svg width="20" height="40" viewBox="0 0 28 56"><clipPath id="mc"><rect x="5" y="9" width="18" height="38"/></clipPath><rect x="2" y="0" width="24" height="9" rx="3" fill="#C9A24B"/><rect x="2" y="47" width="24" height="9" rx="3" fill="#C9A24B"/><rect x="5" y="9" width="18" height="38" fill="#F5F0E6"/><g clip-path="url(#mc)"><path d="M5 14L23 8V16L5 22Z" fill="#B3382C"/><path d="M5 26L23 20V28L5 34Z" fill="#2E5FA8"/><path d="M5 38L23 32V40L5 46Z" fill="#B3382C"/></g></svg></span>
+      <span class="sello"><img src="${esc(LOGO)}" alt="" width="48" height="48"></span>
       <b>${esc(NOMBRE)}</b>
+      <button type="button" class="volver" data-act="backLanding">← Volver a la web</button>
     </div>
     <div class="tarjeta">
       <div class="vista" id="ingresar" ${up || rec ? "hidden" : ""}>
@@ -2790,6 +2822,17 @@ const lbCta = (clase, txt) =>
 
 function landingH() {
   const pb = lbPuntos();
+  /* Mirando la web con la sesión abierta: se avisa arriba y se da el botón
+     para volver al panel, así no hace falta cerrar sesión. */
+  /* Mismo criterio que la insignia del header (mn2), para que no aparezca un
+     nombre distinto en los dos lugares. */
+const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
+  const barraWeb = me
+    ? `<div class="lb-volver" role="status">
+        <span>Viendo la web como <b>${esc(quien)}</b></span>
+        <button type="button" data-act="verWebOff">Volver a mi panel</button>
+      </div>`
+    : "";
   const dTxt = (d) => ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"][d];
 
   /* ---------- 9. servicios: datos reales, grilla que se acomoda sola ---------- */
@@ -2867,6 +2910,7 @@ function landingH() {
     : `<p class="lb-todo"><b>Aún no hay reseñas</b>Cargá testimonios reales desde el panel: acá se muestran con su nombre y estrellas.</p>`;
 
   return `<div class="lb">
+  ${barraWeb}
   <div class="lb-stripe" aria-hidden="true"></div>
 
   <header class="lb-hd">
@@ -2874,16 +2918,19 @@ function landingH() {
       <a class="lb-brand" href="#inicio"><img src="${LOGO}" alt="" width="54" height="54"><b>${esc(NOMBRE)}</b></a>
       <nav class="lb-nav" aria-label="Principal">
         <a href="#inicio">Inicio</a>
+        <a href="#equipo">Equipo</a>
         <a href="#servicios">Servicios</a>
         <a href="#puntos">Puntos</a>
         <a href="#galeria">Galería</a>
         <a href="#testimonios">Reseñas</a>
-        <a href="#equipo">Equipo</a>
         <a href="#contacto">Contacto</a>
       </nav>
-      <div class="lb-soc lb-hd-soc" aria-label="Redes">${lbSoc("lb-soc-ico")}</div>
       <div class="lb-hd-cta">
-        <button class="lb-btn lb-btn--ghost lb-ing" type="button" data-act="goLogin">Ingresar</button>
+        ${
+          me
+            ? `<button class="lb-btn lb-btn--ghost lb-ing" type="button" data-act="verWebOff">Mi panel</button>`
+            : `<button class="lb-btn lb-btn--ghost lb-ing" type="button" data-act="goLogin">Ingresar</button>`
+        }
         ${lbCta("lb-hd-res")}
       </div>
       <button class="lb-tema" id="lbTema" type="button" data-act="lbTema" aria-label="Cambiar entre tema claro y oscuro">
@@ -2896,13 +2943,13 @@ function landingH() {
     </div>
     <div class="lb-panel" id="lbPanel" hidden>
       <a href="#inicio">Inicio</a>
+      <a href="#equipo">Equipo</a>
       <a href="#servicios">Servicios</a>
       <a href="#puntos">Puntos</a>
       <a href="#galeria">Galería</a>
       <a href="#testimonios">Reseñas</a>
-      <a href="#equipo">Equipo</a>
       <a href="#contacto">Contacto</a>
-      <button class="lb-panel-btn" type="button" data-act="goLogin">Ingresar</button>
+      <button class="lb-panel-btn" type="button" data-act="${me ? "verWebOff" : "goLogin"}">${me ? "Mi panel" : "Ingresar"}</button>
       <div class="lb-panel-soc">${lbSoc("")}</div>
       ${lbCta("lb-panel-res")}
     </div>
@@ -3022,6 +3069,14 @@ function landingH() {
             <p class="lb-addr"><b>Horarios</b></p>
             ${lbTablaHorarios()}
             <div class="lb-soc lb-cont-soc">${lbSoc("")}</div>
+            <div class="lb-map">
+              <iframe
+                title="Ubicación de ${esc(NOMBRE)}"
+                src="${esc(MAP_IFRAME)}"
+                loading="lazy"
+                referrerpolicy="no-referrer-when-downgrade"
+                allowfullscreen></iframe>
+            </div>
           </div>
         </div>
         <form class="lb-card" id="lbForm" novalidate>
@@ -3075,6 +3130,11 @@ Object.assign(ACT, {
      #/reservar y muestra el login. Al loguearse, el router de la app
      (rtView/rtOk, líneas ~3756) toma ese hash y abre la reserva solo. */
   lbReservar() {
+    /* Si veníamos mirando la web con la sesión abierta, hay que apagar el
+       modo web: si no, R() seguiría dibujando la landing y el usuario no
+       llega nunca al panel. */
+    verWeb = 0;
+    document.body.classList.remove("ver-web");
     if (me && rd) {
       rtPush("res");
       prep("res");
@@ -4193,7 +4253,7 @@ function R() {
   $("#lg").src = LOGO;
   document.title = NOMBRE;
   const hd0 = document.querySelector("header");
-  if (hd0) hd0.style.display = me ? "" : "none";
+  if (hd0) hd0.style.display = me && !verWeb ? "" : "none";
   const ft0 = $("#ft");
   if (ft0) ft0.style.display = me ? "" : "none";
   const nav0 = $("#nav");
@@ -4203,15 +4263,26 @@ function R() {
   }
   const appE = $("#app");
   if (appE) {
-    appE.style.maxWidth = me ? "" : "100%";
-    appE.style.padding = me ? "" : "0";
+    /* Mirando la web el contenedor va a todo lo ancho, igual que cuando no
+       hay sesión: si no, la landing queda metida en el ancho del panel. */
+    const ancho = me && !verWeb;
+    appE.style.maxWidth = ancho ? "" : "100%";
+    appE.style.padding = ancho ? "" : "0";
   }
   $("#lo").hidden = !me;
+  /* "Ver la web" tiene sentido siempre que haya sesión: es la forma de
+     mirar la landing sin cerrar sesión. */
+  const webB = $("#web");
+  if (webB) webB.hidden = !me;
   document.body.classList.toggle("adm", !!(me && isAdm()));
   document.body.classList.toggle("login", !me);
   const mn2 = me ? (isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente") : "";
   $("#mebadge").hidden = !me;
   $("#mefn").textContent = mn2;
+  /* El header va solo con la foto: el nombre queda como title y aria-label
+     del avatar para no perder la informacion. */
+  const medE = $("#med");
+  if (medE) { medE.title = mn2; medE.setAttribute("aria-label", mn2); }
   $("#med").textContent = (mn2 || "?").trim()[0].toUpperCase();
   (function () {
     const foto = (SB && SB.foto) || (U && U.foto);
@@ -4236,7 +4307,11 @@ function R() {
   }
   try {
   if (!me && location.hash === RESERVAR_URL && !authOpen) authOpen = 1;
-  if (!me) h = authH();
+  /* Con sesión se puede mirar la landing sin cerrarla. Se dibuja antes que
+     el panel y se esconde el header de la app (index.html), porque si no
+     quedarían dos headers apilados. */
+  if (me && rd && verWeb) h = landingH();
+  else if (!me) h = authH();
   else if (!rd) h = "";
   else if (isAdm()) {
     h =
@@ -4268,6 +4343,7 @@ function R() {
     nv = sec.map(bt1).join("");
     nm =
       [...sec, ...extra].map(bt1).join("") +
+      `<button class="irweb" data-act="verWebOn">Ver la web</button>` +
       `<button class="salir" data-act="salir">Cerrar sesión</button>`;
   } else if (!U) h = "<p><small>Cargando tu cuenta…</small></p>";
   else {
@@ -4291,7 +4367,7 @@ function R() {
       )
       .join("");
     nm =
-      `<button data-act="openPol">Políticas</button><button data-act="openPol">Privacidad</button><button class="salir" data-act="salir">Cerrar sesión</button>`;
+      `<button data-act="openPol">Políticas</button><button data-act="openPol">Privacidad</button><button class="irweb" data-act="verWebOn">Ver la web</button><button class="salir" data-act="salir">Cerrar sesión</button>`;
   }
   } catch (e) {
     console.error("render", e);

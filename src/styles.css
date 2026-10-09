@@ -13,6 +13,27 @@
   --warn: #d9902f;
   --rad: 10px;
 }
+/* Modo claro de los paneles.
+   Faltaba por completo: el bloque de abajo (data-theme="light") solo pisa
+   selectores individuales que siguen usando var(--ink), y esas variables
+   seguían valiendo el valor oscuro de :root. Por eso la landing cambiaba de
+   tema y los paneles no: el toggle funcionaba a medias.
+   Los valores son los mismos que usa landing.css para mantener las dos
+   superficies con la misma paleta. */
+body[data-theme="light"] {
+  --bg: #f5f0e6;
+  --card: #ffffff;
+  --ink: #141c26;
+  --mut: #55637a;
+  --line: #dcd4c2;
+  --navy: #141c26;
+  --brass: #8a6d1f;
+  --brassD: #8a6d1f;
+  --red: #a82f24;
+  --blue: #55637a;
+  --green: #2e7047;
+  --warn: #a96a18;
+}
 * {
   box-sizing: border-box;
 }
@@ -447,7 +468,10 @@ nav .on {
     height: 18px;
   }
   nav .on {
-    background: #2b3644;
+    /* El fondo estaba clavado en un azul oscuro (#2b3644). En modo claro se
+       combinaba con la tinta oscura y el botón activo quedaba ilegible
+       (ratio 1,4:1). Ahora es un tinte del dorado sobre el fondo del tema. */
+    background: color-mix(in srgb, var(--brass) 16%, var(--bg));
     color: var(--brass);
     box-shadow: none;
   }
@@ -1167,7 +1191,7 @@ h1::after {
   padding: 10px 14px;
 }
 #nmenu button.on {
-  background: #2b3644;
+  background: color-mix(in srgb, var(--brass) 16%, var(--bg));
   color: var(--brass);
   box-shadow: inset 3px 0 var(--brass);
 }
@@ -1766,6 +1790,50 @@ body.login {
   display: grid;
   place-items: center;
   background: rgba(201, 162, 75, 0.06);
+}
+/* El logo de marca es un emblema circular con fondo negro (ver .lg).
+   Por eso se lo muestra redondo y no con el radio del sello. */
+.sello img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #0b0f16;
+}
+/* Botón para volver a la web desde el login, a la derecha de la marca. */
+.marca .volver {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.14));
+  border-radius: 10px;
+  background: none;
+  color: var(--mut, #a9b3c1);
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.marca .volver:hover {
+  color: var(--brass);
+  border-color: var(--brass);
+}
+.marca .volver:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+@media (max-width: 420px) {
+  .marca {
+    flex-wrap: wrap;
+  }
+  .marca .volver {
+    margin-left: 0;
+    width: 100%;
+    justify-content: center;
+  }
 }
 .marca b {
   font: 700 26px/1 "Barlow Condensed", sans-serif;

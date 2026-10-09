@@ -2104,6 +2104,224 @@ body[data-theme="light"] .wz-btn--pri:hover {
   }
 }
 
+/* ---------- ver la web con sesion abierta ----------
+   La barra de arriba avisa que estas mirando la landing con la cuenta
+   abierta y da el boton para volver al panel, sin cerrar sesion. */
+.lb-volver {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 14px;
+  flex-wrap: wrap;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 16px;
+  background: var(--lb-brass);
+  color: var(--lb-on-brass);
+  font-size: 0.86rem;
+  text-align: center;
+}
+/* En pantallas chicas el texto y el botón van en dos filas: en una sola
+   el conjunto no entra y el texto se salía del borde. */
+@media (max-width: 520px) {
+  .lb-volver {
+    flex-direction: column;
+    gap: 7px;
+    padding: 10px 14px;
+    font-size: 0.82rem;
+  }
+  .lb-volver button {
+    width: 100%;
+    max-width: 260px;
+  }
+}
+.lb-volver b {
+  font-weight: 700;
+}
+.lb-volver button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: 600 0.82rem/1 "Barlow Condensed", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.lb-volver button:hover {
+  background: color-mix(in srgb, var(--lb-on-brass) 16%, transparent);
+}
+.lb-volver button:focus-visible {
+  outline: 3px solid var(--lb-on-brass);
+  outline-offset: 2px;
+}
+
+/* Boton "Ver la web" del header de la app y del menu movil: mismo formato
+   que "Cerrar sesion", asi se leen como la misma familia de acciones. */
+#web {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: none;
+  color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#web:hover {
+  border-color: var(--brass);
+  color: var(--brass);
+}
+#web svg {
+  width: 18px;
+  height: 18px;
+}
+#web:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+@media (max-width: 760px) {
+  #web span {
+    display: none;
+  }
+  #web {
+    padding: 0 10px;
+  }
+}
+#nmenu .irweb {
+  width: 100%;
+  margin-top: 6px;
+  text-align: left;
+}
+
+
+
+/* ---------- ajustes pedidos ----------
+   1. El header con sesion va solo con la foto de perfil. El nombre sigue
+      en el title y aria-label del avatar, asi no se pierde para lectores
+      de pantalla ni al pasar el mouse. */
+#mefn {
+  display: none;
+}
+#med {
+  width: 34px;
+  height: 34px;
+}
+
+/* 2. "Volver a la web" con mas presencia: dorado pleno con borde marcado.
+   Antes era un boton fantasma gris sobre navy y no se leia. */
+.marca .volver {
+  background: var(--brass);
+  border-color: var(--brass);
+  color: #141c26;
+  font-weight: 700;
+  min-height: 44px;
+  padding: 0 16px;
+}
+.marca .volver:hover {
+  background: #b08c3c;
+  border-color: #b08c3c;
+  color: #141c26;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brass) 28%, transparent);
+}
+.marca .volver:focus-visible {
+  outline: 3px solid var(--brass);
+  outline-offset: 2px;
+}
+body[data-theme="light"] .marca .volver {
+  color: #fff8e6;
+}
+
+/* 3. El mapa se achica en pantallas anchas: antes ocupaba todo el ancho y
+   empujaba el resto de la banda de contacto. */
+/* El mapa va en la tarjeta de contacto. Chiquito y con bordes
+   redondeados, no un bloque que se come media banda. */
+.lb-map {
+  margin-top: 14px;
+  border: 1px solid var(--lb-line);
+  border-radius: var(--lb-r-sm);
+  overflow: hidden;
+  background: var(--lb-bg);
+}
+.lb-map iframe {
+  display: block;
+  width: 100%;
+  height: 180px;
+  border: 0;
+}
+@media (min-width: 900px) {
+  .lb-map iframe {
+    height: 200px;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .lb-map iframe {
+    transition: filter var(--lb-t) var(--lb-ease);
+  }
+  .lb-map:hover iframe {
+    filter: saturate(1.1);
+  }
+}
+
+
+
+/* ---------- header de la app en modo claro ----------
+   El header usaba var(--navy) y texto #fff fijo, asi que se quedaba navy
+   con la landing en claro: los dos temas no coincidian. Ahora sigue al
+   tema como todo lo demas. */
+body[data-theme="light"] header {
+  background: var(--card);
+}
+body[data-theme="light"] header,
+body[data-theme="light"] header a,
+body[data-theme="light"] header button,
+body[data-theme="light"] header .navlink {
+  color: var(--ink);
+}
+body[data-theme="light"] header .lnd-nv a {
+  color: var(--ink);
+}
+/* El botón activo del nav: dorado sobre tinte claro daba 1,76:1, ilegible.
+   Se usa el mismo patrón que ya tienen .chip.on y .tabs .on: fondo dorado
+   sólido con tinta oscura. */
+body[data-theme="light"] header nav .on,
+body[data-theme="light"] #nmenu button.on {
+  background: var(--brass);
+  color: #141c26;
+}
+/* El boton de tema venia con fondo blanco fijo y en claro quedaba un
+   cuadrado blanco sobre la barra. */
+body[data-theme="light"] #thm {
+  background: var(--bg);
+  color: var(--ink);
+  border-color: var(--line);
+}
+body[data-theme="light"] #web,
+body[data-theme="light"] #lo {
+  background: none;
+  color: var(--ink);
+  border-color: var(--line);
+}
+body[data-theme="light"] #mebadge {
+  background: var(--bg);
+  border-color: var(--line);
+}
+body[data-theme="light"] .msg {
+  background: var(--card);
+  color: var(--ink);
+}
+
+
 /* ---------- 19. DESKTOP (>= 1280px) ----------
    El nav completo (7 links) mide ~560 px y con la marca, los dos botones y
    el toggle hacen ~1160 px de contenido. Por debajo de 1280 de viewport
