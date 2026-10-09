@@ -1,5 +1,18 @@
 // Pega estas reglas en Firebase Console > Firestore Database > Reglas
 // Proyecto: barberia-taccu
+//
+// IMPORTANTE: este archivo es una copia de lo que hay que PUBLICAR en la
+// consola. Cambiarlo acá no cambia nada en Firestore: hay que copiar y
+// pegar en Firebase Console > Firestore Database > Reglas y publicar.
+//
+// Lo que cambió en esta versión:
+//   1. users/{uid}: el alta ya no acepta puntos inventados (se clavan 0..20).
+//   2. users/{uid}: el cliente solo puede BAJAR sus puntos, nunca subirlos.
+//      Antes podía editar su documento entero y cargarse el saldo a dedo.
+//   3. config/finanzas: deja de ser legible sin sesión (lleva porcentajes y
+//      los uid del equipo).
+//   4. mensajes: se validan los campos del contacto en vez de "if true".
+//   5. resenas: sigue siendo pública para el carrusel de la landing.
 
 rules_version = '2';
 service cloud.firestore {
@@ -10,7 +23,13 @@ service cloud.firestore {
     function isBarberoOrOwner() { return isOwner() || isStaff(); }
 
     match /config/{docId} {
-      allow read: if true;
+      // La landing lee sin sesión: servicios/precios (servicios), equipo
+      // (barberos), horarios (horario) y las reglas de puntos (reglas).
+      //
+      // "finanzas" sí pide sesión: lleva los porcentajes de ganancia y el
+      // uid de cada barbero. Con "allow read: if true" para todo /config
+      // esos datos quedaban públicos en la web.
+      allow read: if docId != 'finanzas' || isSignedIn();
       allow write: if isBarberoOrOwner();
     }
 
@@ -19,14 +38,59 @@ service cloud.firestore {
       allow create, update, delete: if isBarberoOrOwner();
     }
 
-    match /users/{uid} {
-      allow read: if isSignedIn() && (request.auth.uid == uid || isStaff() || isOwner());
-      allow create: if isSignedIn() && request.auth.uid == uid;
-      allow update, delete: if isSignedIn() && (request.auth.uid == uid || isStaff() || isOwner());
+    // Reseñas públicas de la landing. Se leen sin sesión (por eso el
+    // carrusel de la web las muestra), pero solo las escribe la barbería.
+    // Sin este bloque Firestore las deniega y la sección nunca aparece.
+    match /resenas/{docId} {
+      allow read: if true;
+      allow create, update, delete: if isBarberoOrOwner();
     }
 
+    // ---------- usuarios ----------
+    match /users/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isStaff() || isOwner());
+
+      // Alta del perfil. Se acota qué se puede escribir y se clavan los
+      // puntos entre 0 y 20 (los 20 de bienvenida, o 0 si el cliente se da
+      // de baja). Antes, con "create: if isSignedIn() && uid == uid",
+      // cualquiera creaba su propio documento con el saldo que quisiera.
+      allow create: if isSignedIn()
+                     && request.auth.uid == uid
+                     && request.resource.data.keys().hasOnly(['nm', 'ph', 'pt', 'borrado'])
+                     && request.resource.data.pt is int
+                     && request.resource.data.pt >= 0
+                     && request.resource.data.pt <= 20;
+
+      // El cliente solo edita lo suyo: nombre, teléfono, foto y la baja.
+      // Y los puntos SOLO pueden bajar: canjear un premio los descuenta, así
+      // que "pt <= resource.data.pt" deja pasar el canje y frena que alguien
+      // se los suba a mano desde la consola del navegador. Subirlos es cosa
+      // de la barbería (cobro de un corte, venta manual), que entra por la
+      // rama de isBarberoOrOwner() y no está limitada.
+      allow update: if isBarberoOrOwner()
+                    || (isSignedIn()
+                        && request.auth.uid == uid
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                             .hasOnly(['nm', 'ph', 'foto', 'borrado', 'pt'])
+                        && request.resource.data.pt is number
+                        && request.resource.data.pt <= resource.data.pt);
+
+      allow delete: if isSignedIn() && (request.auth.uid == uid || isBarberoOrOwner());
+    }
+
+    // ---------- contacto ----------
     match /mensajes/{id} {
-      allow create: if true;
+      // El formulario de la landing es público, así que el create sin sesión
+      // es necesario. Pero "if true" lo convertía en un buzón abierto: se
+      // validan los campos para que no entre basura ni documentos gigantic.
+      // Lo que de verdad frena el spam es activar App Check en Firebase.
+      allow create: if request.resource.data.nombre is string
+                     && request.resource.data.nombre.size() <= 80
+                     && request.resource.data.email is string
+                     && request.resource.data.email.size() <= 120
+                     && request.resource.data.mensaje is string
+                     && request.resource.data.mensaje.size() >= 1
+                     && request.resource.data.mensaje.size() <= 2000;
       allow read, update, delete: if isOwner();
     }
 

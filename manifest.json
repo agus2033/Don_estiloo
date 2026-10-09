@@ -1,6 +1,6 @@
-﻿{
-  "name": "Barbería · Turnos y puntos",
-  "short_name": "Barbería",
+{
+  "name": "Codigo Barber \u00b7 Turnos y puntos",
+  "short_name": "Codigo Barber",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#141c26",

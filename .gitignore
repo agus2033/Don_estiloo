@@ -1,0 +1,33 @@
+# Credenciales de pruebas (NUNCA commitear)
+.env
+.env.*
+!.env.example
+
+# Entorno de Python (no se usa: el proyecto es HTML/CSS/JS estático)
+.venv/
+__pycache__/
+*.py[cod]
+
+# node_modules (incluye el de playwright-skill y el de tmp_pdf)
+node_modules/
+.npm/
+
+# Capturas de verificación
+tmp_shots/
+tmp_*.js
+tmp_*.html
+tmp_*.json
+
+# Herramientas locales de OpenCode / agentes
+.opencode/skills/
+.agents/
+.pi/
+
+# Sistema
+Thumbs.db
+.DS_Store
+desktop.ini
+*.lnk
+
+# Deploy
+.vercel/

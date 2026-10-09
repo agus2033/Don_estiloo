@@ -1,0 +1,2396 @@
+/* =====================================================================
+   LANDING v2 — "Código Barber" / mockup aprobado
+   Tokens del mockup (modo oscuro, el principal). Mobile first.
+   Prefijo .lb- para no colisionar con la landing vieja (.lnd-*).
+   ===================================================================== */
+
+/* ---------- 1. TOKENS ---------- */
+:root {
+  /* superficies */
+  --lb-bg: #141c26; /* azul noche */
+  --lb-bg-alt: #10161e; /* fondo alterno de secciones */
+  --lb-card: #1f2a38;
+  --lb-line: #2d3a4b;
+  --lb-line-soft: #253242;
+
+  /* texto */
+  --lb-ink: #f5f0e6; /* marfil */
+  --lb-mut: #a9b3c1; /* secundario — 7.6:1 sobre --lb-bg */
+
+  /* acento */
+  --lb-brass: #c9a24b; /* dorado — texto y bordes */
+  --lb-brass-h: #ddb968; /* hover */
+  --lb-brass-solid: #c9a24b; /* fondo de botón */
+  --lb-on-brass: #141c26; /* texto sobre dorado */
+
+  /* estados */
+  --lb-ok: #3e8e5a;
+  --lb-warn: #d9902f;
+  --lb-bad: #b3382c;
+  /* Los mismos estados, pero aptos para TEXTO: --lb-ok y --lb-bad están
+     calculados para bordes y rellenos, y como texto no llegan a AA sobre
+     las superficies del asistente (3,6:1 el verde, 2,4:1 el rojo). */
+  --lb-ok-t: #5cb87d;
+  --lb-bad-t: #f2837a;
+  /* Velo del modal: 62% del fondo de la propia página. Se declara una sola
+     vez y sigue al tema, porque --lb-bg se reasigna en el modo claro. */
+  --lb-velo: color-mix(in srgb, var(--lb-bg) 42%, transparent);
+
+  /* franja barberil (fija en ambos modos) */
+  --lb-stripe-a: #b3382c;
+  --lb-stripe-b: #f5f0e6;
+  --lb-stripe-c: #1d3f78;
+
+  /* franja marfil de servicios (fija en ambos modos, por pedido del mockup) */
+  --lb-ivory: #f5f0e6;
+  --lb-on-ivory: #141c26;
+  --lb-on-ivory-mut: #55637a;
+  --lb-ivory-line: #d9d2c3;
+
+  /* forma — 4px botones/chips, 8px tarjetas */
+  --lb-r-sm: 4px;
+  --lb-r-md: 8px;
+
+  /* ritmo */
+  --lb-pad: 20px;
+  --lb-sec: 72px;
+  --lb-max: 1240px;
+
+  /* barra de progreso */
+  --lb-track: #26313f;
+
+  /* movimiento */
+  --lb-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --lb-t-fast: 140ms;
+  --lb-t: 260ms;
+  --lb-t-slow: 620ms;
+
+  /* franja diagonal */
+  --lb-stripe-h: 6px;
+}
+
+/* Modo claro: derivado, no está en el mockup.
+   El dorado de TEXTO se oscurece a #7a5c18 para mantener AA (5.5:1 sobre marfil). */
+body[data-theme="light"] {
+  --lb-bg: #f5f0e6;
+  --lb-bg-alt: #eae4d6;
+  --lb-card: #ffffff;
+  --lb-line: #d9d2c3;
+  --lb-line-soft: #e6e0d2;
+
+  --lb-ink: #141c26;
+  --lb-mut: #55637a; /* 5.36:1 sobre --lb-bg */
+
+  --lb-brass: #7a5c18; /* texto/borde dorado sobre claro */
+  --lb-brass-h: #6b5014;
+  --lb-brass-solid: #c9a24b; /* el botón conserva el dorado de marca */
+  --lb-on-brass: #141c26;
+
+  --lb-ok: #2e7047;
+  --lb-warn: #a96a18;
+  --lb-bad: #a82f24;
+  --lb-ok-t: #225a39;
+  --lb-bad-t: #a0251b;
+  /* El velo hay que redeclararlo acá: definido sólo en :root, el
+     var(--lb-bg) de adentro ya se resolvió contra el valor oscuro y el
+     modo claro quedaba con un velo azul sobre la página clara. */
+  --lb-velo: color-mix(in srgb, var(--lb-bg) 42%, transparent);
+
+  --lb-track: #e2dbc9;
+}
+
+/* ---------- 2. BASE ---------- */
+.lb {
+  background: var(--lb-bg);
+  color: var(--lb-ink);
+  font: 400 16px/1.55 "Barlow", system-ui, sans-serif;
+  overflow-x: clip;
+  -webkit-tap-highlight-color: transparent;
+  padding-bottom: calc(72px + env(safe-area-inset-bottom));
+}
+.lb * {
+  box-sizing: border-box;
+}
+.lb img {
+  max-width: 100%;
+  display: block;
+}
+
+.lb-wrap {
+  width: 100%;
+  max-width: var(--lb-max);
+  margin-inline: auto;
+  padding-inline: var(--lb-pad);
+}
+
+/* ---------- 3. TIPOGRAFÍA ---------- */
+.lb h1,
+.lb h2,
+.lb h3 {
+  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  margin: 0;
+  line-height: 1.02;
+}
+.lb h1 {
+  font-size: clamp(2.75rem, 12vw, 5.5rem);
+}
+.lb h2 {
+  font-size: clamp(2rem, 8vw, 3.25rem);
+}
+.lb h3 {
+  font-size: clamp(1.25rem, 4.5vw, 1.6rem);
+  font-weight: 600;
+}
+.lb p {
+  margin: 0;
+}
+
+/* eyebrow: Barlow 600, mayúsculas, tracking .2em, dorado */
+.lb-eyebrow {
+  display: block;
+  font-family: "Barlow", system-ui, sans-serif;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--lb-brass);
+  margin: 0 0 10px;
+}
+.lb-lead {
+  font-size: 1.06rem;
+  color: var(--lb-mut);
+  max-width: 46ch;
+}
+.lb-price {
+  font-family: "Barlow Condensed", sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--lb-brass);
+}
+
+/* ---------- 4. FRANJA DIAGONAL ---------- */
+.lb-stripe {
+  height: var(--lb-stripe-h);
+  background: repeating-linear-gradient(
+    115deg,
+    var(--lb-stripe-a) 0 33.3%,
+    var(--lb-stripe-b) 33.3% 66.6%,
+    var(--lb-stripe-c) 66.6% 100%
+  );
+}
+
+/* ---------- 5. HEADER ---------- */
+.lb-hd {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: color-mix(in srgb, var(--lb-bg) 92%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--lb-line);
+}
+.lb-hd-in {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.lb-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--lb-brass);
+  /* Nunca se encoge a 0: es el único ítem flexible de la fila, así que si
+     la fila desborda se colapsaba hasta desaparecer. Con min-width: 0 el
+     flex lo achica lo justo y el "b" recorta con ellipsis sólo cuando de
+     verdad no entra.
+
+     Sin max-width: el 38% de antes cortaba el nombre a 390 px, donde
+     conviven sólo el logo y el botón de menú y sobraba lugar de sobra. */
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.lb-brand img {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+}
+.lb-brand b {
+  font-family: "Barlow Condensed", sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 1.2rem;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* En escritorio el nombre de la barbería no se recorta nunca. Es la
+   identidad de la marca: si no entra entero, el problema es el espacio,
+   no la fuente. Abajo, en la banda de 1280 a 1639, se le achica un poco
+   la tipografía y se cierra el gap del nav para que entre entero. */
+@media (min-width: 1280px) {
+  .lb .lb-brand {
+    flex: 0 0 auto;
+    max-width: none;
+  }
+  .lb .lb-brand b {
+    overflow: visible;
+    text-overflow: clip;
+  }
+}
+
+/* nav desktop: 104px de alto.
+   Con 7 links + redes + 2 botones no entra en una fila a 1160px útiles:
+   por eso el tamaño y el gap bajan un escalón, y las redes del header se
+   ocultan antes de que el nav se parta en dos líneas. */
+.lb .lb-nav {
+  display: none;
+  align-items: center;
+  gap: 20px;
+}
+.lb .lb-nav a {
+  font-family: "Barlow", sans-serif;
+  font-size: 17px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--lb-ink);
+  text-decoration: none;
+  white-space: nowrap;
+  padding: 6px 0;
+  border-bottom: 2px solid transparent;
+  transition: color var(--lb-t-fast) var(--lb-ease),
+    border-color var(--lb-t-fast) var(--lb-ease);
+}
+.lb .lb-nav a:hover,
+.lb .lb-nav a:focus-visible {
+  color: var(--lb-brass);
+  border-bottom-color: var(--lb-brass);
+}
+
+/* hamburguesa 48px */
+.lb .lb-burger {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-content: center;
+  gap: 5px;
+  background: none;
+  border: 1px solid var(--lb-line);
+  border-radius: var(--lb-r-sm);
+  cursor: pointer;
+}
+.lb .lb-burger span {
+  display: block;
+  width: 20px;
+  height: 2px;
+  background: var(--lb-ink);
+  transition: transform var(--lb-t) var(--lb-ease), opacity var(--lb-t-fast) linear;
+}
+.lb .lb-burger[aria-expanded="true"] span:nth-child(1) {
+  transform: translateY(7px) rotate(45deg);
+}
+.lb .lb-burger[aria-expanded="true"] span:nth-child(2) {
+  opacity: 0;
+}
+.lb .lb-burger[aria-expanded="true"] span:nth-child(3) {
+  transform: translateY(-7px) rotate(-45deg);
+}
+.lb .lb-burger:focus-visible {
+  outline: 2px solid var(--lb-brass);
+  outline-offset: 2px;
+}
+
+/* toggle claro/oscuro */
+.lb-tema {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-content: center;
+  background: none;
+  border: 1px solid var(--lb-line);
+  border-radius: var(--lb-r-sm);
+  color: var(--lb-ink);
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition: border-color var(--lb-t-fast) var(--lb-ease),
+    color var(--lb-t-fast) var(--lb-ease);
+}
+.lb-tema:hover {
+  border-color: var(--lb-brass);
+  color: var(--lb-brass);
+}
+.lb-tema:focus-visible {
+  outline: 2px solid var(--lb-brass);
+  outline-offset: 2px;
+}
+/* los dos íconos se cruzan con un fade corto: sin bounce */
+.lb-tema svg {
+  grid-area: 1 / 1;
+  transition: opacity var(--lb-t) var(--lb-ease), transform var(--lb-t) var(--lb-ease);
+}
+.lb-ico-sol {
+  opacity: 0;
+  transform: rotate(-60deg) scale(0.7);
+}
+body[data-theme="light"] .lb-ico-luna {
+  opacity: 0;
+  transform: rotate(60deg) scale(0.7);
+}
+body[data-theme="light"] .lb-ico-sol {
+  opacity: 1;
+  transform: none;
+}
+
+/* panel móvil */
+.lb .lb-panel {
+  border-top: 1px solid var(--lb-line);
+  background: var(--lb-bg);
+  padding: 8px 0 20px;
+}
+.lb .lb-panel[hidden] {
+  display: none;
+}
+.lb .lb-panel a {
+  display: block;
+  padding: 15px var(--lb-pad);
+  font-family: "Barlow", sans-serif;
+  font-size: 19px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--lb-ink);
+  text-decoration: none;
+  border-bottom: 1px solid var(--lb-line-soft);
+}
+.lb .lb-panel a:last-child {
+  border-bottom: 0;
+  color: var(--lb-brass-solid);
+  -webkit-text-fill-color: var(--lb-brass-solid);
+}
+
+/* ---------- 6. BOTONES ---------- */
+.lb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 0 26px;
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 1.25rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  white-space: nowrap; /* el texto del CTA nunca se parte */
+  border-radius: var(--lb-r-sm);
+  border: 2px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color var(--lb-t-fast) var(--lb-ease),
+    border-color var(--lb-t-fast) var(--lb-ease),
+    color var(--lb-t-fast) var(--lb-ease), transform var(--lb-t-fast) var(--lb-ease);
+}
+.lb-btn--pri {
+  background: var(--lb-brass-solid);
+  color: var(--lb-on-brass);
+}
+.lb-btn--pri:hover {
+  background: var(--lb-brass-h);
+  color: var(--lb-on-brass);
+}
+body[data-theme="light"] .lb-btn--pri:hover {
+  background: #b08c3c; /* 5.15:1 con texto #141C26 */
+}
+.lb-btn--ghost {
+  background: transparent;
+  border-color: var(--lb-line);
+  color: var(--lb-ink);
+}
+.lb-btn--ghost:hover {
+  border-color: var(--lb-brass);
+  color: var(--lb-brass);
+}
+.lb-btn--dark {
+  background: var(--lb-bg);
+  color: var(--lb-ink);
+}
+.lb-btn--dark:hover {
+  background: #0d1219;
+}
+.lb-btn--lg {
+  min-height: 60px;
+  font-size: 1.5rem;
+  padding: 0 34px;
+}
+.lb-btn:focus-visible {
+  outline: 3px solid var(--lb-brass);
+  outline-offset: 3px;
+}
+.lb-btn:active {
+  transform: scale(0.98);
+}
+.lb-btn[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* CTA fijo mobile */
+.lb-sticky {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  display: block;
+  padding: 10px var(--lb-pad) calc(10px + env(safe-area-inset-bottom));
+  background: color-mix(in srgb, var(--lb-bg) 94%, transparent);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--lb-line);
+}
+.lb-sticky .lb-btn {
+  width: 100%;
+}
+.lb-sticky[hidden] {
+  display: none;
+}
+
+/* ---------- 5c. ÍCONOS DE REDES ----------
+   Los SVG usan fill="currentColor", pero dentro de un <img> eso resuelve
+   a negro y el ícono desaparece en el header oscuro. Con mask el color
+   viene del CSS (background-color: currentColor) y el glifo se ve igual
+   en claro y en oscuro. Reemplazan a los PNG de 388 KB y 30 KB. */
+.ic-ig,
+.ic-wa {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+/* Rutas relativas al CSS (que vive en src/): "../assets/..." y no
+   "assets/...", que resolvería a /src/assets/... y daría 404. */
+.ic-ig {
+  -webkit-mask-image: url("../assets/instagram.svg");
+  mask-image: url("../assets/instagram.svg");
+}
+.ic-wa {
+  -webkit-mask-image: url("../assets/whatsapp.svg");
+  mask-image: url("../assets/whatsapp.svg");
+}
+
+/* ---------- 5b. REDES Y ACCIONES DEL HEADER ---------- */
+.lb-soc {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.lb-soc-lnk {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--lb-line);
+  border-radius: var(--lb-r-sm);
+  color: var(--lb-ink);
+  font-size: 0.95rem;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color var(--lb-t-fast) var(--lb-ease),
+    color var(--lb-t-fast) var(--lb-ease);
+}
+.lb-soc-lnk img {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+.lb-soc-lnk .ic-ig,
+.lb-soc-lnk .ic-wa {
+  color: inherit;
+}
+.lb-soc-lnk:hover {
+  border-color: var(--lb-brass);
+  color: var(--lb-brass);
+}
+/* "lb-soc-ico" se aplica al LINK, no a un contenedor: el selector tiene
+   que apuntar al mismo elemento, si no la variante no hace nada y los
+   links salen con texto y padding (250 px en vez de 96). */
+.lb-soc-lnk.lb-soc-ico {
+  width: 44px;
+  padding: 0;
+  justify-content: center;
+}
+.lb-soc-ico .lb-soc-tx {
+  display: none;
+}
+.lb-hd-soc {
+  gap: 8px;
+}
+/* en mobile las redes del header no van: están en el panel, en Contacto y
+   en el footer. Sin esto se comen el ancho y aplastan la marca. */
+.lb .lb-hd-soc {
+  display: none;
+}
+.lb .lb-hd-cta {
+  display: none;
+}
+.lb-hd-cta .lb-btn {
+  min-height: 48px;
+  padding: 0 20px;
+  font-size: 1.1rem;
+}
+.lb-panel-btn {
+  display: block;
+  width: calc(100% - var(--lb-pad) * 2);
+  margin: 14px var(--lb-pad) 0;
+  padding: 14px;
+  background: none;
+  border: 1px solid var(--lb-line);
+  border-radius: var(--lb-r-sm);
+  color: var(--lb-ink);
+  font-family: "Barlow", sans-serif;
+  font-size: 19px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.lb-panel-res {
+  margin: 10px var(--lb-pad) 0;
+  width: calc(100% - var(--lb-pad) * 2);
+}
+.lb-panel-soc {
+  display: flex;
+  gap: 10px;
+  padding: 14px var(--lb-pad) 0;
+}
+.lb-panel-soc .lb-soc-lnk {
+  flex: 1;
+  justify-content: center;
+}
+
+/* ---------- 7. HERO ---------- */
+.lb-hero {
+  padding-block: 44px 48px;
+  border-bottom: 1px solid var(--lb-line-soft);
+}
+.lb-hero h1 em {
+  font-style: normal;
+  color: var(--lb-brass);
+}
+.lb-hero-cta {
+  margin-top: 26px;
+}
+.lb-hero-note {
+  margin-top: 18px;
+  font-size: 0.94rem;
+  color: var(--lb-mut);
+}
+.lb-hero-note b {
+  color: var(--lb-ink);
+}
+
+/* widget de reserva rápida */
+.lb-widget {
+  margin-top: 34px;
+  background: var(--lb-card);
+  border: 1px solid var(--lb-line);
+  border-radius: var(--lb-r-md);
+  padding: 20px;
+}
+.lb-widget-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.lb-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 16px 0 20px;
+  counter-reset: s;
+}
+.lb-step-i {
+  counter-increment: s;
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--lb-mut);
+  padding-top: 9px;
+  border-top: 3px solid var(--lb-line);
+  transition: color var(--lb-t) var(--lb-ease), border-color var(--lb-t) var(--lb-ease);
+}
+.lb-step-i::before {
+  content: counter(s);
+  display: block;
+  font-size: 1.25rem;
+  line-height: 1;
+  margin-bottom: 3px;
+}
+.lb-step-i[data-on="1"] {
+  color: var(--lb-brass);
+  border-top-color: var(--lb-brass);
+}
+.lb-wl {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 11px 13px;
+  margin-bottom: 7px;
+  background: var(--lb-bg);
+  border: 1px solid var(--lb-line);
+  border-radius: var(--lb-r-sm);
+  color: var(--lb-ink);
+  font-family: "Barlow", sans-serif;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: border-color var(--lb-t-fast) var(--lb-ease),
+    background-color var(--lb-t-fast) var(--lb-ease);
+}
+.lb-wl-t {
+  min-width: 0;
+}
+.lb-wl-t b {
+  display: block;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lb-wl-t small {
+  color: var(--lb-mut);
+  font-size: 0.86rem;
+}
+.lb-wl[aria-pressed="true"] {
+  border-color: var(--lb-brass);
+  background: color-mix(in srgb, var(--lb-brass) 12%, var(--lb-bg));
+}
+.lb-wl:focus-visible {
+  outline: 2px solid var(--lb-brass);
+  outline-offset: 2px;
+}
+
+.lb-widget-lbl {
+  font-family: "Barlow", sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--lb-mut);
+  margin: 20px 0 10px;
+}
+
+/* chips de horarios: 4 columnas */
+.lb-slots {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 7px;
+}
+.lb-chip {
+  min-height: 46px;
+  padding: 0 4px;
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 1.12rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: var(--lb-bg);
+  border: 1px solid var(--lb-line);
+  border-radius: var(--lb-r-sm);
+  color: var(--lb-ink);
+  cursor: pointer;
+  transition: background-color var(--lb-t-fast) var(--lb-ease),
+    border-color var(--lb-t-fast) var(--lb-ease),
+    color var(--lb-t-fast) var(--lb-ease);
+}
+.lb-chip[aria-pressed="true"] {
+  background: var(--lb-brass-solid);
+  border-color: var(--lb-brass-solid);
+  color: var(--lb-on-brass);
+}
+.lb-chip:focus-visible {
+  outline: 2px solid var(--lb-brass);
+  outline-offset: 2px;
+}
+/* deshabilitado: tachado y apagado */
+.lb-chip[disabled] {
+  cursor: not-allowed;
+  color: var(--lb-mut);
+  opacity: 0.5;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  background: transparent;
+}
+
+/* resumen del paso 4 */
+.lb-sum {
+  border: 1px solid var(--lb-line);
+  border-top: 2px solid var(--lb-brass);
+  border-radius: var(--lb-r-sm);
+  overflow: hidden;
+}
+.lb-sum div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 13px;
+  font-size: 0.98rem;
+  border-bottom: 1px solid var(--lb-line-soft);
+}
+.lb-sum div:last-child {
+  border-bottom: 0;
+}
+.lb-sum span {
+  color: var(--lb-mut);
+}
+.lb-sum b {
+  font-weight: 600;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.lb-sum b:empty::after {
+  content: "—";
+  color: var(--lb-mut);
+}
+.lb-empty {
+  color: var(--lb-mut);
+  font-size: 0.95rem;
+  padding: 14px;
+  border: 1px dashed var(--lb-line);
+  border-radius: var(--lb-r-sm);
+  text-align: center;
+}
+
+/* ---------- 8. SECCIONES ---------- */
+.lb-sec {
+  padding: var(--lb-sec) 0;
+}
+.lb-sec--alt {
+  background: var(--lb-bg-alt);
+}
+.lb-sec-h {
+  margin-bottom: 30px;
+}
+.lb-sec-h p {
+  margin-top: 12px;
+}
+
+/* ---------- 9. SERVICIOS (franja marfil, ambos modos) ---------- */
+.lb-band-ivory {
+  background: var(--lb-ivory);
+  color: var(--lb-on-ivory);
+}
+.lb-band-ivory h2,
+.lb-band-ivory h3 {
+  color: var(--lb-on-ivory);
+}
+.lb-band-ivory .lb-eyebrow {
+  color: #7a5c18;
+}
+.lb-band-ivory .lb-lead {
+  color: var(--lb-on-ivory-mut);
+}
+/* borde superior grueso en las tarjetas de servicio.
+   En mobile manda la lista de filas; la grilla es de desktop. */
+.lb-sv-grid {
+  display: none;
+}
+.lb-sv {
+  background: #ffffff;
+  border: 1px solid var(--lb-ivory-line);
+  border-top: 4px solid var(--lb-brass-solid);
+  border-radius: 0 0 var(--lb-r-md) var(--lb-r-md);
+  padding: 20px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lb-sv h3 {
+  overflow-wrap: anywhere;
+}
+.lb-sv p {
+  color: var(--lb-on-ivory-mut);
+  font-size: 0.96rem;
+  flex: 1;
+}
+/* sin descripción no queda un hueco: el texto empuja el pie de la tarjeta abajo */
+.lb-sv h3 + .lb-sv-ft,
+.lb-sv h3:only-child {
+  margin-top: auto;
+}
+.lb-sv-ft {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--lb-ivory-line);
+}
+.lb-sv-dur {
+  font-size: 0.9rem;
+  color: var(--lb-on-ivory-mut);
+}
+/* mobile: lista de filas */
+.lb-sv-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 15px 2px;
+  border-top: 3px solid var(--lb-brass-solid);
+  border-bottom: 1px solid var(--lb-ivory-line);
+}
+.lb-sv-row:first-child {
+  border-top-width: 4px;
+}
+.lb-sv-row-t {
+  min-width: 0;
+}
+.lb-sv-row-t b {
+  display: block;
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 1.35rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+.lb-sv-row-t small {
+  color: var(--lb-on-ivory-mut);
+}
+/* La franja marfil es la misma en claro y en oscuro, así que sus textos
+   usanSIEMPRE la variante oscura del dorado: el #C9A24B del tema da 2,4:1
+   sobre la tarjeta blanca en modo oscuro y no llega a AA. */
+.lb-band-ivory .lb-price {
+  color: #7a5c18;
+}
+.lb-sv-row .lb-price {
+  font-size: 1.45rem;
+  flex: 0 0 auto;
+  color: #7a5c18;
+}
+.lb-sv-desc {
+  display: none;
+}
+
+/* ---------- 10. PUNTOS ---------- */
+.lb-pts {
+  display: grid;
+  gap: 22px;
+}
+.lb-prizes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+.lb-prize {
+  background: var(--lb-card);
+  border: 1px solid var(--lb-line);
+  border-radius: var(--lb-r-md);
+  padding: 20px 18px;
+}
+.lb-prize .lb-prize-n {
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 2.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--lb-brass);
+  line-height: 1;
+  display: block;
+  overflow-wrap: anywhere;
+}
+.lb-prize .lb-prize-n small {
+  font-size: 1.05rem;
+  color: var(--lb-mut);
+  letter-spacing: 0.04em;
+}
+.lb-prize p {
+  margin-top: 8px;
+  font-size: 1.02rem;
+  font-weight: 500;
+}
+
+/* tarjeta de progreso, borde dorado */
+.lb-prog {
+  background: var(--lb-card);
+  border: 2px solid var(--lb-brass);
+  border-radius: var(--lb-r-md);
+  padding: 22px 20px;
+}
+.lb-prog-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.lb-prog-n {
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 3.4rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--lb-ink);
+}
+.lb-prog-n em {
+  font-style: normal;
+  color: var(--lb-mut);
+  font-size: 1.5rem;
+}
+.lb-prog-lbl {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--lb-mut);
+}
+.lb-track {
+  height: 12px;
+  border-radius: 999px;
+  background: var(--lb-track);
+  overflow: hidden;
+  margin: 16px 0 12px;
+}
+.lb-fill {
+  height: 100%;
+  width: var(--lb-p, 0%);
+  border-radius: inherit;
+  background: var(--lb-brass-solid);
+  /* sin bounce ni elastic: ease-out puro */
+  transition: width var(--lb-t-slow) var(--lb-ease);
+}
+.lb-prog-msg {
+  font-size: 1rem;
+  color: var(--lb-mut);
+}
+.lb-prog-msg b {
+  color: var(--lb-brass);
+}
+.lb-prog-demo {
+  margin-top: 14px;
+  font-size: 0.84rem;
+  color: var(--lb-mut);
+  border-top: 1px dashed var(--lb-line);
+  padding-top: 12px;
+}
+
+/* ---------- 11. GALERÍA ----------
+   Sin tope de fotos: entra todas las que haya cargado el barbero.
+   Cada figura tiene aspect-ratio propio y la foto usa object-fit: cover,
+   así una foto apaisada o vertical se encuadra sin deformarse. */
+.lb-gal {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+.lb-gal figure {
+  margin: 0;
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--lb-r-md);
+  overflow: hidden;
+  background: var(--lb-card);
+  border: 1px solid var(--lb-line);
+}
+.lb-gal figure:first-child {
+  grid-column: span 2;
+  aspect-ratio: 16 / 10;
+}
+.lb-gal img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+}
+/* marcador visible mientras no haya fotos reales */
+.lb-gal-ph {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  justify-items: center;
+  text-align: center;
+  padding: 10px;
+  border: 1px dashed var(--lb-line);
+  border-radius: var(--lb-r-md);
+  background: var(--lb-card);
+  color: var(--lb-mut);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 600;
+}
+
+/* ---------- 12. EQUIPO ---------- */
+.lb-team {
+  display: grid;
+  gap: 14px;
+}
+.lb-barber {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--lb-card);
+  border: 1px solid var(--lb-line);
+  border-radius: var(--lb-r-md);
+  padding: 14px;
+}
+.lb-barber-ph {
+  width: 84px;
+  height: 84px;
+  flex: 0 0 auto;
+  border-radius: var(--lb-r-sm);
+  overflow: hidden;
+  background: var(--lb-bg-alt);
+  border: 1px solid var(--lb-line);
+  display: grid;
+  place-content: center;
+  color: var(--lb-mut);
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 2rem;
+  font-weight: 700;
+}
+.lb-barber-ph img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+/* ---------- 12b. CARRUSEL DE RESEÑAS ----------
+   Una reseña por vez, como los banners de Marketplace: el track se
+   desplaza con translateX (GPU) y nunca con left/width. */
+.lb-car {
+  position: relative;
+}
+/* El recorte va en un envoltorio aparte del que se desplaza: poner
+   overflow:hidden y transform en el MISMO elemento crea una capa
+   composta que en Chromium a veces se pinta vacía. */
+.lb-car-vent {
+  overflow: hidden;
+}
+.lb-car-viz {
+  display: flex;
+  /* ease-out suave: entra y frena, sin rebote ni elástico */
+  transition: transform 460ms var(--lb-ease);
+}
+.lb-car-viz .lb-tst {
+  flex: 0 0 100%;
+  min-width: 0;
+  min-height: 190px;
+}
+.lb-car-ctl {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 18px;
+}
+.lb-car-btn {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-content: center;
+  background: none;
+  border: 1px solid var(--lb-line);
+  border-radius: var(--lb-r-sm);
+  color: var(--lb-ink);
+  cursor: pointer;
+  transition: border-color var(--lb-t-fast) var(--lb-ease),
+    color var(--lb-t-fast) var(--lb-ease);
+}
+.lb-car-btn:hover {
+  border-color: var(--lb-brass);
+  color: var(--lb-brass);
+}
+.lb-car-btn:focus-visible {
+  outline: 2px solid var(--lb-brass);
+  outline-offset: 2px;
+}
+.lb-car-puntos {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.lb-car-punto {
+  width: 26px;
+  height: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--lb-line);
+  cursor: pointer;
+  transition: background-color var(--lb-t) var(--lb-ease),
+    width var(--lb-t) var(--lb-ease);
+}
+.lb-car-punto.on {
+  background: var(--lb-brass-solid);
+  width: 40px;
+}
+.lb-car-punto:focus-visible {
+  outline: 2px solid var(--lb-brass);
+  outline-offset: 3px;
+}
+.lb-barber b {
+  display: block;
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+.lb-barber small {
+  color: var(--lb-mut);
+}
+
+/* ---------- 13. TESTIMONIOS ---------- */
+.lb-test {
+  display: grid;
+  gap: 14px;
+}
+.lb-tst {
+  background: var(--lb-card);
+  border: 1px solid var(--lb-line);
+  border-radius: var(--lb-r-md);
+  padding: 20px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.lb-stars {
+  display: flex;
+  gap: 3px;
+  color: var(--lb-brass);
+}
+.lb-tst blockquote {
+  margin: 0;
+  font-size: 1.02rem;
+  color: var(--lb-ink);
+}
+.lb-tst cite {
+  font-style: normal;
+  font-size: 0.92rem;
+  color: var(--lb-mut);
+}
+/* marcador TODO: sin reseñas reales no se inventa ninguna */
+.lb-todo {
+  display: block;
+  border: 1px dashed var(--lb-line);
+  border-radius: var(--lb-r-md);
+  padding: 24px 18px;
+  text-align: center;
+  color: var(--lb-mut);
+}
+.lb-todo b {
+  display: block;
+  color: var(--lb-brass);
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 1.3rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+
+/* ---------- 14. CONTACTO ---------- */
+.lb-cont {
+  display: grid;
+  gap: 22px;
+}
+.lb-hor {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.99rem;
+}
+.lb-hor th,
+.lb-hor td {
+  padding: 11px 0;
+  text-align: left;
+  border-bottom: 1px solid var(--lb-line);
+  font-weight: 400;
+}
+.lb-hor th {
+  color: var(--lb-ink);
+  font-weight: 500;
+}
+.lb-hor td {
+  color: var(--lb-mut);
+  text-align: right;
+  white-space: nowrap;
+}
+.lb-hor tr:last-child th,
+.lb-hor tr:last-child td {
+  border-bottom: 0;
+}
+.lb-card {
+  background: var(--lb-card);
+  border: 1px solid var(--lb-line);
+  border-radius: var(--lb-r-md);
+  padding: 22px 20px;
+}
+.lb-field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.lb-field label {
+  font-size: 0.84rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--lb-mut);
+}
+.lb-field input,
+.lb-field textarea {
+  width: 100%;
+  /* 16px mínimo: evita el zoom automático de iOS */
+  font-family: "Barlow", sans-serif;
+  font-size: 1rem;
+  color: var(--lb-ink);
+  background: var(--lb-bg);
+  border: 1px solid var(--lb-line);
+  border-radius: var(--lb-r-sm);
+  padding: 13px 14px;
+  min-height: 52px;
+}
+.lb-field textarea {
+  min-height: 132px;
+  resize: vertical;
+}
+.lb-field input::placeholder,
+.lb-field textarea::placeholder {
+  color: var(--lb-mut);
+  opacity: 1;
+}
+.lb-field input:focus-visible,
+.lb-field textarea:focus-visible {
+  outline: 2px solid var(--lb-brass);
+  outline-offset: 1px;
+  border-color: var(--lb-brass);
+}
+.lb-field[data-bad="1"] input,
+.lb-field[data-bad="1"] textarea {
+  border-color: var(--lb-bad);
+}
+.lb-err {
+  font-size: 0.86rem;
+  color: var(--lb-bad);
+  min-height: 1.2em;
+}
+.lb-status {
+  margin-top: 12px;
+  font-size: 0.96rem;
+  min-height: 1.4em;
+}
+.lb-status[data-k="ok"] {
+  color: var(--lb-ok);
+}
+.lb-status[data-k="bad"] {
+  color: var(--lb-bad);
+}
+.lb-addr {
+  margin-top: 20px;
+  font-size: 0.95rem;
+  color: var(--lb-mut);
+}
+.lb-addr b {
+  display: block;
+  color: var(--lb-ink);
+  font-weight: 500;
+}
+.lb-cont-soc {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--lb-line);
+}
+.lb-cont-soc .lb-soc-lnk {
+  flex: 1;
+  justify-content: center;
+}
+.lb-hor td small {
+  display: block;
+  font-size: 0.82em;
+  color: var(--lb-mut);
+}
+.lb-hint {
+  margin-top: 14px;
+  font-size: 0.95rem;
+  color: var(--lb-mut);
+}
+.lb-w {
+  width: 100%;
+  margin-top: 14px;
+}
+
+/* ---------- 15. CTA FINAL ---------- */
+.lb-band-gold {
+  background: var(--lb-brass-solid);
+  padding: 52px 0;
+}
+.lb-band-gold .lb-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  flex-wrap: wrap;
+}
+.lb-band-gold h2 {
+  color: var(--lb-on-brass);
+  max-width: 20ch;
+}
+
+/* ---------- 16. FOOTER ---------- */
+.lb-ft {
+  border-top: 1px solid var(--lb-line);
+  padding: 26px 0 30px;
+  font-size: 0.92rem;
+  color: var(--lb-mut);
+}
+.lb-ft-in {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.lb-ft a {
+  color: var(--lb-ink);
+  text-decoration: none;
+  border-bottom: 1px solid var(--lb-line);
+}
+.lb-ft a:hover {
+  color: var(--lb-brass);
+  border-bottom-color: var(--lb-brass);
+}
+.lb-soc {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+.lb-soc a {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-bottom: 0;
+  font-weight: 500;
+}
+.lb-soc img {
+  width: 20px;
+  height: 20px;
+}
+
+/* ---------- 17. REVEAL ---------- */
+.lb .reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity var(--lb-t-slow) var(--lb-ease),
+    transform var(--lb-t-slow) var(--lb-ease);
+}
+.lb .reveal.visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* ---------- 18. HOVER SOLO EN PUNTERO REAL (mobile-native) ---------- */
+@media (hover: none) {
+  .lb .lb-nav a:hover,
+  .lb-btn:hover,
+  .lb-chip:not([disabled]):hover,
+  .lb-wl:hover,
+  .lb-ft a:hover {
+    /* sin estado pegado en táctil: se revierte al valor base */
+    color: inherit;
+    border-bottom-color: transparent;
+    background-color: transparent;
+  }
+  .lb-btn--pri:hover {
+    background: var(--lb-brass-solid);
+    color: var(--lb-on-brass);
+  }
+  .lb-chip[aria-pressed="true"]:hover {
+    background: var(--lb-brass-solid);
+    color: var(--lb-on-brass);
+  }
+}
+
+/* =====================================================================
+   ASISTENTE DE RESERVA — 6 pasos (modal en la landing y panel del usuario)
+   ===================================================================== */
+
+/* --- modal --- */
+/* El fondo es la landing desenfocada, no un velo negro: el velo tapaba
+   todo y el modal quedaba flotando sobre un rectángulo gris sin relación
+   con el resto del sitio. Se tiñe con el color de marca para que el blur
+   se lea como parte del diseño y no como un fondo genérico.
+   --lb-velo es opaco justo para que la hoja siga teniendo AA contra él. */
+#wzm {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--lb-velo);
+  backdrop-filter: blur(22px) saturate(1.2);
+  -webkit-backdrop-filter: blur(22px) saturate(1.2);
+  overflow-y: auto;
+}
+#wzm[hidden] {
+  display: none;
+}
+body.wz-abierto {
+  overflow: hidden;
+}
+/* Navegadores sin backdrop-filter (ninguno de los actuales, pero por si
+   acaso) se llevan un velo más cerrado: sin el desenfoque, el texto de la
+   landing de atrás compite con la hoja.
+   OJO: cada operando del "or" va con sus propios paréntesis. Sin ellos la
+   condición no es la que uno cree y el bloque se aplica igual, dejando el
+   modal con el velo al 88% y sin ver la página de fondo. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #wzm {
+    background: color-mix(in srgb, var(--lb-bg) 80%, transparent);
+  }
+}
+/* --- identidad: logo + nombre arriba de la hoja --- */
+.wz-marca {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 44px 16px 0;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--lb-line);
+}
+.wz-logo {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 1px solid var(--lb-line);
+  background: #0b0f16;
+  object-fit: cover;
+  /* el PNG es un cuadrado negro: el círculo es lo que lo hace legible
+     sobre el fondo oscuro */
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lb-brass) 30%, transparent);
+}
+.wz-marca > span {
+  min-width: 0;
+}
+.wz-marca b {
+  display: block;
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: clamp(1.5rem, 6vw, 2rem);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  color: var(--lb-ink);
+  overflow-wrap: anywhere;
+}
+.wz-marca small {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--lb-brass);
+}
+/* la hoja deja de depender del paso para saber cuánto alto puede ser */
+.wz-sheet {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  background: var(--lb-card);
+  border: 1px solid var(--lb-line);
+  border-radius: var(--lb-r-md);
+  padding: 20px 18px calc(20px + env(safe-area-inset-bottom));
+  -webkit-overflow-scrolling: touch;
+}
+.wz-x {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-content: center;
+  background: none;
+  border: 1px solid var(--lb-line);
+  border-radius: var(--lb-r-sm);
+  color: var(--lb-mut);
+  font-size: 1rem;
+  cursor: pointer;
+  z-index: 2;
+}
+.wz-x:hover {
+  color: var(--lb-brass);
+  border-color: var(--lb-brass);
+}
+.wz-x:focus-visible {
+  outline: 2px solid var(--lb-brass);
+  outline-offset: 2px;
+}
+
+/* --- cabecera de pasos --- */
+.wz-head {
+  margin-bottom: 20px;
+  padding-right: 48px;
+}
+.wz-pasos {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wz-paso {
+  flex: 1;
+  min-width: 0;
+  padding-top: 8px;
+  border-top: 3px solid var(--lb-line);
+  font-size: 0.66rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--lb-mut);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color var(--lb-t) var(--lb-ease),
+    border-color var(--lb-t) var(--lb-ease);
+}
+.wz-paso b {
+  display: block;
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 1.1rem;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: inherit;
+}
+.wz-paso.he {
+  border-top-color: color-mix(in srgb, var(--lb-brass) 45%, var(--lb-line));
+}
+.wz-paso.on {
+  color: var(--lb-brass);
+  border-top-color: var(--lb-brass);
+}
+.wz-mini {
+  margin: 10px 0 0;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--lb-mut);
+}
+
+/* --- pasos 1 y 2 --- */
+.wz-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 13px 14px;
+  margin-bottom: 8px;
+  background: var(--lb-bg);
+  border: 1px solid var(--lb-line);
+  border-radius: var(--lb-r-sm);
+  color: var(--lb-ink);
+  cursor: pointer;
+  transition: border-color var(--lb-t-fast) var(--lb-ease),
+    background-color var(--lb-t-fast) var(--lb-ease);
+}
+.wz-item-t {
+  min-width: 0;
+}
+.wz-item-t b {
+  display: block;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.wz-item-t small {
+  color: var(--lb-mut);
+  font-size: 0.88rem;
+}
+.wz-item:hover {
+  border-color: var(--lb-brass);
+}
+.wz-item.on {
+  border-color: var(--lb-brass);
+  background: color-mix(in srgb, var(--lb-brass) 12%, var(--lb-bg));
+}
+.wz-item:focus-visible {
+  outline: 2px solid var(--lb-brass);
+  outline-offset: 2px;
+}
+
+/* En pantallas chicas no entran 6 etiquetas: se ve el número de cada paso,
+   y el nombre del actual ya está en "Paso N de 6". */
+@media (max-width: 479px) {
+  .wz-paso {
+    font-size: 0;
+    padding-top: 6px;
+  }
+  .wz-paso b {
+    font-size: 1.25rem;
+    text-align: center;
+  }
+  .wz-head {
+    padding-right: 44px;
+  }
+}
+
+/* --- paso 3: calendario --- */
+.wz-cal-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.wz-cal-top b {
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 1.35rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.wz-nav {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-content: center;
+  background: none;
+  border: 1px solid var(--lb-line);
+  border-radius: var(--lb-r-sm);
+  color: var(--lb-ink);
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.wz-nav:hover {
+  border-color: var(--lb-brass);
+  color: var(--lb-brass);
+}
+.wz-nav:focus-visible {
+  outline: 2px solid var(--lb-brass);
+  outline-offset: 2px;
+}
+/* minmax(0, 1fr) y no 1fr a secas: 1fr es minmax(auto, 1fr), y el "auto"
+   no deja que la pista baje del min-content de la celda. Con aspect-ratio
+   las celdas quedaban 49 px en vez de 42 y la fila se pasaba 7 px, que
+   cortaba la columna del sábado. */
+.wz-dows,
+.wz-cels {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.wz-dows {
+  margin-bottom: 4px;
+}
+.wz-dows span {
+  text-align: center;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--lb-mut);
+  padding-bottom: 4px;
+}
+.wz-cel {
+  aspect-ratio: 1 / 1;
+  min-height: 42px;
+  display: grid;
+  place-content: center;
+  background: var(--lb-bg);
+  border: 1px solid var(--lb-line);
+  border-radius: var(--lb-r-sm);
+  color: var(--lb-ink);
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--lb-t-fast) var(--lb-ease),
+    border-color var(--lb-t-fast) var(--lb-ease),
+    color var(--lb-t-fast) var(--lb-ease);
+}
+.wz-cel.vacia {
+  border: 0;
+  background: none;
+  cursor: default;
+}
+/* verde = hay horarios libres */
+.wz-cel.libre {
+  border-color: var(--lb-ok);
+  color: var(--lb-ok-t);
+  background: color-mix(in srgb, var(--lb-ok) 14%, var(--lb-bg));
+}
+.wz-cel.libre:hover {
+  background: color-mix(in srgb, var(--lb-ok) 26%, var(--lb-bg));
+}
+/* rojo = día abierto pero sin ningún horario */
+.wz-cel.completo {
+  border-color: color-mix(in srgb, var(--lb-bad) 55%, var(--lb-line));
+  color: var(--lb-bad-t);
+  cursor: not-allowed;
+  opacity: 0.85;
+}
+/* cerrado según config/horario, o día ya pasado */
+.wz-cel.cerrado,
+.wz-cel.pasado {
+  color: var(--lb-mut);
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.wz-cel.on {
+  box-shadow: inset 0 0 0 2px var(--lb-brass);
+  border-color: var(--lb-brass);
+}
+.wz-cel:focus-visible {
+  outline: 2px solid var(--lb-brass);
+  outline-offset: 2px;
+}
+.wz-leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 14px;
+  font-size: 0.78rem;
+  color: var(--lb-mut);
+}
+.wz-leyenda .p {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.wz-leyenda .p::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid;
+}
+.wz-leyenda .libre::before {
+  border-color: var(--lb-ok);
+  background: color-mix(in srgb, var(--lb-ok) 26%, transparent);
+}
+.wz-leyenda .completo::before {
+  border-color: var(--lb-bad);
+  background: color-mix(in srgb, var(--lb-bad) 20%, transparent);
+}
+.wz-leyenda .cerrado::before {
+  border-color: var(--lb-line);
+}
+
+/* --- paso 4: mañana / tarde --- */
+.wz-turnos {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.wz-turno {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  text-align: left;
+  padding: 16px 14px;
+  background: var(--lb-bg);
+  border: 1px solid var(--lb-line);
+  border-radius: var(--lb-r-sm);
+  color: var(--lb-ink);
+  cursor: pointer;
+}
+.wz-turno b {
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 1.3rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.wz-turno small {
+  color: var(--lb-mut);
+  font-size: 0.88rem;
+}
+.wz-turno em {
+  font-style: normal;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--lb-ok-t);
+}
+.wz-turno:hover {
+  border-color: var(--lb-brass);
+}
+.wz-turno.on {
+  border-color: var(--lb-brass);
+  background: color-mix(in srgb, var(--lb-brass) 12%, var(--lb-bg));
+}
+/* sin disponibilidad: opaco, deshabilitado y con mensaje debajo */
+.wz-turno.off {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.wz-turno.off em {
+  color: var(--lb-bad-t);
+}
+.wz-turno:focus-visible {
+  outline: 2px solid var(--lb-brass);
+  outline-offset: 2px;
+}
+
+/* --- paso 5: horarios --- */
+.wz-horas {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 8px;
+}
+.wz-hora {
+  min-height: 48px;
+  padding: 0 6px;
+  background: var(--lb-bg);
+  border: 1px solid var(--lb-line);
+  border-radius: var(--lb-r-sm);
+  color: var(--lb-ink);
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: background-color var(--lb-t-fast) var(--lb-ease),
+    border-color var(--lb-t-fast) var(--lb-ease),
+    color var(--lb-t-fast) var(--lb-ease);
+}
+.wz-hora:hover {
+  border-color: var(--lb-brass);
+}
+.wz-hora.on {
+  background: var(--lb-brass-solid);
+  border-color: var(--lb-brass-solid);
+  color: var(--lb-on-brass);
+}
+/* horario ya tomado: se ve, pero apagado y no seleccionable */
+.wz-hora.oc {
+  color: var(--lb-mut);
+  background: transparent;
+  border-style: dashed;
+  opacity: 0.45;
+  cursor: not-allowed;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+.wz-hora:focus-visible {
+  outline: 2px solid var(--lb-brass);
+  outline-offset: 2px;
+}
+.wz-ocupadas {
+  margin-top: 12px;
+  font-size: 0.86rem;
+  color: var(--lb-mut);
+}
+
+/* --- resumen y avisos --- */
+.wz-sum {
+  border: 1px solid var(--lb-line);
+  border-top: 2px solid var(--lb-brass);
+  border-radius: var(--lb-r-sm);
+  overflow: hidden;
+}
+.wz-sum div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  font-size: 0.98rem;
+  border-bottom: 1px solid var(--lb-line-soft);
+}
+.wz-sum div:last-child {
+  border-bottom: 0;
+}
+.wz-sum span {
+  color: var(--lb-mut);
+}
+.wz-sum b {
+  font-weight: 600;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.wz-pol {
+  margin: 12px 0 16px;
+  font-size: 0.86rem;
+  color: var(--lb-mut);
+}
+.wz-vacio,
+.wz-aviso {
+  padding: 14px;
+  border: 1px dashed var(--lb-line);
+  border-radius: var(--lb-r-sm);
+  font-size: 0.94rem;
+  color: var(--lb-mut);
+  text-align: center;
+}
+.wz-aviso {
+  margin-top: 12px;
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--lb-bad) 55%, var(--lb-line));
+  color: var(--lb-bad-t);
+}
+
+/* --- foto del barbero (paso 2) --- */
+/* space-between sirve para la fila de servicio (nombre a la izquierda,
+   precio a la derecha). Acá el texto va PEGADO a la foto, no al borde. */
+.wz-item--bar {
+  justify-content: flex-start;
+  align-items: center;
+  gap: 14px;
+}
+.wz-item--bar .wz-item-t {
+  flex: 1 1 auto;
+}
+.wz-foto {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  display: grid;
+  place-content: center;
+  border-radius: 50%;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--lb-brass) 22%, var(--lb-bg));
+  border: 1px solid var(--lb-line);
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 1.4rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--lb-brass);
+}
+.wz-foto img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+}
+.wz-item.on .wz-foto {
+  border-color: var(--lb-brass);
+}
+
+/* --- pie --- */
+.wz-pie {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+}
+.wz-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50px;
+  padding: 0 22px;
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  border: 2px solid transparent;
+  border-radius: var(--lb-r-sm);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color var(--lb-t-fast) var(--lb-ease),
+    border-color var(--lb-t-fast) var(--lb-ease),
+    color var(--lb-t-fast) var(--lb-ease);
+}
+.wz-btn--pri {
+  background: var(--lb-brass-solid);
+  color: var(--lb-on-brass);
+}
+.wz-btn--pri:hover {
+  background: var(--lb-brass-h);
+}
+body[data-theme="light"] .wz-btn--pri:hover {
+  background: #b08c3c;
+}
+.wz-btn--ghost {
+  background: none;
+  border-color: var(--lb-line);
+  color: var(--lb-ink);
+}
+.wz-btn--ghost:hover {
+  border-color: var(--lb-brass);
+  color: var(--lb-brass);
+}
+.wz-btn--full {
+  width: 100%;
+  margin-top: 10px;
+}
+.wz-btn:focus-visible {
+  outline: 3px solid var(--lb-brass);
+  outline-offset: 3px;
+}
+.wz-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* --- tarjeta del hero (abre el modal) --- */
+.lb-wcard {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+.lb-wcard h3 {
+  font-size: clamp(1.5rem, 5vw, 2rem);
+}
+.lb-wpasos {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px 10px;
+  margin: 4px 0 0;
+}
+.lb-wpasos .wz-paso {
+  border-top-width: 2px;
+}
+.lb-wcard-note {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--lb-mut);
+}
+
+/* ---------- 18b. HEADER EN PANTALLAS MUY ANGOSTAS ----------
+   A 320 px la fila queda justa: logo, nombre, toggle de tema y menú de
+   opciones llenan todo el ancho y el nombre se cortaba. Se achica el logo
+   y la tipografía, y se cierra el gap: es lo mínimo para que "CODIGO BARBER"
+   entre entero sin tocar el diseño que se ve desde 390 px para arriba. */
+@media (max-width: 359px) {
+  .lb-hd-in {
+    gap: 10px;
+  }
+  .lb-brand img {
+    width: 36px;
+    height: 36px;
+  }
+  .lb-brand b {
+    font-size: 1.1rem;
+  }
+}
+
+/* ---------- 19. DESKTOP (>= 1280px) ----------
+   El nav completo (7 links) mide ~560 px y con la marca, los dos botones y
+   el toggle hacen ~1160 px de contenido. Por debajo de 1280 de viewport
+   no entran sin partirse en dos líneas, así que ahí va el hamburguesa.
+   Primer escalón: aparece el nav de 7 links + Ingresar + Reservar,
+   pero las redes del header todavía no. Siguen estando en Contacto,
+   en el panel móvil y en el footer. */
+@media (min-width: 1280px) {
+  .lb {
+    --lb-pad: 40px;
+    --lb-sec: 104px;
+    --lb-stripe-h: 8px;
+    padding-bottom: 0;
+  }
+  .lb-hd-in {
+    min-height: 104px; /* menú GRANDE */
+  }
+  .lb-brand img {
+    width: 54px;
+    height: 54px;
+  }
+  .lb-brand b {
+    font-size: 2.1rem;
+  }
+  .lb .lb-nav {
+    display: flex;
+  }
+  .lb .lb-burger,
+  .lb .lb-panel {
+    display: none !important;
+  }
+  .lb .lb-hd-cta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 0 0 auto;
+  }
+  .lb .lb-hd-soc {
+    display: flex;
+  }
+  .lb-sticky {
+    display: none;
+  }
+
+  .lb-hero {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 56px;
+    align-items: start;
+    padding-block: 72px 88px;
+  }
+  .lb-hero h1 {
+    max-width: 11ch;
+  }
+  .lb-widget {
+    margin-top: 0;
+  }
+  .lb .lb-hero-tx {
+    position: sticky;
+    top: 140px;
+  }
+
+  /* servicios: grilla auto-fill (la lista de filas es solo mobile) */
+  .lb .lb-sv-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 18px;
+  }
+  .lb .lb-sv-list-m {
+    display: none;
+  }
+  .lb-sv-desc {
+    display: block;
+  }
+
+  .lb .lb-prizes {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  /* puntos: premios izq + progreso der */
+  .lb-pts {
+    grid-template-columns: 1.55fr 1fr;
+    gap: 34px;
+    align-items: start;
+  }
+  .lb-prog {
+    position: sticky;
+    top: 128px;
+  }
+
+  /* galería: 4 columnas, 1 grande 2x2 + el resto chicas.
+     Con muchas fotos la grilla sigue creciendo sola: entra todas. */
+  .lb-gal {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .lb-gal figure:first-child {
+    grid-column: span 2;
+    grid-row: span 2;
+    aspect-ratio: 1 / 1;
+  }
+
+  /* equipo: 3 columnas (la grilla se acomoda sola si hay más barberos) */
+  .lb-team {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .lb-barber {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 18px;
+  }
+  .lb-barber-ph {
+    width: 100%;
+    height: 200px;
+  }
+
+  /* testimonios: 3 en desktop */
+  .lb-test {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  /* contacto: 2 columnas */
+  .lb-cont {
+    grid-template-columns: 1fr 1fr;
+    gap: 34px;
+    align-items: start;
+  }
+
+  .lb-band-gold {
+    padding: 72px 0;
+  }
+}
+
+/* hover de tarjetas: solo con puntero real (evita el hover pegado en táctil).
+   Sombra únicamente como respuesta al estado — el resto del sistema es plano. */
+@media (hover: hover) {
+  .lb-sv,
+  .lb-prize,
+  .lb-barber,
+  .lb-tst {
+    transition: transform var(--lb-t) var(--lb-ease),
+      border-color var(--lb-t) var(--lb-ease),
+      box-shadow var(--lb-t) var(--lb-ease);
+  }
+  .lb-sv:hover,
+  .lb-prize:hover,
+  .lb-barber:hover,
+  .lb-tst:hover {
+    transform: translateY(-4px);
+    border-color: var(--lb-brass);
+    box-shadow: 0 10px 26px -14px rgba(0, 0, 0, 0.7);
+  }
+  .lb-band-ivory .lb-sv:hover {
+    border-top-color: var(--lb-brass-solid);
+    box-shadow: 0 10px 26px -16px rgba(20, 28, 38, 0.45);
+  }
+  .lb-widget:hover {
+    border-color: color-mix(in srgb, var(--lb-brass) 55%, var(--lb-line));
+  }
+}
+
+/* ---------- 19b. TRANSICIÓN DEL TOGGLE CLARO/OSCURO ----------
+   Solo en las superficies que cambian de tono. .lb-btn y .lb-chip ya tienen
+   su propia transition (gana la regla del componente, no se pisa). */
+body,
+.lb,
+.lb-hd,
+.lb .lb-panel,
+.lb-card,
+.lb-sv,
+.lb-prize,
+.lb-prog,
+.lb-barber,
+.lb-tst,
+.lb-wl,
+.lb-gal figure,
+.lb-barber-ph,
+.lb-field input,
+.lb-field textarea,
+.lb-sum,
+.lb-hor th,
+.lb-hor td,
+.lb-band-gold {
+  transition: background-color 320ms var(--lb-ease),
+    color 320ms var(--lb-ease), border-color 320ms var(--lb-ease);
+}
+/* safe-area arriba del header (notch en landscape) */
+.lb-hd {
+  padding-top: env(safe-area-inset-top);
+}
+
+/* ---------- 19b. REDES DEL HEADER ----------
+   Anchos medidos dentro del contenedor de 1240 px: marca 233 + nav 572 +
+   botones 259 + tema 48 = 1112, y ya entra justo. Las dos redes suman
+   otros 96, así que solo aparecen cuando el header se abre a 1480.
+   Mientras tanto están en Contacto, en el panel móvil y en el footer. */
+@media (min-width: 1280px) and (max-width: 1639px) {
+  .lb .lb-hd-soc {
+    display: none;
+  }
+  /* El nombre de la marca va primero: se le baja un punto la tipografía y
+     se cierra el gap del nav para que "CODIGO BARBER" entre entero en los
+     1240 px del header. Medido: sobran ~9 px de aire. */
+  .lb .lb-brand b {
+    font-size: 1.9rem;
+  }
+  .lb .lb-nav {
+    gap: 12px;
+  }
+  .lb .lb-nav a {
+    font-size: 16px;
+  }
+  .lb .lb-hd-cta .lb-btn {
+    padding: 0 16px;
+    font-size: 1rem;
+  }
+}
+
+/* ---------- 19c. HEADER ANCHO ----------
+   El contenido mide 1240 px, y con las dos redes en el header la fila
+   necesita ~1405. Por eso acá el header se abre a 1560: en pantallas
+   anchas el header respira más que el cuerpo, que sigue en 1240. */
+@media (min-width: 1640px) {
+  .lb .lb-hd-in {
+    max-width: 1560px;
+    gap: 20px;
+  }
+  .lb .lb-hd-soc {
+    display: flex;
+  }
+  .lb .lb-nav {
+    gap: 20px;
+  }
+  .lb .lb-nav a {
+    font-size: 17px;
+  }
+  .lb .lb-hd-cta .lb-btn {
+    padding: 0 20px;
+    font-size: 1.1rem;
+  }
+}
+
+/* ---------- 20. REDUCED MOTION ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .lb *,
+  .lb *::before,
+  .lb *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .lb .reveal {
+    opacity: 1;
+    transform: none;
+  }
+  .lb-btn:active {
+    transform: none;
+  }
+  /* el carrusel no rota solo (eso lo corta el JS), pero el salto manual
+     tampoco se desliza: cambia de una */
+  .lb-car-viz {
+    transition: none !important;
+  }
+  .lb-car-punto {
+    transition: none !important;
+  }
+}
+
+/* ---------- 21. ACCESIBILIDAD ---------- */
+@media (prefers-contrast: more) {
+  .lb-mut {
+    color: var(--lb-ink);
+  }
+  .lb-chip,
+  .lb-wl,
+  .lb-btn--ghost {
+    border-width: 2px;
+  }
+}
+.lb-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

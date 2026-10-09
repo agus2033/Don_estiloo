@@ -886,9 +886,14 @@ header {
   margin-right: 0;
   line-height: 1;
 }
+/* El logo de marca es un emblema circular. Además el PNG no tiene
+   transparencia, así que el borde redondeado es lo que evita que se vea
+   como un cuadrado negro sobre el header oscuro. */
 .lg {
-  border-radius: 18px;
+  border-radius: 50%;
   box-shadow: 0 0 0 2px var(--brass);
+  background: #0b0f16;
+  object-fit: cover;
 }
 .card,
 .row {

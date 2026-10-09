@@ -1,8 +1,9 @@
-const V = "barberia-v5",
+const V = "barberia-v7",
   SHELL = [
     "./",
     "index.html",
     "src/styles.css",
+    "src/landing.css",
     "src/main.js",
     "src/boot.js",
     "src/config.js",
@@ -11,7 +12,10 @@ const V = "barberia-v5",
     "assets/icon-192.png",
     "assets/icon-512.png",
     "assets/icon-maskable-512.png",
-    "assets/logo.svg",
+    "assets/apple-touch-icon.png",
+    "assets/logo-256.png",
+    "assets/instagram.svg",
+    "assets/whatsapp.svg",
   ],
   OK = ["www.gstatic.com", "fonts.googleapis.com", "fonts.gstatic.com"];
 /* Un archivo faltante no debe romper la instalación: se cachea cada uno por separado. */

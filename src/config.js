@@ -8,7 +8,7 @@
         appId: "1:968927411493:web:cacd75772f2fb791132ecc"
       };
       export const ADMIN_UID = "LQ7IkEfxEKNXajx4SEs378n390i2";
-      export const NOMBRE = "Codigo Barber 1"; // nombre de la barbería
+      export const NOMBRE = "Codigo Barber"; // nombre de la barbería
       export const AUTOR = "Agustín Ibarra"; // nombre que aparece en el pie de la web
       export const S = [
         { n: "Corte (Incluye cejas)", m: 30, p: 15000 },
@@ -25,6 +25,10 @@
       export const MB = ["El cliente avisó que no viene", "No se presentó", "Imprevisto del barbero", "Otro motivo"]; // motivos (barbero)
       export const MP = ["Efectivo", "Transferencia"]; // medios de pago
       export const WHATSAPP = "5493757644751"; // número con código de país, sin + ni espacios. Ej: "5491122334455"
+// Los íconos de Instagram y WhatsApp se aplican con CSS mask sobre
+// assets/instagram.svg y assets/whatsapp.svg (ver .ic-ig / .ic-wa en
+// src/landing.css), no con <img>: así heredan el color del texto y se ven
+// igual en modo claro y oscuro. Los PNG de 388 KB y 30 KB ya no se usan.
 export const INSTAGRAM = "codigobarber_1"; // usuario de Instagram (sin @)
 export const RESERVAR_URL = "#login"; // destino único y configurable de los botones "Reservar ahora"
 export const MAP_IFRAME = "https://www.google.com/maps?q=-25.618,-54.5701752&z=15&output=embed"; // iframe de ubicación
@@ -34,7 +38,13 @@ export const CLOUD_FOLDER = "codigo-barber-1"; // carpeta destino en Cloudinary
 export const EMAIL = "hola@codigobarber1.com"; // email de contacto visible en la landing
 export const RECAPTCHA_KEY = ""; // clave de sitio reCAPTCHA v3 para App Check (vacío = desactivado)
 export const CANCEL_HS = 2; // horas mínimas de anticipación para que el cliente cancele
-export const LOGO = "assets/logo.png"; // logo provisorio: reemplazá el archivo assets/logo.svg (o poné "assets/logo.png") por el tuyo
+      // Logo: el original assets/logo.png pesa 1,6 MB (1254×1254, y además es un
+// cuadrado negro sin transparencia, que sobre el header oscuro se ve como un
+// rectángulo negro). logo-256.png es el mismo emblema recortado a 256 px:
+// 82 KB, sirve para el header de 38 px y para el modal.
+// TODO: si conseguís el SVG original del diseñador, replacear esto y sacar el
+// recorte circular del CSS (.lb-logo, .wz-logo).
+export const LOGO = "assets/logo-256.png";
 export const OWNER_UID = ADMIN_UID; // único usuario que puede editar los porcentajes de ganancia (el dueño)
 export const PD_DEF = 40; // % que se queda el dueño por defecto en cada corte (editable desde Finanzas)
 export const GRID = 30; // grilla de horarios en minutos: 30 o 15. Pasá a 15 solo cuando no queden turnos pendientes viejos (ver notas)

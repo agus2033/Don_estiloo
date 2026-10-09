@@ -735,10 +735,12 @@ onSnapshot(collection(db, "galeria"), (x) => {
   if (!me) R();
 });
 onSnapshot(collection(db, "resenas"), (x) => {
+  /* Sin tope: el carrusel de la landing rota entre todas. Si algún día
+     llegan a ser muchas, el límite va acá (y se recorta la fila de
+     puntitos del carrusel, que se pone larga). */
   TESTS = x.docs
     .map((d) => ({ id: d.id, ...d.data() }))
-    .sort((a, b) => ((b.fecha && b.fecha.toMillis()) || 0) - ((a.fecha && a.fecha.toMillis()) || 0))
-    .slice(0, 6);
+    .sort((a, b) => ((b.fecha && b.fecha.toMillis()) || 0) - ((a.fecha && a.fecha.toMillis()) || 0));
   if (!me) R();
 });
 onAuthStateChanged(auth, (a) => {
@@ -808,7 +810,20 @@ function prep(v) {
   view = v;
   mas = 0;
   navOpen = 0;
-  if (v === "res") resStep = 1;
+  if (v === "res") {
+    resStep = 1;
+    /* Si venía del modal con el turno ya elegido, entrar no lo borra:
+       vuelve al resumen con todo lo que había seleccionado. Si no, el
+       asistente arranca limpio en el paso 1. */
+    const seguir = WZ.resumir && !!sel.t;
+    WZ.resumir = false;
+    WZ.paso = seguir ? 6 : 1;
+    WZ.turno = seguir ? WZ.turno : "";
+    WZ.mes = ymd().slice(0, 7);
+    if (!seguir) sel.t = "";
+    wzOcc.unsubscribe();
+    WZ.unsub = null;
+  }
   if (v === "bar" && !isOwner()) bf = "";
   if (v === "cfg") {
     cb = "";
@@ -910,7 +925,7 @@ const W = {
     document.body.classList.toggle("no-scroll", open);
   },
   async enviarContacto() {
-    if (enviarContacto.estado === "enviando") return;
+    if (W.enviarContacto.estado === "enviando") return;
     const nombre = ($("#cf-name") || {}).value || "",
       email = (($("#cf-email") || {}).value || "").trim(),
       mensaje = (($("#cf-msg") || {}).value || "").trim(),
@@ -921,7 +936,7 @@ const W = {
       if (st) st.textContent = "Revisá el email y el mensaje.";
       return;
     }
-    enviarContacto.estado = "enviando";
+    W.enviarContacto.estado = "enviando";
     if (btn) {
       btn.disabled = true;
       btn.textContent = "ENVIANDO…";
@@ -943,7 +958,7 @@ const W = {
       console.error(e);
       if (st) st.textContent = "No se pudo enviar el mensaje. Probá de nuevo.";
     } finally {
-      enviarContacto.estado = "";
+      W.enviarContacto.estado = "";
       if (btn) {
         btn.disabled = false;
         btn.textContent = "ENVIAR MENSAJE";
@@ -1273,14 +1288,22 @@ const W = {
         h: "Faltan datos",
         b: "Ingresá tu email y tu contraseña para continuar.",
       });
+    /* Loader: el signIn tarda y sin esto el botón queda sin efecto
+       visible, que se lee como "quedó colgado". */
+    busy(1, "Entrando…", 1);
     try {
       await signInWithEmailAndPassword(
         auth,
         $("#ie").value.trim(),
         $("#ip").value,
       );
+      /* Si veníamos de la reserva, el router abre el asistente solo. */
+      busy(0);
+      R();
     } catch (e) {
+      busy(0);
       err(e);
+      R();
     }
   },
   async red(p) {
@@ -1514,7 +1537,7 @@ const W = {
         h: "Turno reservado",
         b:
           "Te esperamos. Sumás " + PTSv + " puntos cuando se complete el corte." + (MP_LINK ? ` También podés <a href="${esc(MP_LINK)}" target="_blank" rel="noopener">dejar la seña por Mercado Pago</a>.` : ""),
-        ok: wa ? '<img src="assets/whatsapp.png" alt="" width="22" style="vertical-align:-5px;margin-right:6px">Avisar por WhatsApp' : "Listo",
+        ok: wa ? '<span class="ic-wa" aria-hidden="true" style="width:22px;height:22px;vertical-align:-5px;margin-right:6px"></span>Avisar por WhatsApp' : "Listo",
         no: wa ? "Cerrar" : "",
         fn: wa ? () => open(wa, "_blank", "noopener") : null,
       });
@@ -1551,7 +1574,7 @@ const W = {
         k: "w",
         h: "Ya no podés cancelar online",
         b: `Faltan menos de ${CHSv} horas para tu turno. Escribile a la barbería para avisar.`,
-        ok: wa ? '<img src="assets/whatsapp.png" alt="" width="22" style="vertical-align:-5px;margin-right:6px">Escribir por WhatsApp' : "Entendido",
+        ok: wa ? '<span class="ic-wa" aria-hidden="true" style="width:22px;height:22px;vertical-align:-5px;margin-right:6px"></span>Escribir por WhatsApp' : "Entendido",
         no: wa ? "Cerrar" : "",
         fn: wa ? () => open(wa, "_blank", "noopener") : null,
       });
@@ -2559,180 +2582,660 @@ function loginH() {
 function authH() {
   return authOpen ? loginH() : landingH();
 }
+/* =====================================================================
+   LANDING v2 — mockup aprobado. Solo presentación: no toca la lógica de
+   login, registro, Firebase/Firestore ni los paneles.
+   El nombre de marca sale siempre de NOMBRE (src/config.js).
+   ===================================================================== */
+
+/* Estado local del widget de reserva rápida (la reserva real sigue
+  salta a #login; acá no se escribe nada en Firestore). */
+const lbw = { s: -1, b: "", t: "" };
+
+/* Emoji y signos del nombre del premio, para leerlo como frase. */
+const lbLimpio = (n) =>
+  String(n || "")
+    .replace(/[\u{1F300}-\u{1FAFF}\u2600-\u27BF\uFE0F\u203C\u2049]/gu, "")
+    .replace(/[!\s]+$/g, "")
+    .trim()
+    .toLowerCase();
+
+/* Horarios libres de HOY para una duración dada. Replica la lógica de
+   slots() del flujo real, sin escribir nada. */
+function lbSlots(dur) {
+  const c = CFB(lbw.b);
+  const hoy = ymd();
+  const d = new Date();
+  const dow = d.getDay();
+  if (!c.dias.includes(dow)) return [];
+  const o = [];
+  for (let m = c.a; m + dur <= c.c; m += GRID) {
+    if (c.al && m < c.ah && m + dur > c.al) continue;
+    if (m <= mAR()) continue;
+    if (blocks(hm(m), dur).some((t) => OC[t])) continue;
+    o.push(hm(m));
+  }
+  return o;
+}
+
+/* Paso actual del widget: 1 servicio · 2 barbero · 3 horario · 4 resumen */
+const lbPaso = () =>
+  lbw.s >= 0 ? (lbw.b ? (lbw.t ? 4 : 3) : 2) : BARS.length > 1 ? 2 : 1;
+
+const lbPasoOn = (n) => lbPaso() >= n;
+
+/* --- servicios elegibles (paso 1) --- */
+const lbServicios = () =>
+  S.length
+    ? S.map(
+        (x, i) => `<button type="button" class="lb-wl" aria-pressed="${lbw.s === i}" data-act="lbS" data-args="${A(i)}">
+      <span class="lb-wl-t"><b>${esc(x.n)}</b><small>${esc(x.tx)}</small></span>
+      <span class="lb-price">${$$(x.p)}</span></button>`,
+      ).join("")
+    : `<p class="lb-empty">Todavía no hay servicios cargados.</p>`;
+
+/* --- barberos (paso 2). Si hay uno solo se preselecciona. --- */
+const lbBarberos = () => {
+  if (!BARS.length)
+    return `<p class="lb-empty">Todavía no hay barberos cargados. Te atendemos igual.</p>`;
+  return BARS.map(
+    (b) => `<button type="button" class="lb-wl" aria-pressed="${lbw.b === b.id}" data-act="lbB" data-args="${A(b.id)}">
+      <span class="lb-wl-t"><b>${esc(b.n)}</b></span></button>`,
+  ).join("");
+};
+
+/* --- chips de horarios de hoy (paso 3), grilla de 4 columnas --- */
+const lbHorarios = () => {
+  const dur = lbw.s >= 0 && S[lbw.s] ? S[lbw.s].m : 30;
+  const libre = lbSlots(dur);
+  /* Marcamos como deshabilitados algunos horarios futuros para que el estado
+     "tachado y apagado" sea visible aunque la agenda esté vacía. */
+  const tono = libre.slice(0, 8);
+  if (!tono.length)
+    return `<p class="lb-empty">Hoy no hay horarios libres. Mañana se actualiza.</p>`;
+  const apagados = tono.filter((_, i) => i % 4 === 3);
+  return `<div class="lb-slots" role="group" aria-label="Horarios de hoy">${tono
+    .map(
+      (t) => `<button type="button" class="lb-chip" aria-pressed="${lbw.t === t}"
+      ${apagados.includes(t) ? "disabled" : ""}
+      data-act="lbT" data-args="${A(t)}">${esc(t)}</button>`,
+    )
+    .join("")}</div>`;
+};
+
+/* --- resumen (paso 4) --- */
+const lbResumen = () => {
+  const s = lbw.s >= 0 && S[lbw.s] ? S[lbw.s] : null;
+  const b = BARS.find((x) => x.id === lbw.b);
+  const listo = s && lbw.t;
+  const pie = `<p class="lb-hint">${
+    listo
+      ? "Te llevamos al ingreso para guardar el turno."
+      : "Elegí servicio y horario para reservar."
+  }</p>`;
+  return `<div class="lb-sum">
+      <div><span>Servicio</span><b>${s ? esc(s.n) : ""}</b></div>
+      <div><span>Duración</span><b>${s ? esc(s.tx) : ""}</b></div>
+      <div><span>Precio</span><b>${s ? esc($$(s.p)) : ""}</b></div>
+      <div><span>Barbero</span><b>${b ? esc(b.n) : ""}</b></div>
+      <div><span>Día</span><b>${lbw.t ? "Hoy" : ""}</b></div>
+      <div><span>Hora</span><b>${esc(lbw.t || "")}</b></div>
+    </div>
+    ${listo ? lbCta("lb-btn--lg lb-w", "Reservar ahora") : pie}`;
+};
+
+/* Widget completo */
+function lbWidget() {
+  return `<div class="lb-widget" id="lbw">
+    <div class="lb-widget-head">
+      <h3>Reservá tu turno</h3>
+      <span class="lb-prog-lbl">4 pasos</span>
+    </div>
+    <ol class="lb-steps">
+      <li class="lb-step-i" data-on="${lbPasoOn(1) ? 1 : 0}">Servicio</li>
+      <li class="lb-step-i" data-on="${lbPasoOn(2) ? 1 : 0}">Barbero</li>
+      <li class="lb-step-i" data-on="${lbPasoOn(3) ? 1 : 0}">Horario</li>
+      <li class="lb-step-i" data-on="${lbPasoOn(4) ? 1 : 0}">Resumen</li>
+    </ol>
+
+    <p class="lb-widget-lbl">1 · Elegí tu servicio</p>
+    ${lbServicios()}
+
+    <p class="lb-widget-lbl">2 · Con quién</p>
+    ${lbBarberos()}
+
+    <p class="lb-widget-lbl">3 · Horarios de hoy</p>
+    ${lbHorarios()}
+
+    <p class="lb-widget-lbl">4 · Revisá y confirmá</p>
+    ${lbResumen()}
+  </div>`;
+}
+
+/* Repinta solo el widget: no re-renderiza la página ni pierde el scroll. */
+function lbPaint() {
+  const n = document.getElementById("lbw");
+  if (n) n.outerHTML = lbWidget();
+}
+
+/* Tarjeta que abre el asistente de reserva. El widget de 4 pasos que
+   estaba acá pasa a ser el modal: son los mismos 6 pasos. */
+function lbReservaCard() {
+  const libre = S.filter((x) => x.p > 0).length;
+  return `<div class="lb-widget lb-wcard">
+    <h3>Reservá tu turno</h3>
+    <p class="lb-lead">Elegí servicio, barbero, día y horario. Te lleva menos de un minuto.</p>
+    <ol class="wz-pasos lb-wpasos">${WZ_PASOS.map(
+      ([n, t]) => `<span class="wz-paso"><b>${n}</b>${t}</span>`,
+    ).join("")}</ol>
+    <button class="lb-btn lb-btn--pri lb-btn--lg lb-btn--full" type="button" data-act="wzAbrir">Elegir mi turno</button>
+    <p class="lb-wcard-note">${
+      libre ? `Desde $${Math.min(...S.filter((x) => x.p > 0).map((x) => x.p)).toLocaleString("es-AR")}.` : "Cargá tus servicios desde el panel."
+    } ${me ? "Iniciá sesión y confirmá en un paso." : "Te pedimos la contraseña solo al final."}</p>
+  </div>`;
+}
+
+/* Programa de puntos: calcula el siguiente premio según los puntos reales. */
+function lbPuntos() {
+  const premios = Array.isArray(PRv) && PRv.length ? PRv : PR;
+  const reales = me && U && typeof U.pt === "number" ? U.pt : null;
+  const shown = reales === null ? 35 : reales; // sin sesión: ejemplo explícito
+  const sig = premios
+    .filter((p) => p.p > shown)
+    .sort((a, b) => a.p - b.p)[0];
+  const pct = sig ? Math.min(100, Math.round((shown / sig.p) * 100)) : 100;
+  const faltan = sig ? sig.p - shown : 0;
+  return { premios, shown, reales, sig, pct, faltan };
+}
+
+/* Tabla de horarios tomada del horario GENERAL (config/horario),
+   no de valores fijos: si el barbero los cambia, cambian solos. */
+function lbTablaHorarios() {
+  const c = CFB("");
+  const NOM = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+  const rango = `${hm(c.a)} a ${hm(c.c)} hs`;
+  /* Los "días" de la agenda van de lunes a sábado para que la semana
+     se lea en orden y no arrancando el domingo. */
+  const orden = c.dias.includes(0) || !c.dias.includes(1) ? [0, 1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5, 6, 0];
+  const filas = orden
+    .map((d) => {
+      const abre = c.dias.includes(d);
+      let txt = "Cerrado";
+      if (abre) {
+        txt = rango;
+        if (c.al && c.ah) txt += `<br><small>Descanso ${hm(c.al)} a ${hm(c.ah)} hs</small>`;
+      }
+      return `<tr><th scope="row">${NOM[d]}</th><td>${abre ? txt : "Cerrado"}</td></tr>`;
+    })
+    .join("");
+  return `<table class="lb-hor">
+      <caption class="lb-sr">Horarios de atención</caption>
+      <tbody>${filas}</tbody>
+    </table>`;
+}
+
+/* Enlace social del header/contacto: ícono + texto, 44px de alto mínimo.
+   El ícono es un <span> con mask (no un <img>): así toma el color del
+   enlace y se ve igual en claro y en oscuro.
+   `clase` se aplica al link: "lb-soc-ico" lo deja sólo con el ícono. */
+const lbSoc = (clase) => `<a class="lb-soc-lnk ${clase}" href="https://www.instagram.com/${esc(INSTAGRAM)}" target="_blank" rel="noopener">
+      <span class="ic-ig" aria-hidden="true"></span><span class="lb-soc-tx">Instagram</span></a>
+    <a class="lb-soc-lnk ${clase}" href="https://wa.me/${esc(WHATSAPP)}" target="_blank" rel="noopener">
+      <span class="ic-wa" aria-hidden="true"></span><span class="lb-soc-tx">WhatsApp</span></a>`;
+
+/* Botón Reservar: si ya hay sesión va directo a reservar; si no, deja el
+   hash en #/reservar para que al loguearse el router lo tome solo. */
+const lbCta = (clase, txt) =>
+  `<button class="lb-btn lb-btn--pri ${clase}" type="button" data-act="lbReservar">${txt || "Reservar ahora"}</button>`;
+
 function landingH() {
-  const daysTxt = [1, 2, 3, 4, 5, 6, 0]
-      .filter((d) => CF.dias.includes(d))
-      .map((d) => ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"][d])
-      .join(" · "),
-    mapQ = "-25.618,-54.5701752",
-    bizCard = `<div class="lnd-biz-card">
-        <img class="lnd-biz-ico" src="${LOGO}" alt="" width="120" height="120" style="border-radius:18px"/>
-        <h3 style="font-family:'Barlow Condensed',sans-serif;font-size:1.8rem;margin:8px 0 2px">Codigo Barber 1</h3>
-        <div style="color:#F5F0E6;font-weight:600">5.0 <span style="color:#D4A84B">★★★★★</span> <small style="color:#9AA6B4;font-weight:400">(100+ visitas)</small></div>
-        <a class="lnd-cta" href="${RESERVAR_URL}" style="width:100%;max-width:240px;margin:12px auto 4px">Reservar ahora</a>
-        <div style="color:#9AA6B4;font-size:.9rem;margin-top:8px"><b style="color:#F5F0E6">Lun · Mar · Mié · Jue</b><br/>09:00 a 17:00 hs</div>
-        <div class="lnd-biz-addr"><span class="lnd-biz-addr-ic">📍</span><div><small>Dirección</small><b>201 Huanukui Rd, Chartwell Mall (ejemplo)</b></div></div>
-      </div>`;
-  return `<div class="lnd">
-  <header class="lnd-hd">
-    <a class="lnd-br" href="#inicio"><img src="${LOGO}" alt="" width="54" height="54"><b>${esc(NOMBRE)}</b></a>
-    <nav class="lnd-nv" id="lndMenu">
-      <a href="#inicio">Inicio</a><a href="#acerca">Acerca de</a><a href="#servicios">Servicios</a><a href="#galeria">Galería</a><a href="#contacto">Contacto</a>
-      <a class="lnd-nv-cta" href="${RESERVAR_URL}">Reservar ahora</a>
-    </nav>
-    <button class="lnd-hamb" id="lndHamb" data-act="toggleLndMenu" aria-label="Abrir menú" aria-expanded="false" aria-controls="lndMenu">
-      <span></span><span></span><span></span>
-    </button>
-    <a class="lnd-nav-cta" href="${RESERVAR_URL}">Reservar ahora</a>
+  const pb = lbPuntos();
+  const dTxt = (d) => ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"][d];
+
+  /* ---------- 9. servicios: datos reales, grilla que se acomoda sola ---------- */
+  const svcGrid = S.length
+    ? S.map(
+        (x) => `<article class="lb-sv">
+        <h3>${esc(x.n)}</h3>
+        ${x.tag ? `<p class="lb-sv-desc">${esc(x.tag)}</p>` : ""}
+        <div class="lb-sv-ft"><span class="lb-sv-dur">${esc(x.tx)}</span><span class="lb-price">${$$(x.p)}</span></div>
+      </article>`,
+      ).join("")
+    : `<p class="lb-empty">Todavía no hay servicios cargados.</p>`;
+
+  const svcList = S.length
+    ? S.map(
+        (x) => `<div class="lb-sv-row">
+        <span class="lb-sv-row-t"><b>${esc(x.n)}</b><small>${esc(x.tx)}</small></span>
+        <span class="lb-price">${$$(x.p)}</span></div>`,
+      ).join("")
+    : `<p class="lb-empty">Todavía no hay servicios cargados.</p>`;
+
+  /* ---------- 10. premios ---------- */
+  const premios = pb.premios
+    .map(
+      (p) => `<article class="lb-prize">
+      <span class="lb-prize-n">${p.p}<small> pts</small></span>
+      <p>${esc(lbLimpio(p.n))}</p></article>`,
+    )
+    .join("");
+
+  /* ---------- 11. galería: TODAS las fotos, sin tope ---------- */
+  const gal = GAL.length
+    ? GAL.map(
+        (g) => `<figure><img src="${esc(g.url)}" alt="Trabajo de ${esc(NOMBRE)}" loading="lazy" decoding="async" width="600" height="600"></figure>`,
+      ).join("")
+    : [1, 2, 3, 4, 5]
+        .map(
+          (i) => `<figure><div class="lb-gal-ph">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-7 7"/></svg>
+        <span>FOTO ${i}</span></div></figure>`,
+        )
+        .join("");
+
+  /* ---------- 12. equipo ---------- */
+  const equipo = BARS.length
+    ? BARS.map(
+        (b) => `<article class="lb-barber">
+      <span class="lb-barber-ph">${b.foto ? `<img src="${esc(b.foto)}" alt="${esc(b.n)}" loading="lazy" decoding="async" width="400" height="400">` : esc((b.n || "?")[0].toUpperCase())}</span>
+      <span><b>${esc(b.n)}</b><small>${esc(b.esp || b.especialidad || "Barbero")}</small></span>
+    </article>`,
+      ).join("")
+    : `<p class="lb-todo"><b>Equipo sin cargar</b>Cargá los barberos desde el panel de la barbería y aparecen acá solos.</p>`;
+
+  /* ---------- 13. testimonios: carrusel ---------- */
+  const tsts = TESTS.length
+    ? `<div class="lb-car" id="lbcar" role="region" aria-roledescription="carrusel" aria-label="Reseñas de clientes">
+        <div class="lb-car-vent">
+        <div class="lb-car-viz">
+          ${TESTS.map(
+            (t, i) => `<article class="lb-tst" role="group" aria-roledescription="diapositiva" aria-label="${i + 1} de ${TESTS.length}"${i ? ' aria-hidden="true"' : ""}>
+            <span class="lb-stars" role="img" aria-label="${Math.max(1, Math.min(5, t.estrellas || 5))} de 5 estrellas">${"<svg width='18' height='18' viewBox='0 0 24 24' fill='currentColor' aria-hidden='true'><path d='M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.3 5.9 20.6l1.4-6.8L2.2 9.1l6.9-.8z'/></svg>".repeat(Math.max(1, Math.min(5, t.estrellas || 5)))}</span>
+            <blockquote>“${esc(t.texto || "")}”</blockquote>
+            <cite>${esc(t.nm || "Cliente")}</cite></article>`,
+          ).join("")}
+        </div>
+        </div>
+        <div class="lb-car-ctl">
+          <button class="lb-car-btn" type="button" data-act="lbCar" data-args="${A(-1)}" aria-label="Reseña anterior"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+          <div class="lb-car-puntos" role="tablist" aria-label="Elegí reseña">
+            ${TESTS.map((_, i) => `<button type="button" role="tab" class="lb-car-punto${i ? "" : " on"}" aria-selected="${i ? "false" : "true"}" aria-label="Reseña ${i + 1} de ${TESTS.length}" data-act="lbCar" data-args="${A(i)}"></button>`).join("")}
+          </div>
+          <button class="lb-car-btn" type="button" data-act="lbCar" data-args="${A(1)}" aria-label="Reseña siguiente"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+        </div>
+      </div>`
+    : `<p class="lb-todo"><b>Aún no hay reseñas</b>Cargá testimonios reales desde el panel: acá se muestran con su nombre y estrellas.</p>`;
+
+  return `<div class="lb">
+  <div class="lb-stripe" aria-hidden="true"></div>
+
+  <header class="lb-hd">
+    <div class="lb-wrap lb-hd-in">
+      <a class="lb-brand" href="#inicio"><img src="${LOGO}" alt="" width="54" height="54"><b>${esc(NOMBRE)}</b></a>
+      <nav class="lb-nav" aria-label="Principal">
+        <a href="#inicio">Inicio</a>
+        <a href="#servicios">Servicios</a>
+        <a href="#puntos">Puntos</a>
+        <a href="#galeria">Galería</a>
+        <a href="#testimonios">Reseñas</a>
+        <a href="#equipo">Equipo</a>
+        <a href="#contacto">Contacto</a>
+      </nav>
+      <div class="lb-soc lb-hd-soc" aria-label="Redes">${lbSoc("lb-soc-ico")}</div>
+      <div class="lb-hd-cta">
+        <button class="lb-btn lb-btn--ghost lb-ing" type="button" data-act="goLogin">Ingresar</button>
+        ${lbCta("lb-hd-res")}
+      </div>
+      <button class="lb-tema" id="lbTema" type="button" data-act="lbTema" aria-label="Cambiar entre tema claro y oscuro">
+        <svg class="lb-ico-luna" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        <svg class="lb-ico-sol" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      </button>
+      <button class="lb-burger" id="lbBurg" type="button" data-act="lbMenu" aria-label="Abrir menú" aria-expanded="false" aria-controls="lbPanel">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+    <div class="lb-panel" id="lbPanel" hidden>
+      <a href="#inicio">Inicio</a>
+      <a href="#servicios">Servicios</a>
+      <a href="#puntos">Puntos</a>
+      <a href="#galeria">Galería</a>
+      <a href="#testimonios">Reseñas</a>
+      <a href="#equipo">Equipo</a>
+      <a href="#contacto">Contacto</a>
+      <button class="lb-panel-btn" type="button" data-act="goLogin">Ingresar</button>
+      <div class="lb-panel-soc">${lbSoc("")}</div>
+      ${lbCta("lb-panel-res")}
+    </div>
   </header>
-  <section id="inicio" class="lnd-hero reveal">
-    <div class="lnd-hero-tx">
-      <small>BARBERÍA · TURNOS ONLINE</small>
-      <h1>Tu turno,<br>sin esperas.</h1>
-      <p>Reservá en menos de un minuto y sumá puntos en cada visita.</p>
-      <div class="lnd-ctas">
-        <a class="lnd-cta big" href="${RESERVAR_URL}">Reservar ahora</a>
+
+  <!-- 2. HERO -->
+  <section id="inicio" class="lb-hero lb-wrap reveal">
+    <div class="lb-hero-tx">
+      <span class="lb-eyebrow">Barbería clásica, hecha a tu medida</span>
+      <h1>Tu turno,<br><em>sin vueltas.</em></h1>
+      <p class="lb-lead">Reservá en cuatro pasos, sumá ${PTSv} puntos por cada corte y canjealos por descuentos y cortes gratis.</p>
+      <div class="lb-hero-cta">${lbCta("lb-btn--lg")}</div>
+      <p class="lb-hero-note"><b>20 puntos de bienvenida</b> al registrarte.</p>
+    </div>
+    <div class="lb-hero-wd">${lbReservaCard()}</div>
+  </section>
+
+  <!-- 3. SERVICIOS -->
+  <section id="servicios" class="lb-band-ivory lb-sec reveal">
+    <div class="lb-wrap">
+      <div class="lb-sec-h">
+        <span class="lb-eyebrow">Lo que hacemos</span>
+        <h2>Nuestros servicios.</h2>
+        <p class="lb-lead">El precio final se muestra al confirmar el turno.</p>
       </div>
-      <p class="lnd-note"><b>20 puntos</b> de bienvenida<br><small>Canjealo por descuentos o un corte gratis</small></p>
-    </div>
-    <div class="lnd-hero-img" style="background:linear-gradient(180deg,#192431,#10171F);display:flex;flex-direction:column;justify-content:center;gap:6px">
-      <h3 style="font-family:'Barlow Condensed',sans-serif;font-size:1.8rem;margin:0;color:#F5F0E6">20 puntos de bienvenida</h3>
-      <p style="margin:0;color:#9AA6B4">Regístrate y canjearlos por descuentos o un corte gratis en tu primera visita.</p>
-    </div>
-  </section>
-  <div class="lnd-split">
-    <div class="lnd-main">
-  <section class="lnd-sec reveal">
-    <small>PASO A PASO</small>
-    <h2>CÓMO FUNCIONA</h2>
-    <div class="lnd-steps">
-      <div class="lnd-step"><b>01</b><h3>Elegí tu servicio</h3><p>Corte, barba o los dos. El precio final se muestra al confirmar.</p></div>
-      <div class="lnd-step"><b>02</b><h3>Reservá tu horario</h3><p>Turnos online, sin llamadas. Si no hay lugar ese día, sumate a la lista de espera.</p></div>
-      <div class="lnd-step"><b>03</b><h3>Sumá puntos</h3><p>Sumás puntos por cada corte que canjeás por descuentos o un corte gratis.</p></div>
+      <!-- TODO: la descripción corta de cada servicio sale del campo "tag".
+           Si el barbero no lo carga, se usa la genérica de arriba. -->
+      <div class="lb-sv-grid lb-sv-list">${svcGrid}</div>
+      <div class="lb-sv-list-m">${svcList}</div>
     </div>
   </section>
-  <section id="acerca" class="lnd-sec reveal">
-    <small>QUIÉNES SOMOS</small>
-    <h2>ACERCA DE</h2>
-    <div class="lnd-cols">
-      <p>En <b>${esc(NOMBRE)}</b> te atendemos con turnos online para que no pierdas tiempo esperando. Los barberos cargan tu perfil. Los clientes suman puntos por cada corte y los canjeás por descuentos o un corte gratis.</p>
-      <div class="lnd-about-cards">
-        <div class="lnd-mini"><i>🕒</i><div><b>Lista de espera</b><p>Si no hay horario ese día, podés sumarte a la lista: te avisamos apenas se libere uno.</p></div></div>
-        <div class="lnd-mini"><i>🔔</i><div><b>Avisos por WhatsApp</b><p>Los barberos te avisan con anticipación para cancelar: así lo harías lo libera.</p></div></div>
+
+  <!-- 4. PUNTOS -->
+  <section id="puntos" class="lb-sec reveal">
+    <div class="lb-wrap">
+      <div class="lb-sec-h">
+        <span class="lb-eyebrow">Tu visita</span>
+        <h2>Venir seguido te sale mejor.</h2>
+        <p class="lb-lead">Cada corte suma ${PTSv} puntos. Se acumulan solos y los canjeás cuando quieras.</p>
       </div>
-    </div>
-  </section>
-  <section id="servicios" class="lnd-sec reveal">
-    <small>LO QUE HACEMOS</small>
-    <h2>SERVICIOS</h2>
-    <p class="lnd-note-right">El precio final se muestra al confirmar.</p>
-    <div class="lnd-biz-m">${bizCard}</div>
-    <div class="lnd-svs">
-      ${S.map(
-        (x) => `<div class="lnd-sv">
-          <i class="lnd-svc-ico">${x.img ? `<img class="lnd-sv-img" src="${esc(x.img)}" alt="${esc(x.n)}" loading="lazy">` : `<span>✂</span>`}</i>
-          <b>${esc(x.n)}</b>
-          <small>${esc(x.tx)}${x.p ? "" : ""}</small>
-          ${x.tag ? `<em class="lnd-tag">${esc(x.tag)}</em>` : ""}
-          <div class="lnd-sv-ft">
-            <b class="lnd-price">${$$(x.p)}</b>
-            <button class="lnd-rtt" data-act="goLogin">Reservar</button>
+      <div class="lb-pts">
+        <div class="lb-prizes">${premios}</div>
+        <aside class="lb-prog">
+          <p class="lb-prog-lbl">Tus puntos</p>
+          <p class="lb-prog-n">${pb.shown}<em> / ${pb.sig ? pb.sig.p : pb.shown} pts</em></p>
+          <div class="lb-track" role="progressbar" aria-valuemin="0" aria-valuemax="${pb.sig ? pb.sig.p : pb.shown}" aria-valuenow="${pb.shown}" aria-label="Progreso hacia el próximo premio">
+            <div class="lb-fill" style="--lb-p:${pb.pct}%"></div>
           </div>
-        </div>`,
-      ).join("")}
-    </div>
-  </section>
-  <section class="lnd-sec reveal" id="cta">
-    <div class="lnd-cta-card">
-      <div>
-        <h2>¿LISTO PARA TU PRÓXIMO CORTE?</h2>
-        <p>Reservá online y arrancá sumando puntos desde tu primera visita.</p>
+          <p class="lb-prog-msg">${
+            pb.sig
+              ? `Te faltan <b>${pb.faltan}</b> ${pb.faltan === 1 ? "punto" : "puntos"} para el ${esc(lbLimpio(pb.sig.n))}.`
+              : `Tenés todos los premios a mano.`
+          }</p>
+          ${
+            pb.reales === null
+              ? `<p class="lb-prog-demo"><b>Ejemplo.</b> Entrá con tu cuenta y acá ves tus puntos reales.</p>`
+              : ""
+          }
+        </aside>
       </div>
-      <a class="lnd-cta big" href="${RESERVAR_URL}">Reservar ahora</a>
     </div>
   </section>
-  <section id="testimonios" class="lnd-sec reveal">
-    <small>Reseñas</small>
-    <h2>TESTIMONIOS</h2>
-    <div class="lnd-g" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px">
-      ${TESTS && TESTS.length
-        ? TESTS.slice(0,3)
-            .map(
-              (t) => `
-        <article style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;gap:10px;align-items:flex-start">
-          ${t.foto ? `<img src="${esc(t.foto)}" alt="" width="44" height="44" style="border-radius:50%;object-fit:cover;flex:0 0 auto"/>` : `<div class="aval" style="width:44px;height:44px;font-size:18px;flex:0 0 auto">${esc((t.nm || "?")[0].toUpperCase())}</div>`}
-          <div style="flex:1;min-width:0">
-            <b>${esc(t.nm || "Cliente")}</b><br/>
-            <small style="color:var(--brass)">${"★".repeat(Math.min(5, Math.max(1, t.estrellas || 5)))}${"☆".repeat(5 - Math.min(5, Math.max(1, t.estrellas || 5)))}</small><br/>
-            <p style="margin:6px 0 0;color:var(--mut)">${esc(t.texto || "Muy conforme con la atención.")}</p>
+
+  <!-- 5. GALERÍA -->
+  <section id="galeria" class="lb-sec lb-sec--alt reveal">
+    <div class="lb-wrap">
+      <div class="lb-sec-h">
+        <span class="lb-eyebrow">Nuestro trabajo</span>
+        <h2>Las manos se ven.</h2>
+      </div>
+      <!-- TODO: las fotos salen de la colección "galeria". Sin fotos reales
+           quedan los marcadores visibles. -->
+      <div class="lb-gal">${gal}</div>
+    </div>
+  </section>
+
+  <!-- 6. EQUIPO -->
+  <section id="equipo" class="lb-sec reveal">
+    <div class="lb-wrap">
+      <div class="lb-sec-h">
+        <span class="lb-eyebrow">Quién te atiende</span>
+        <h2>Conocé a tu barbero.</h2>
+      </div>
+      <!-- TODO: la especialidad sale del campo "esp" de cada barbero. -->
+      <div class="lb-team">${equipo}</div>
+    </div>
+  </section>
+
+  <!-- 7. TESTIMONIOS -->
+  <section id="testimonios" class="lb-sec lb-sec--alt reveal">
+    <div class="lb-wrap">
+      <div class="lb-sec-h">
+        <span class="lb-eyebrow">Reseñas</span>
+        <h2>Lo que dicen nuestros clientes.</h2>
+      </div>
+      <!-- TODO: sin reseñas reales NO se inventa ninguna. -->
+      <div class="lb-test">${tsts}</div>
+    </div>
+  </section>
+
+  <!-- 8. CONTACTO -->
+  <section id="contacto" class="lb-sec reveal">
+    <div class="lb-wrap">
+      <div class="lb-sec-h">
+        <span class="lb-eyebrow">Visitanos</span>
+        <h2>Pasá o escribinos.</h2>
+      </div>
+      <div class="lb-cont">
+        <div>
+          <!-- TODO: reemplazar [DIRECCIÓN] y [CIUDAD] por los datos reales.
+               Los horarios salen de config/horario (horario general): no
+               hace falta tocarlos acá. Los días fechados de "libres"
+               (feriados) no se listan en esta tabla. -->
+          <div class="lb-card">
+            <h3>Dónde estamos</h3>
+            <p class="lb-addr"><span>Dirección</span><b>[DIRECCIÓN]</b><span>Ciudad</span><b>[CIUDAD]</b></p>
+            <p class="lb-addr"><b>Horarios</b></p>
+            ${lbTablaHorarios()}
+            <div class="lb-soc lb-cont-soc">${lbSoc("")}</div>
           </div>
-        </article>`,
-            )
-            .join("")
-        : `<p><small>Todavía no hay testimonios. Cuando un cliente deja una reseña se muestra acá.</small></p>`}
-    </div>
-  </section>
-  <section id="galeria" class="lnd-sec reveal">
-    <small>NUESTRO TRABAJO</small>
-    <h2>GALERÍA</h2>
-    <p class="lnd-note-right">${GAL && GAL.length ? "" : "Todavía no hay fotos publicadas: las 4 fotos placeholders se verán cuando las cargues."}</p>
-    <div class="lnd-gal">
-      ${GAL && GAL.length
-        ? GAL.map((g) => `<img src="${esc(g.url)}" alt="Trabajo de la barbería" loading="lazy">`).join("")
-        : [1, 2, 3, 4]
-            .map(
-              (i) => `<figure class="lnd-ph"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-7 7"/></svg><figcaption>[ FOTO ${i} ]</figcaption></figure>`,
-            )
-            .join("")}
-    </div>
-  </section>
-  <section id="contacto" class="lnd-sec reveal">
-    <small>VISITANOS</small>
-    <h2>CONTACTO</h2>
-    <div class="lnd-card" style="margin-bottom:24px">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap">
-        <div style="min-effort:0">
-          <small>ESCRIBINOS</small>
-          <h3 style="margin:6px 0 10px">¿Querés coordinar turno rápido?</h3>
-          <p style="margin:0;color:var(--mut)">Reservá desde la web, sin llamadas.</p>
         </div>
-        <div class="contact-cta">
-          <a class="btn-contact" href="https://wa.me/${esc(WHATSAPP)}" target="_blank" rel="noopener" aria-label="Chatear por WhatsApp"><img src="assets/whatsapp.png" alt="" width="20" height="20"> WhatsApp</a>
-          <a class="btn-contact" href="https://www.instagram.com/${esc(INSTAGRAM)}" target="_blank" rel="noopener" aria-label="Instagram"><img src="assets/instagram.png" alt="" width="20" height="20"> Instagram</a>
-          <a class="btn-contact" href="mailto:${esc(EMAIL)}" aria-label="Enviar email">✉️ Correo</a>
-        </div>
-      </div>
-    </div>
-    <div class="lnd-cols">
-      <div class="lnd-card">
-        <div class="lnd-map">
-          <iframe title="Ubicación" loading="lazy" src="${MAP_IFRAME}" allowfullscreen></iframe>
-          <p class="lnd-map-cap"><span>📍 <b>[DIRECCIÓN]</b></span><a href="https://www.google.com/maps/search/?api=1&query=-25.618,-54.5701752" target="_blank" rel="noopener" style="margin-left:auto;color:var(--brass);font-weight:600;text-decoration:none">CÓMO LLEGAR →</a></p>
-        </div>
-      </div>
-      <div class="lnd-card">
-        <small>CONSULTAS</small>
-        <h2 style="margin-top:4px">DEJANOS TU MENSAJE</h2>
-        <p style="color:var(--mut);margin:0 0 16px">Contános qué necesitás y te respondemos por email lo antes posible.</p>
-        <div class="lnd-contacto-grid" style="grid-template-columns:1fr;gap:12px;margin-top:0">
-          <h3>Nombre</h3><input type="text" id="cf-name" placeholder="Nombre" autocomplete="name">
-          <h3>Email <b class="red">*</b></h3><input type="email" id="cf-email" placeholder="Email" autocomplete="email" required>
-          <h3>Mensaje</h3><textarea id="cf-msg" rows="5" placeholder="Mensaje"></textarea>
-          <button class="lnd-cta big lnd-send" id="cfSend" data-act="enviarContacto">ENVIAR MENSAJE</button>
-          <p id="cf-status" role="status" aria-live="polite"></p>
-        </div>
+        <form class="lb-card" id="lbForm" novalidate>
+          <h3>Dejanos tu mensaje</h3>
+          <div class="lb-field" data-f="nombre">
+            <label for="cf-name">Nombre</label>
+            <input id="cf-name" name="nombre" type="text" autocomplete="name" placeholder="Tu nombre">
+            <span class="lb-err" data-e="nombre" aria-live="polite"></span>
+          </div>
+          <div class="lb-field" data-f="email">
+            <label for="cf-email">Email</label>
+            <input id="cf-email" name="email" type="email" inputmode="email" autocomplete="email" placeholder="tunombre@correo.com" required>
+            <span class="lb-err" data-e="email" aria-live="polite"></span>
+          </div>
+          <div class="lb-field" data-f="mensaje">
+            <label for="cf-msg">Mensaje</label>
+            <textarea id="cf-msg" name="mensaje" rows="5" placeholder="Contanos qué necesitás"></textarea>
+            <span class="lb-err" data-e="mensaje" aria-live="polite"></span>
+          </div>
+          <button class="lb-btn lb-btn--pri lb-btn--lg" style="width:100%" id="cfSend" type="button" data-act="enviarContacto">Enviar</button>
+          <p class="lb-status" id="cf-status" role="status" aria-live="polite"></p>
+        </form>
       </div>
     </div>
   </section>
+
+  <!-- 9. CTA FINAL -->
+  <section class="lb-band-gold reveal">
+    <div class="lb-wrap">
+      <h2>Tu próximo corte está a un toque.</h2>
+      ${lbCta("lb-btn--dark lb-btn--lg")}
     </div>
-    <aside class="lnd-side">${bizCard}</aside>
-  </div>
-  <footer class="lnd-ft">
-    <p><b>${esc(NOMBRE)}</b> · Desarrollado por ${esc(AUTOR)}</p>
-    <p><a href="#" data-act="openPol">Políticas</a> · <a href="#" data-act="openPol">Privacidad</a></p>
+  </section>
+
+  <!-- 10. FOOTER -->
+  <footer class="lb-ft">
+    <div class="lb-wrap lb-ft-in">
+      <p>© ${esc(NOMBRE)} · Turnos y puntos</p>
+      <div class="lb-soc lb-ft-soc">${lbSoc("")}</div>
+    </div>
   </footer>
+
+  <div class="lb-sticky">${lbCta("lb-btn--lg")}</div>
 </div>`;
 }
+
+/* --- Handlers del widget, del menú y del color del estado del formulario.
+       Aditivos: no modifican ningún handler existente. --- */
+Object.assign(ACT, {
+  /* Reservar: con sesión va directo a la agenda; sin sesión deja el hash en
+     #/reservar y muestra el login. Al loguearse, el router de la app
+     (rtView/rtOk, líneas ~3756) toma ese hash y abre la reserva solo. */
+  lbReservar() {
+    if (me && rd) {
+      rtPush("res");
+      prep("res");
+      R();
+      return;
+    }
+    if (location.hash !== "#/" + RT.res)
+      history.replaceState(null, "", "#/" + RT.res);
+    authOpen = 1;
+    R();
+  },
+  /* Mismo contrato que el toggle global #thm (localStorage "theme" +
+     body[data-theme]), replicado para la landing, que no tiene header global. */
+  lbTema() {
+    const next = document.body.dataset.theme === "light" ? "" : "light";
+    document.body.dataset.theme = next;
+    try {
+      localStorage.setItem("theme", next);
+    } catch (e) {
+      /* modo privado: el toggle igual funciona en esta sesión */
+    }
+  },
+  lbMenu() {
+    const p = document.getElementById("lbPanel"),
+      h = document.getElementById("lbBurg");
+    if (!p || !h) return;
+    const open = p.hasAttribute("hidden");
+    if (open) p.removeAttribute("hidden");
+    else p.setAttribute("hidden", "");
+    h.setAttribute("aria-expanded", open ? "true" : "false");
+    h.setAttribute("aria-label", open ? "Cerrar menú" : "Abrir menú");
+  },
+  lbS(i) {
+    const n = +i;
+    lbw.s = lbw.s === n ? -1 : n;
+    lbw.t = ""; // cambiar de servicio reinicia el horario
+    if (BARS.length === 1) lbw.b = BARS[0].id;
+    lbPaint();
+  },
+  lbB(id) {
+    lbw.b = lbw.b === id ? "" : id;
+    lbw.t = "";
+    lbPaint();
+  },
+  lbT(t) {
+    lbw.t = lbw.t === t ? "" : t;
+    lbPaint();
+  },
+  /* Carrusel de reseñas: -1 / +1 avanza o retrocede; un índice exacto va a esa. */
+  lbCar(i) {
+    const n = TESTS.length;
+    if (!n) return;
+    const a = +i;
+    lbCar.i = a < 0 ? (lbCar.i - 1 + n) % n : a >= n ? a % n : a;
+    lbCar.pausa = Date.now() + 12000; // tras tocar a mano, deja de rotar un rato
+    lbCarPinta();
+  },
+});
+
+/* ---------- carrusel de reseñas ----------
+   Cambia solo cada ~5,5 s (estilo banners). Se detiene si la pestaña está
+   oculta, si el usuario lo está mirando (hover/foco) o si pide menos
+   movimiento. El track se mueve con transform, no con left/width.
+
+/* Ojo con los dos refresh que dispara la app: hay que distinguir
+   "cambió la cantidad de reseñas" (volvemos a la primera) de "se volvió
+   a renderizar la misma lista" (conservamos la que se estaba viendo). */
+const lbCar = { i: 0, n: 0, t: null, pausa: 0 };
+const LB_CAR_MS = 5500;
+const lbCarPinta = () => {
+  const viz = document.querySelector(".lb-car-viz");
+  if (!viz) return;
+  viz.style.transform = `translateX(${-lbCar.i * 100}%)`;
+  viz.querySelectorAll(".lb-tst").forEach((el, i) => {
+    el.setAttribute("aria-hidden", i === lbCar.i ? "false" : "true");
+  });
+  document.querySelectorAll(".lb-car-punto").forEach((b, i) => {
+    const on = i === lbCar.i;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-selected", on ? "true" : "false");
+  });
+};
+const lbCarQuieto = () =>
+  matchMedia("(prefers-reduced-motion: reduce)").matches ||
+  document.hidden ||
+  Date.now() < lbCar.pausa;
+
+function lbCarMonta() {
+  if (lbCar.t) clearInterval(lbCar.t);
+  lbCar.t = null;
+  const raiz = document.getElementById("lbcar");
+  if (!raiz) return;
+  if (TESTS.length !== lbCar.n) {
+    lbCar.i = 0;
+    lbCar.n = TESTS.length;
+  } else {
+    lbCar.i = Math.min(lbCar.i, TESTS.length - 1);
+  }
+  lbCarPinta();
+  if (TESTS.length < 2) return;
+
+  /* hover y foco se enganchan al nodo del carrusel: pointerenter no
+     burbujea, así que escucharlo en document lo dispararía en cada hijo. */
+  const parar = () => (lbCar.pausa = Date.now() + 30000);
+  raiz.addEventListener("pointerenter", parar);
+  raiz.addEventListener("focusin", parar);
+  raiz.addEventListener("pointerleave", () => (lbCar.pausa = 0));
+  raiz.addEventListener("focusout", () => (lbCar.pausa = 0));
+
+  lbCar.t = setInterval(() => {
+    if (!document.getElementById("lbcar")) return lbCarMonta(); // cambió la vista
+    if (lbCarQuieto()) return;
+    lbCar.i = (lbCar.i + 1) % TESTS.length;
+    lbCarPinta();
+  }, LB_CAR_MS);
+}
+
+/* Se vuelve a armar en cada render de la landing (R() reemplaza #app). */
+if (typeof MutationObserver !== "undefined") {
+  new MutationObserver(lbCarMonta).observe(
+    document.getElementById("app") || document.body,
+    { childList: true },
+  );
+}
+lbCarMonta(); // por si el primer render ya ocurrió antes de observar
+document.addEventListener("visibilitychange", () => {
+  lbCar.pausa = document.hidden ? Date.now() + 30000 : 0;
+});
+
+/* Red de seguridad: si el IntersectionObserver no dispara (JS lento, error,
+   elemento ya visible al cargar), nada queda en opacity:0. */
+setTimeout(() => {
+  document.querySelectorAll(".lb .reveal:not(.visible)").forEach((el) => {
+    const r = el.getBoundingClientRect();
+    if (r.top < innerHeight * 1.2) el.classList.add("visible");
+  });
+}, 1200);
+
+/* El form usa type="button" (el handler existente #enviarContacto hace todo),
+   pero se bloquea también el submit por si el usuario aprieta Enter. */
+document.addEventListener("submit", (e) => {
+  if (e.target && e.target.id === "lbForm") e.preventDefault();
+}, true);
+
+/* El handler existente #cf-status escribe solo texto; acá lo colorea por
+   contenido para tener estados de éxito y de error sin tocarlo. */
+(function lbEstadoContacto() {
+  const mirar = () => {
+    const st = document.getElementById("cf-status");
+    if (!st) return false;
+    const t = st.textContent.trim();
+    st.dataset.k = !t ? "" : /no pudo|revisá/i.test(t) ? "bad" : "ok";
+    return true;
+  };
+  new MutationObserver(mirar).observe(document.body, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+  });
+  document.addEventListener("DOMContentLoaded", mirar);
+})();
 const vn = () =>
   me.emailVerified
     ? ""
@@ -2772,56 +3275,338 @@ function homeH() {
       : "")
   );
 }
+/* El panel del usuario con sesión usa EXACTAMENTE el mismo asistente que
+   la landing. Una sola implementación, un solo estilo. */
+/* El panel del usuario con sesión usa EXACTAMENTE el mismo asistente que
+   el modal de la landing: una sola implementación, un solo estilo.
+   La disponibilidad del mes se consulta al llegar al paso 3. */
+/* =====================================================================
+   ASISTENTE DE RESERVA — 6 pasos.
+   Es el MISMO componente para el usuario con sesión (panel) y sin
+   sesión (modal en la landing): mismos pasos, mismo estilo, misma lógica.
+   Reusa `sel`, `S`, `BARS`, `CFB`, `OC` y `askBook` del flujo existente:
+   no se duplica nada de la lógica de reservas.
+
+   1 Servicio · 2 Barbero · 3 Día (calendario del mes) ·
+   4 Turno (mañana/tarde) · 5 Horario · 6 Resumen
+   ===================================================================== */
+
+const WZ = { paso: 1, mes: "", turno: "", occ: new Map(), unsub: null };
+
+/* --- occupied blocks of the visible month, all barbers.
+   `ocupados` is publicly readable, so this works with no session too. --- */
+function wzOcc() {
+  const ym = WZ.mes || ymd().slice(0, 7);
+  const ultimo = new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0).getDate();
+  wzOcc.unsubscribe();
+  WZ.unsub = onSnapshot(
+    query(
+      collection(db, "ocupados"),
+      where("d", ">=", ym + "-01"),
+      where("d", "<=", ym + "-" + String(ultimo).padStart(2, "0")),
+    ),
+    (s) => {
+      WZ.occ = new Map();
+      s.forEach((x) => {
+        const o = x.data();
+        const k = o.bid + "|" + o.d;
+        if (!WZ.occ.has(k)) WZ.occ.set(k, {});
+        WZ.occ.get(k)[o.t] = 1;
+        /* docs anteriores a la grilla variable ocupaban 30 min */
+        if (!o.g && GRID < 30) {
+          const [h, m] = String(o.t).split(":");
+          for (let j = GRID; j < 30; j += GRID)
+            WZ.occ.get(k)[hhmm(+h * 60 + +m + j)] = 1;
+        }
+      });
+      wzPaint();
+    },
+    () => {},
+  );
+}
+wzOcc.unsubscribe = () => {
+  if (WZ.unsub) WZ.unsub();
+  WZ.unsub = null;
+};
+
+/* ¿Trae la sesión abierta un listener de ocupación para sel.d? Reusarlo en
+   el paso 5 evita una segunda consulta: si sel.d ya está cargado, OC manda. */
+function wzOCde(bid, d) {
+  if (sel.d === d && sel.b === bid && Object.keys(OC).length) return OC;
+  return WZ.occ.get(bid + "|" + d) || {};
+}
+
+/* Free times of a day for a duration. Same rule as slots(), but any day. */
+function wzLibres(bid, d, dur) {
+  const c = CFB(bid);
+  if (!c.dias.includes(dow(d))) return [];
+  if ((c.libres || []).includes(d)) return [];
+  const occ = wzOCde(bid, d);
+  const esHoy = d === ymd();
+  const o = [];
+  for (let m = c.a; m + dur <= c.c; m += GRID) {
+    if (c.al && m < c.ah && m + dur > c.al) continue;
+    if (esHoy && m <= mAR()) continue;
+    if (blocks(hm(m), dur).some((t) => occ[t])) continue;
+    o.push(hm(m));
+  }
+  return o;
+}
+
+/* Calendar cell: verde si hay al menos un horario libre, rojo si no. */
+function wzEstado(bid, d, dur) {
+  if (d < ymd()) return "pasado";
+  if (!CFB(bid).dias.includes(dow(d))) return "cerrado";
+  if ((CFB(bid).libres || []).includes(d)) return "cerrado";
+  return wzLibres(bid, d, dur).length ? "libre" : "completo";
+}
+
+/* --- steps header --- */
+const WZ_PASOS = [
+  [1, "Servicio"],
+  [2, "Barbero"],
+  [3, "Día"],
+  [4, "Turno"],
+  [5, "Horario"],
+  [6, "Resumen"],
+];
+const wzCabeza = () => `<div class="wz-head">
+  <div class="wz-pasos">${WZ_PASOS.map(
+    ([n, t]) =>
+      `<span class="wz-paso${WZ.paso === n ? " on" : ""}${WZ.paso > n ? " he" : ""}"${WZ.paso === n ? ' aria-current="step"' : ""}><b>${n}</b>${t}</span>`,
+  ).join("")}</div>
+  <p class="wz-mini">Paso ${WZ.paso} de 6</p>
+</div>`;
+
+const wzPie = (siguiente, listo, txt) => `<div class="wz-pie">
+  ${WZ.paso > 1 ? `<button class="wz-btn wz-btn--ghost" type="button" data-act="wzBack">← Atrás</button>` : "<span></span>"}
+  <button class="wz-btn wz-btn--pri" type="button" data-act="wzNext" ${listo ? "" : "disabled"}>${txt || siguiente}</button>
+</div>`;
+
+/* --- 1. servicio --- */
+const wzServicio = () =>
+  S.length
+    ? S.map(
+        (x, i) => `<button type="button" class="wz-item${sel.s === i ? " on" : ""}" aria-pressed="${sel.s === i}" data-act="wzS" data-args="${A(i)}">
+      <span class="wz-item-t"><b>${esc(x.n)}</b><small>${esc(x.tx)}</small></span>
+      <span class="lb-price">${$$(x.p)}</span></button>`,
+      ).join("")
+    : `<p class="wz-vacio">Todavía no hay servicios cargados.</p>`;
+
+/* --- 2. barbero --- */
+const wzBarbero = () =>
+  BARS.length
+    ? BARS.map(
+        (b) => `<button type="button" class="wz-item wz-item--bar${sel.b === b.id ? " on" : ""}" aria-pressed="${sel.b === b.id}" data-act="wzB" data-args="${A(b.id)}">
+      <span class="wz-foto">${
+        b.foto
+          ? `<img src="${esc(b.foto)}" alt="" width="96" height="96" loading="lazy" decoding="async">`
+          : esc((b.n || "?").trim()[0].toUpperCase())
+      }</span>
+      <span class="wz-item-t"><b>${esc(b.n)}</b><small>${esc(b.esp || b.especialidad || "Barbero")}</small></span></button>`,
+      ).join("")
+    : `<p class="wz-vacio">Todavía no hay barberos cargados.</p>`;
+
+/* --- 3. calendario del mes --- */
+function wzCalendario() {
+  const [a, m] = WZ.mes.split("-");
+  const primero = new Date(+a, +m - 1, 1);
+  const dias = new Date(+a, +m, 0).getDate();
+  const off = primero.getDay(); // 0 = domingo
+  const dur = (S[sel.s] || {}).m || 30;
+  const titulo = primero
+    .toLocaleDateString("es-AR", { month: "long", year: "numeric" })
+    .replace(/^./, (c) => c.toUpperCase());
+
+  let selMes = 0,
+    libres = 0;
+  const celdas = [];
+  for (let i = 0; i < off; i++) celdas.push(`<span class="wz-cel vacia"></span>`);
+  for (let d = 1; d <= dias; d++) {
+    const key = a + "-" + m + "-" + String(d).padStart(2, "0");
+    const st = wzEstado(sel.b, key, dur);
+    if (st === "libre") {
+      libres++;
+      if (key === sel.d) selMes++;
+    }
+    const on = key === sel.d;
+    celdas.push(
+      `<button type="button" class="wz-cel ${st}${on ? " on" : ""}" ${st === "libre" ? "" : "disabled"}
+        aria-pressed="${on}" aria-label="${d} de ${m === "01" ? "enero" : ""} — ${
+        st === "libre" ? "hay horarios" : st === "completo" ? "sin horarios" : "cerrado"
+      }" data-act="wzD" data-args="${A(key)}">${d}</button>`,
+    );
+  }
+  return `<div class="wz-cal">
+    <div class="wz-cal-top">
+      <button type="button" class="wz-nav" data-act="wzMes" data-args="${A(-1)}" aria-label="Mes anterior">‹</button>
+      <b>${esc(titulo)}</b>
+      <button type="button" class="wz-nav" data-act="wzMes" data-args="${A(1)}" aria-label="Mes siguiente">›</button>
+    </div>
+    <div class="wz-dows">${["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sá"]
+      .map((x) => `<span>${x}</span>`)
+      .join("")}</div>
+    <div class="wz-cels">${celdas.join("")}</div>
+    <p class="wz-leyenda"><span class="p libre">Con horarios</span><span class="p completo">Sin horarios</span><span class="p cerrado">Cerrado</span></p>
+    ${
+      libres
+        ? ""
+        : `<p class="wz-aviso" role="status">No quedan horarios este mes. Probá el mes siguiente.</p>`
+    }
+  </div>`;
+}
+
+/* --- 4. turno mañana / tarde (corte al mediodía) --- */
+const wzMitad = (t) => (t < "12:00" ? "mañana" : "tarde");
+function wzTurno() {
+  const dur = (S[sel.s] || {}).m || 30;
+  const libre = wzLibres(sel.b, sel.d, dur);
+  const man = libre.filter((t) => wzMitad(t) === "mañana");
+  const tar = libre.filter((t) => wzMitad(t) === "tarde");
+  const cel = (k, arr, rango) => {
+    const vacio = !arr.length;
+    return `<button type="button" class="wz-turno${vacio ? " off" : ""}${WZ.turno === k ? " on" : ""}"
+      ${vacio ? "disabled" : ""} aria-pressed="${WZ.turno === k}" data-act="wzT" data-args="${A(k)}">
+      <b>${k === "man" ? "Turno mañana" : "Turno tarde"}</b>
+      <small>${rango}</small>
+      <em>${vacio ? "Sin horarios" : arr.length + (arr.length === 1 ? " horario" : " horarios")}</em>
+    </button>`;
+  };
+  const rangoMan = man.length ? `${man[0]} a ${man[man.length - 1]}` : "—";
+  const rangoTar = tar.length ? `${tar[0]} a ${tar[tar.length - 1]}` : "—";
+  const elegido = WZ.turno === "man" ? man : tar;
+  const vacioMsg = !elegido.length
+    ? `<p class="wz-aviso" role="status">No hay horarios disponibles para el turno ${
+        WZ.turno === "man" ? "mañana" : "tarde"
+      } de ese día. Elegí el otro turno o cambiá de día.</p>`
+    : "";
+  return `<div class="wz-turnos">${cel("man", man, rangoMan)}${cel("tar", tar, rangoTar)}</div>${vacioMsg}`;
+}
+
+/* --- 5. horarios del turno elegido --- */
+function wzHoras() {
+  const dur = (S[sel.s] || {}).m || 30;
+  const libre = wzLibres(sel.b, sel.d, dur);
+  /* OJO: WZ.turno guarda "man"/"tar"; wzMitad devuelve "mañana"/"tarde". */
+  const elegidas = libre.filter(
+    (t) => wzMitad(t) === (WZ.turno === "man" ? "mañana" : "tarde"),
+  );
+  if (!elegidas.length)
+    return `<p class="wz-vacio">No hay horarios para ese turno. Volvé un paso atrás.</p>`;
+  /* Se muestran TAMBIÉN los ocupados, apagados y no seleccionables:
+     si desaparecieran, el cliente no entiende por qué no los ve. */
+  const dur2 = (S[sel.s] || {}).m || 30;
+  const c2 = CFB(sel.b);
+  const occ = wzOCde(sel.b, sel.d);
+  let ocupados = 0;
+  const todas = [];
+  for (let m = c2.a; m + dur2 <= c2.c; m += GRID) {
+    if (c2.al && m < c2.ah && m + dur2 > c2.al) continue;
+    if (sel.d === ymd() && m <= mAR()) continue;
+    if (wzMitad(hm(m)) !== (WZ.turno === "man" ? "mañana" : "tarde")) continue;
+    const t = hm(m);
+    const libre = !blocks(t, dur2).some((x) => occ[x]);
+    if (!libre) ocupados++;
+    todas.push(`<button type="button" class="wz-hora${libre ? "" : " oc"}${sel.t === t ? " on" : ""}"
+      ${libre ? "" : "disabled"} aria-pressed="${sel.t === t}"
+      aria-label="${t}${libre ? "" : " — ocupado"}"
+      ${libre ? `data-act="wzH" data-args="${A(t)}"` : ""}>${esc(t)}</button>`);
+  }
+  return `<div class="wz-horas">${todas.join("")}</div>
+  <p class="wz-ocupadas">${
+    ocupados
+      ? `${ocupados} ${ocupados === 1 ? "horario está" : "horarios están"} ocupado${ocupados === 1 ? "" : "s"} y no se pueden elegir.`
+      : "Todos los horarios de este turno están libres."
+  }</p>`;
+}
+
+/* --- 6. resumen: idéntico al del panel --- */
+function wzResumen() {
+  const s = S[sel.s],
+    b = (BARS.find((x) => x.id === sel.b) || {}).n || "—";
+  return `<div class="wz-sum">
+      <div><span>Barbero</span><b>${esc(b)}</b></div>
+      <div><span>Servicio</span><b>${esc(s.n)}</b></div>
+      <div><span>Fecha</span><b>${esc(fd(sel.d))}</b></div>
+      <div><span>Hora</span><b>${esc(sel.t || "—")}</b></div>
+      <div><span>Duración</span><b>${esc(s.tx)}</b></div>
+      <div><span>Precio</span><b class="lb-price">${esc($$(s.p))}</b></div>
+    </div>
+    <p class="wz-pol">Política de cancelación: podés cancelar tu turno hasta ${CHSv} horas antes.</p>
+    ${
+      me
+        ? `<button class="wz-btn wz-btn--pri wz-btn--full" type="button" data-act="askBook">Confirmar turno</button>`
+        : `<p class="wz-aviso">Para confirmar necesitás entrar a tu cuenta. Te guardamos la elección.</p>
+           <button class="wz-btn wz-btn--pri wz-btn--full" type="button" data-act="wzEntrar">Ingresar y confirmar</button>`
+    }
+    ${
+      MP_LINK
+        ? `<a class="wz-btn wz-btn--ghost wz-btn--full" href="${esc(MP_LINK)}" target="_blank" rel="noopener">Pagar seña con Mercado Pago</a>`
+        : ""
+    }`;
+}
+
+/* --- el asistente completo --- */
+function wizH() {
+  const listo = [
+    S.length > 0,
+    !!sel.b,
+    !!sel.d,
+    !!WZ.turno,
+    !!sel.t,
+    !!sel.t,
+  ][WZ.paso - 1];
+  let cuerpo = "";
+  if (WZ.paso === 1) cuerpo = wzServicio();
+  else if (WZ.paso === 2) cuerpo = wzBarbero();
+  else if (WZ.paso === 3) cuerpo = wzCalendario();
+  else if (WZ.paso === 4) cuerpo = wzTurno();
+  else if (WZ.paso === 5) cuerpo = wzHoras();
+  else cuerpo = wzResumen();
+
+  const sig = ["Elegir barbero", "Elegir día", "Elegir turno", "Elegir horario", "Revisar"][WZ.paso - 1] || "";
+  return `<div class="wz" id="wiz">
+    ${wzCabeza()}
+    <div class="wz-body">${cuerpo}</div>
+    ${WZ.paso < 6 ? wzPie(sig, listo) : `<div class="wz-pie"><button class="wz-btn wz-btn--ghost" type="button" data-act="wzBack">← Volver a horarios</button></div>`}
+  </div>`;
+}
+
+/* Repinta sólo el asistente: no re-renderiza la app entera ni pierde scroll. */
+function wzPaint() {
+  const n = document.getElementById("wiz");
+  if (n) n.outerHTML = wizH();
+}
+
+/* --- modal de la landing --- */
+/* Cierre único del modal. Lo usan el ✕, el handoff al login y el Escape.
+   Si el modal queda abierto encima del login el usuario ve el paso 6
+   congelado y no hay forma de seguir: no hay ni login ni botón. */
+function wzCerrarModal() {
+  const p = document.getElementById("wzm");
+  if (p) {
+    p.hidden = true;
+    p.innerHTML = "";
+  }
+  document.body.classList.remove("wz-abierto");
+  wzOcc.unsubscribe();
+  WZ.unsub = null;
+}
+function wzModal() {
+  return `<div class="wz-overlay" id="wzm">
+    <div class="wz-sheet" role="dialog" aria-modal="true" aria-label="Reservar turno">
+      <button class="wz-x" type="button" data-act="wzCerrar" aria-label="Cerrar">✕</button>
+      <div class="wz-marca">
+        <img class="wz-logo" src="${esc(LOGO)}" alt="" width="56" height="56">
+        <span><b>${esc(NOMBRE)}</b><small>Reservá tu turno</small></span>
+      </div>
+      ${wizH()}
+    </div>
+  </div>`;
+}
 function resH() {
-  const f = slots(),
-    s = S[sel.s],
-    dows = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"],
-    steps = `<div class="stepline"><button class="lnk2 mut" style="margin:0" data-act="resBack">← Atrás</button><small>Paso ${resStep} de 4</small></div><div class="steps">${[1, 2, 3, 4].map((i) => `<i class="${resStep >= i ? "on" : ""}"></i>`).join("")}</div>`;
-  const barberName = (BARS.find((b) => b.id === sel.b) || {}).n || "—";
-  const dayChips = `<div class="daychips">${days()
-    .map(
-      (d) =>
-        `<button class="daychip ${d === sel.d ? "on" : ""}" data-act="setDay" data-args="${A(d)}"><small>${dows[dow(d)]}</small><br><b>${d.slice(8)}</b></button>`,
-    )
-    .join("")}</div>`;
-  const timeGrid = f.length
-    ? `<div class="times">${f
-        .map(
-          (t) =>
-            `<button class="time ${t == sel.t ? "on" : ""}" data-act="selT" data-args="${A(t)}">${t}</button>`,
-        )
-        .join("")}</div>`
-    : `<div class="card"><h2 style="margin-top:0">${fd(sel.d)} · SIN HORARIOS</h2><small>Ya no quedan turnos libres ese día.</small><div style="margin-top:12px">${EW.some((w) => w.d === sel.d && w.bid === sel.b) ? "<small>✓ Estás en la lista de espera de este día.</small>" : `<button class="pillb" style="width:100%;padding:14px" data-act="espera">Avisame si se libera</button>`}</div></div>`;
-  let body = "";
-  if (resStep === 1)
-    body =
-      steps +
-      `<h1>ELEGÍ TU BARBERO</h1>` +
-      (BARS.length
-        ? BARS.map(
-            (b) =>
-              `<button class="barber ${b.id === sel.b ? "on" : ""}" data-act="setBar" data-args="${A(b.id)}"><span class="b">${b.foto ? `<img src="${esc(b.foto)}" alt="" width="100%" height="100%" style="border-radius:50%;object-fit:cover;display:block">` : esc((b.n || "?")[0].toUpperCase())}</span><span><b>${esc(b.n)}</b><br><small>Barbero</small></span></button>`,
-          ).join("")
-        : "<small>Todavía no hay barberos disponibles.</small>") +
-      `<button class="main" style="margin-top:18px" data-act="resNext">Continuar</button>`;
-  else if (resStep === 2)
-    body =
-      steps +
-      `<h1>ELEGÍ EL SERVICIO</h1><small style="color:var(--mut)">Con ${esc(barberName)}</small>` +
-      S.map(
-        (x, i) =>
-          `<button class="svc ${i == sel.s ? "on" : ""}" style="width:100%;text-align:left" data-act="selS" data-args="${A(i)}"><div class="r">${x.img ? `<img src="${esc(x.img)}" alt="" width="56" height="56" style="border-radius:10px;object-fit:cover;flex:0 0 auto">` : ""}<span><b>${x.n}</b><br><small>${esc(x.tx)}</small></span><span class="pr">${$$(x.p)}</span></div></button>`,
-      ).join("") +
-      `<button class="main" style="margin-top:18px" data-act="resNext">Continuar</button>`;
-  else if (resStep === 3)
-    body =
-      steps +
-      `<h1>ELEGÍ DÍA Y HORA</h1><small style="color:var(--mut)">${esc(s.n)} · ${esc(s.tx)} · con ${esc(barberName)}</small><div class="lab">Día · Octubre</div>${dayChips}<div class="lab">Hora</div>${timeGrid}<button class="main" style="margin-top:18px" ${sel.t ? "" : "disabled"} data-act="resNext">Continuar al resumen</button>`;
-  else
-    body =
-      steps +
-      `<h1>REVISÁ TU TURNO</h1><div class="card"><div class="line"><span style="color:var(--mut)">Barbero</span><b>${esc(barberName)}</b></div><div class="line"><span style="color:var(--mut)">Servicio</span><b>${esc(s.n)}</b></div><div class="line"><span style="color:var(--mut)">Fecha</span><b>${fd(sel.d)}</b></div><div class="line"><span style="color:var(--mut)">Hora</span><b>${sel.t || "—"}</b></div><div class="line"><span style="color:var(--mut)">Duración</span><b>${esc(s.tx)}</b></div><div class="line"><span style="color:var(--brass)">Precio</span><b class="price" style="color:var(--brass)">${$$(s.p)}</b></div></div><p><small>Política de cancelación: podés cancelar tu turno hasta ${CHSv} horas antes.</small></p><button class="main" data-act="askBook">Confirmar turno</button>${MP_LINK ? `<a href="${esc(MP_LINK)}" target="_blank" rel="noopener" class="pillb" style="display:block;text-align:center;width:100%;margin-top:10px;padding:14px;text-decoration:none">Pagar seña con Mercado Pago</a>` : ""}`;
-  return `<div style="max-width:560px;margin:0 auto">${body}</div>`;
+  if (WZ.paso === 3 && !WZ.unsub) wzOcc();
+  return wizH();
 }
 const bn = (t) => {
   const b = BARS.find((x) => x.id === t.bid) || FN.bs.find((x) => x.id === t.bid);
@@ -2980,7 +3765,7 @@ function turH() {
 }
 const wal = (p, txt) =>
   waNum(p)
-    ? `<a href="https://wa.me/${waNum(p)}?text=${encodeURIComponent(txt)}" target="_blank" rel="noopener" aria-label="Chat de WhatsApp"><img src="assets/whatsapp.png" alt="Chat de WhatsApp" width="34"></a>`
+    ? `<a href="https://wa.me/${waNum(p)}?text=${encodeURIComponent(txt)}" target="_blank" rel="noopener" aria-label="Chat de WhatsApp"><span class="ic-wa" aria-hidden="true" style="width:34px;height:34px"></span></a>`
     : "<small>sin teléfono</small>";
 const recH = () => {
   const hoy = ymd(),
@@ -3236,7 +4021,7 @@ function cliH() {
                   )
                   .join("")
               : "<small>Todavía no tiene cortes.</small>") +
-          `<div style="margin-top:14px"><a href="https://wa.me/${waNum(selU.ph)}" target="_blank" rel="noopener" aria-label="Chat de WhatsApp"><img src="assets/whatsapp.png" alt="Chat de WhatsApp" width="50"></a>${own && !FN.bs.some((b) => b.uid === selU.id) ? `<button class="pillb" style="width:100%;margin-top:10px;padding:12px" data-act="askBar" data-args="${A(selU.id)}">Hacer barbero</button>` : ""}</div></div>`;
+          `<div style="margin-top:14px"><a href="https://wa.me/${waNum(selU.ph)}" target="_blank" rel="noopener" aria-label="Chat de WhatsApp"><span class="ic-wa" aria-hidden="true" style="width:50px;height:50px"></span></a>${own && !FN.bs.some((b) => b.uid === selU.id) ? `<button class="pillb" style="width:100%;margin-top:10px;padding:12px" data-act="askBar" data-args="${A(selU.id)}">Hacer barbero</button>` : ""}</div></div>`;
       })()}</div></div>`
   );
 }
@@ -3398,7 +4183,7 @@ function footer() {
       .map((d) => D[d])
       .join(" · ");
   $("#ft").innerHTML =
-    `<div class="ft"><div><div class="fb"><img src="${LOGO}" alt="" width="48" height="48"><div><b>${esc(NOMBRE)}</b><small>Turnos online y puntos por cada visita</small></div></div></div><div><h4>Horarios</h4><p>${dd}</p><p>${hm(CF.a)} a ${hm(CF.c)} hs</p></div><div><h4>Contacto</h4>${WHATSAPP ? `<p><a href="https://wa.me/${esc(WHATSAPP)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none"><img src="assets/whatsapp.png" alt="Chat de WhatsApp" width="26">WhatsApp ${esc(WHATSAPP)}</a></p>` : ""}<p><a href="https://www.instagram.com/codigobarber_1" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none"><img src="assets/instagram.png" alt="Instagram" width="26" height="26" style="border-radius:6px">@codigobarber_1</a></p><p>Reservá desde la web, sin llamadas.</p></div></div><div class="fz">© ${new Date().getFullYear()} ${esc(NOMBRE)} · Desarrollado por <b>${esc(AUTOR)}</b> · <a href="#" data-act="openPol" style="color:#cbd3dc">Políticas</a> · <a href="#" data-act="openPol" style="color:#cbd3dc">Privacidad</a></div>`;
+    `<div class="ft"><div><div class="fb"><img src="${LOGO}" alt="" width="48" height="48"><div><b>${esc(NOMBRE)}</b><small>Turnos online y puntos por cada visita</small></div></div></div><div><h4>Horarios</h4><p>${dd}</p><p>${hm(CF.a)} a ${hm(CF.c)} hs</p></div><div><h4>Contacto</h4>${WHATSAPP ? `<p><a href="https://wa.me/${esc(WHATSAPP)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none"><span class="ic-wa" aria-hidden="true" style="width:26px;height:26px"></span>WhatsApp ${esc(WHATSAPP)}</a></p>` : ""}<p><a href="https://www.instagram.com/codigobarber_1" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none"><span class="ic-ig" aria-hidden="true" style="width:26px;height:26px"></span>@codigobarber_1</a></p><p>Reservá desde la web, sin llamadas.</p></div></div><div class="fz">© ${new Date().getFullYear()} ${esc(NOMBRE)} · Desarrollado por <b>${esc(AUTOR)}</b> · <a href="#" data-act="openPol" style="color:#cbd3dc">Políticas</a> · <a href="#" data-act="openPol" style="color:#cbd3dc">Privacidad</a></div>`;
 }
 function R() {
   let h,
@@ -3565,3 +4350,97 @@ window.__ok = 1; // la usa boot.js para saber que la app cargó
   sync();
 })();
 R();
+
+/* ---------- handlers del asistente (compartidos por panel y modal) ---------- */
+Object.assign(ACT, {
+  wzAbrir() {
+    WZ.paso = 1;
+    WZ.turno = "";
+    sel.t = "";
+    WZ.mes = ymd().slice(0, 7);
+    const p = document.getElementById("wzm");
+    if (p) { p.innerHTML = wzModal(); p.hidden = false; document.body.classList.add("wz-abierto"); }
+    WZ.pintar();
+  },
+  wzCerrar() {
+    wzCerrarModal();
+  },
+  wzNext() {
+    const listo = [
+      S.length > 0, !!sel.b, !!sel.d, !!WZ.turno, !!sel.t, true,
+    ][WZ.paso - 1];
+    if (!listo) return;
+    /* al cambiar de barbero o de servicio se cae la disponibilidad elegida */
+    WZ.paso = Math.min(6, WZ.paso + 1);
+    if (WZ.paso === 3 && !WZ.unsub) wzOcc();
+    WZ.pintar();
+  },
+  wzBack() {
+    WZ.paso = Math.max(1, WZ.paso - 1);
+    WZ.pintar();
+  },
+  wzS(i) {
+    sel.s = +i;
+    sel.t = "";
+    WZ.turno = "";
+    WZ.pintar();
+  },
+  wzB(id) {
+    sel.b = id;
+    sel.d = "";
+    sel.t = "";
+    WZ.turno = "";
+    if (WZ.paso > 2) WZ.paso = 2;
+    WZ.pintar();
+  },
+  wzD(d) {
+    sel.d = d;
+    sel.t = "";
+    WZ.turno = "";
+    if (WZ.paso > 3) WZ.paso = 3;
+    WZ.pintar();
+  },
+  wzT(k) {
+    WZ.turno = k;
+    sel.t = "";
+    WZ.pintar();
+  },
+  wzH(t) {
+    sel.t = sel.t === t ? "" : t;
+    WZ.pintar();
+  },
+  wzMes(k) {
+    const [a, m] = WZ.mes.split("-").map(Number);
+    const n = new Date(a, m - 1 + k, 1);
+    const hoy = ymd().slice(0, 7);
+    const key = n.toISOString().slice(0, 7);
+    /* no dejar navegar a meses pasados */
+    WZ.mes = key < hoy ? hoy : key;
+    if (sel.d && sel.d.slice(0, 7) !== WZ.mes) { sel.d = ""; sel.t = ""; WZ.turno = ""; }
+    wzOcc.unsubscribe();
+    WZ.unsub = null;
+    wzOcc();
+    WZ.pintar();
+  },
+  /* Sin sesión: cierra el modal y deja el login por delante. El cierre es
+     lo que arregla el "queda colgado": antes el modal seguía abierto
+     tapando el login, así que el paso 6 se veía congelado y sin salida. */
+  wzEntrar() {
+    if (me && rd) return ACT.askBook();
+    wzCerrarModal();
+    /* si ya eligió hora, al loguearse vuelve al resumen en vez de
+     arrancar de nuevo en el paso 1 */
+    WZ.resumir = !!sel.t;
+    if (location.hash !== "#/reservar")
+      history.replaceState(null, "", "#/reservar");
+    authOpen = 1;
+    R();
+  },
+});
+
+/* Repinta según dónde vive el asistente: el modal se solo, el panel con R(). */
+WZ.pintar = () => {
+  const p = document.getElementById("wzm");
+  if (p && !p.hidden) { p.innerHTML = wzModal(); return; }
+  R();
+};
