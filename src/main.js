@@ -43,9 +43,14 @@ import {
   MB,
   MP,
   WHATSAPP,
+  WA_LISTA,
   INSTAGRAM,
   RESERVAR_URL,
   MAP_IFRAME,
+  BARRIO,
+  CALLE,
+  CIUDAD,
+  PROVINCIA,
   CLOUD_NAME,
   CLOUD_PRESET,
   CLOUD_FOLDER,
@@ -1284,7 +1289,10 @@ const W = {
         await setDoc(doc(db, "users", me.uid), u, { merge: true });
         if (SB) {
           SB.foto = x.url;
-          await setDoc(doc(db, "staff", me.uid), { foto: x.url }, { merge: true }).catch(() => {});
+          /* Sin catch: antes el write a staff/ se denegaba por las reglas,
+             el error se tragaba acá y la foto se perdía al recargar. Si
+             vuelve a fallar, el aviso tiene que verse. */
+          await setDoc(doc(db, "staff", me.uid), { foto: x.url }, { merge: true });
         }
         const l = BARS.map((b) => ({ ...b, foto: b.id === me.uid ? x.url : b.foto || "" }));
         if (l.length) await setDoc(doc(db, "config", "barberos"), { l }, { merge: true }).catch(() => {});
@@ -1827,6 +1835,9 @@ const W = {
       await writeBatch(db)
         .update(doc(db, "canjes", id), { used: true, usadoEn: now() })
         .commit();
+      /* Sin repintado el canje seguía en pantalla como si estuviera
+         disponible: el writeEndian Firestore pero la vista no se enteraba. */
+      R();
     } catch (e) {
       err(e);
     }
@@ -2784,36 +2795,63 @@ function lbPuntos() {
    no de valores fijos: si el barbero los cambia, cambian solos. */
 function lbTablaHorarios() {
   const c = CFB("");
-  const NOM = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
-  const rango = `${hm(c.a)} a ${hm(c.c)} hs`;
+  const CORTO = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+  const LARGO = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
   /* Los "días" de la agenda van de lunes a sábado para que la semana
      se lea en orden y no arrancando el domingo. */
   const orden = c.dias.includes(0) || !c.dias.includes(1) ? [0, 1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5, 6, 0];
-  const filas = orden
-    .map((d) => {
-      const abre = c.dias.includes(d);
-      let txt = "Cerrado";
-      if (abre) {
-        txt = rango;
-        if (c.al && c.ah) txt += `<br><small>Descanso ${hm(c.al)} a ${hm(c.ah)} hs</small>`;
-      }
-      return `<tr><th scope="row">${NOM[d]}</th><td>${abre ? txt : "Cerrado"}</td></tr>`;
+
+  /* Se agrupan los días que comparten horario. Antes era una fila por día y
+     con Lun/Mar/Mié/Jue igual salían cuatro filas idénticas: mucho texto
+     para decir lo mismo. */
+  const grupos = [];
+  orden.forEach((d) => {
+    const abre = c.dias.includes(d);
+    const desc = abre && c.al && c.ah ? `${hm(c.al)}–${hm(c.ah)}` : "";
+    const clave = abre ? "abre|" + desc : "cerrado";
+    const g = grupos[grupos.length - 1];
+    if (g && g.clave === clave) g.dias.push(d);
+    else grupos.push({ clave, dias: [d], abre, desc });
+  });
+
+  const filas = grupos
+    .map((g) => {
+      const d0 = g.dias[0];
+      const hasta = g.dias[g.dias.length - 1];
+      const rangoDias =
+        g.dias.length === 1
+          ? LARGO[d0]
+          : g.dias.length === 7
+            ? "Todos los días"
+            : `${CORTO[d0]} a ${CORTO[hasta]}`;
+      if (!g.abre) return `<li class="lb-hg lb-hg--cerrado"><b>${rangoDias}</b><span>Cerrado</span></li>`;
+      return `<li class="lb-hg">
+        <b>${rangoDias}</b>
+        <span class="lb-hg-h">${hm(c.a)}<i>hs</i> a ${hm(c.c)}<i>hs</i></span>
+        ${g.desc ? `<small>Descanso ${g.desc.replace("-", " a ")} hs</small>` : ""}
+      </li>`;
     })
     .join("");
-  return `<table class="lb-hor">
-      <caption class="lb-sr">Horarios de atención</caption>
-      <tbody>${filas}</tbody>
-    </table>`;
+  return `<ul class="lb-hor">${filas}</ul>`;
 }
 
 /* Enlace social del header/contacto: ícono + texto, 44px de alto mínimo.
    El ícono es un <span> con mask (no un <img>): así toma el color del
    enlace y se ve igual en claro y en oscuro.
    `clase` se aplica al link: "lb-soc-ico" lo deja sólo con el ícono. */
+/* Los iconos van como <img>, no como máscara de CSS.
+   Antes se usaba mask-image para poder pintar con currentColor, pero eso
+   obliga a que el SVG sea una forma de UN solo color: los logos reales
+   (Instagram con su degradado, WhatsApp con su verde) arriving multicolor
+   se convertían en un bloque y un disco opacos. Al ser logos con color
+   propio, <img> es lo correcto. */
 const lbSoc = (clase) => `<a class="lb-soc-lnk ${clase}" href="https://www.instagram.com/${esc(INSTAGRAM)}" target="_blank" rel="noopener">
-      <span class="ic-ig" aria-hidden="true"></span><span class="lb-soc-tx">Instagram</span></a>
-    <a class="lb-soc-lnk ${clase}" href="https://wa.me/${esc(WHATSAPP)}" target="_blank" rel="noopener">
-      <span class="ic-wa" aria-hidden="true"></span><span class="lb-soc-tx">WhatsApp</span></a>`;
+      <img class="ic-ig" src="assets/instagram.svg" alt="" width="20" height="20" loading="lazy" decoding="async"><span class="lb-soc-tx">Instagram</span></a>
+    ${WA_LISTA.map(
+      (w) =>
+        `<a class="lb-soc-lnk lb-soc-wa ${clase}" href="https://wa.me/${esc(w.num)}" target="_blank" rel="noopener">
+      <img class="ic-wa" src="assets/whatsapp.svg" alt="" width="20" height="20" loading="lazy" decoding="async"><span class="lb-soc-tx">WhatsApp ${esc(w.n)}</span></a>`,
+    ).join("")}`;
 
 /* Botón Reservar: si ya hay sesión va directo a reservar; si no, deja el
    hash en #/reservar para que al loguearse el router lo tome solo. */
@@ -3059,13 +3097,15 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
       </div>
       <div class="lb-cont">
         <div>
-          <!-- TODO: reemplazar [DIRECCIÓN] y [CIUDAD] por los datos reales.
+          <!-- La dirección sale de src/config.js (CALLE / BARRIO / CIUDAD /
+               PROVINCIA) y las coordenadas de MAP_IFRAME: si la barbería se
+               muda hay que cambiar las dos cosas.
                Los horarios salen de config/horario (horario general): no
                hace falta tocarlos acá. Los días fechados de "libres"
                (feriados) no se listan en esta tabla. -->
           <div class="lb-card">
             <h3>Dónde estamos</h3>
-            <p class="lb-addr"><span>Dirección</span><b>[DIRECCIÓN]</b><span>Ciudad</span><b>[CIUDAD]</b></p>
+            <p class="lb-addr"><b>${esc(CALLE)}</b><span>${esc(BARRIO)}</span><b>${esc(CIUDAD)}, ${esc(PROVINCIA)}</b></p>
             <p class="lb-addr"><b>Horarios</b></p>
             ${lbTablaHorarios()}
             <div class="lb-soc lb-cont-soc">${lbSoc("")}</div>
@@ -3698,12 +3738,12 @@ function revH() {
   const stars = [1, 2, 3, 4, 5]
     .map(
       (n) =>
-        `<button type="button" aria-label="${n} estrellas" data-act="revStars" data-args="${A(n)}" style="background:none;border:0;font-size:30px;color:${n <= revS ? "var(--brass)" : "var(--mut)"};cursor:pointer">★</button>`,
+        `<button type="button" class="rev-estrella${n <= revS ? " on" : ""}" aria-label="${n} ${n === 1 ? "estrella" : "estrellas"}" aria-pressed="${n <= revS}" data-act="revStars" data-args="${A(n)}">★</button>`,
     )
     .join("");
   if (revStep === 1)
     return (
-      `<h1>Tu reseña</h1><div class="card" style="max-width:520px;margin-top:10px"><h2 style="margin-top:0">¿Qué te pareció el corte?</h2><div style="text-align:center;padding:10px 0">${stars}</div><button class="main" data-act="revNext">Continuar</button></div>`
+      `<h1 class="rev-tit">Tu reseña</h1><div class="card rev-card"><h2 style="margin-top:0">¿Qué te pareció el corte?</h2><div class="rev-estrellas" role="group" aria-label="Puntaje">${stars}</div>${revS ? `<p class="rev-hint">${revS} de 5 · <button type="button" class="lnk2" data-act="revBack">cambiar</button></p>` : `<p class="rev-hint rev-hint--vacio">Tocá las estrellas para seguir</p>`}</div>`
     );
   if (revStep === 2)
     return (
@@ -4243,7 +4283,10 @@ function footer() {
       .map((d) => D[d])
       .join(" · ");
   $("#ft").innerHTML =
-    `<div class="ft"><div><div class="fb"><img src="${LOGO}" alt="" width="48" height="48"><div><b>${esc(NOMBRE)}</b><small>Turnos online y puntos por cada visita</small></div></div></div><div><h4>Horarios</h4><p>${dd}</p><p>${hm(CF.a)} a ${hm(CF.c)} hs</p></div><div><h4>Contacto</h4>${WHATSAPP ? `<p><a href="https://wa.me/${esc(WHATSAPP)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none"><span class="ic-wa" aria-hidden="true" style="width:26px;height:26px"></span>WhatsApp ${esc(WHATSAPP)}</a></p>` : ""}<p><a href="https://www.instagram.com/codigobarber_1" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none"><span class="ic-ig" aria-hidden="true" style="width:26px;height:26px"></span>@codigobarber_1</a></p><p>Reservá desde la web, sin llamadas.</p></div></div><div class="fz">© ${new Date().getFullYear()} ${esc(NOMBRE)} · Desarrollado por <b>${esc(AUTOR)}</b> · <a href="#" data-act="openPol" style="color:#cbd3dc">Políticas</a> · <a href="#" data-act="openPol" style="color:#cbd3dc">Privacidad</a></div>`;
+    `<div class="ft"><div><div class="fb"><img src="${LOGO}" alt="" width="48" height="48"><div><b>${esc(NOMBRE)}</b><small>Turnos online y puntos por cada visita</small></div></div></div><div><h4>Horarios</h4><p>${dd}</p><p>${hm(CF.a)} a ${hm(CF.c)} hs</p></div><div><h4>Contacto</h4>${WA_LISTA.map(
+    (w) =>
+      `<p><a href="https://wa.me/${esc(w.num)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none"><img class="ic-wa" src="assets/whatsapp.svg" alt="" width="22" height="22" loading="lazy">WhatsApp ${esc(w.n)} · ${esc(w.num)}</a></p>`,
+  ).join("")}<p><a href="https://www.instagram.com/${esc(INSTAGRAM)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none"><img class="ic-ig" src="assets/instagram.svg" alt="" width="22" height="22" loading="lazy">@${esc(INSTAGRAM)}</a></p><p>Reservá desde la web, sin llamadas.</p></div></div><div class="fz">© ${new Date().getFullYear()} ${esc(NOMBRE)} · Desarrollado por <b>${esc(AUTOR)}</b> · <a href="#" data-act="openPol" style="color:#cbd3dc">Políticas</a> · <a href="#" data-act="openPol" style="color:#cbd3dc">Privacidad</a></div>`;
 }
 function R() {
   let h,

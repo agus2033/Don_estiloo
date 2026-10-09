@@ -25,6 +25,11 @@
       export const MB = ["El cliente avisó que no viene", "No se presentó", "Imprevisto del barbero", "Otro motivo"]; // motivos (barbero)
       export const MP = ["Efectivo", "Transferencia"]; // medios de pago
       export const WHATSAPP = "5493757644751"; // número con código de país, sin + ni espacios. Ej: "5491122334455"
+// Los dos números del local, con nombre para poder distinguirlos. El primero
+// de la lista es al que se le manda el aviso de lista de espera (WHATSAPP).
+export const WA_ROMAN = { n: "Roman", num: "5493757699335" };
+export const WA_YAN = { n: "Yan", num: "5493757644751" };
+export const WA_LISTA = [WA_ROMAN, WA_YAN];
 // Los íconos de Instagram y WhatsApp se aplican con CSS mask sobre
 // assets/instagram.svg y assets/whatsapp.svg (ver .ic-ig / .ic-wa en
 // src/landing.css), no con <img>: así heredan el color del texto y se ven
@@ -32,6 +37,12 @@
 export const INSTAGRAM = "codigobarber_1"; // usuario de Instagram (sin @)
 export const RESERVAR_URL = "#login"; // destino único y configurable de los botones "Reservar ahora"
 export const MAP_IFRAME = "https://www.google.com/maps?q=-25.618,-54.5701752&z=15&output=embed"; // iframe de ubicación
+// Dirección. Las coordenadas de arriba son de Puerto Iguazú y coinciden con
+// esta dirección; si la barbería se muda hay que cambiar las dos.
+export const BARRIO = "Los Trabajadores";
+export const CALLE = "Av. Su Santidad y Papa Francisco";
+export const CIUDAD = "Puerto Iguazú";
+export const PROVINCIA = "Misiones";
 export const CLOUD_NAME = "lvrsdw0h"; // Cloudinary
 export const CLOUD_PRESET = "codigo_barber_1"; // Upload Preset unsigned
 export const CLOUD_FOLDER = "codigo-barber-1"; // carpeta destino en Cloudinary

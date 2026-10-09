@@ -484,13 +484,11 @@ body[data-theme="light"] .lb-btn--pri:hover {
 }
 /* Rutas relativas al CSS (que vive en src/): "../assets/..." y no
    "assets/...", que resolvería a /src/assets/... y daría 404. */
-.ic-ig {
-  -webkit-mask-image: url("../assets/instagram.svg");
-  mask-image: url("../assets/instagram.svg");
-}
+/* Los SVG llegan desde un viewBox enorme (70000 x 70000 en unidades de
+   CorelDRAW): sin object-fit y un alto fijo el logo se ve cortado. */
+.ic-ig,
 .ic-wa {
-  -webkit-mask-image: url("../assets/whatsapp.svg");
-  mask-image: url("../assets/whatsapp.svg");
+  object-fit: contain;
 }
 
 /* ---------- 5b. REDES Y ACCIONES DEL HEADER ---------- */
@@ -520,9 +518,11 @@ body[data-theme="light"] .lb-btn--pri:hover {
   height: 20px;
   flex: 0 0 auto;
 }
+/* Sin border-radius: el WhatsApp trae fill:#fff en el contorno y con el
+   redondeo se veía un cuadrado blanco tapando la tarjeta. */
 .lb-soc-lnk .ic-ig,
 .lb-soc-lnk .ic-wa {
-  color: inherit;
+  object-fit: contain;
 }
 .lb-soc-lnk:hover {
   border-color: var(--lb-brass);
@@ -1223,121 +1223,88 @@ body[data-theme="light"] .lb-btn--pri:hover {
   display: grid;
   gap: 22px;
 }
-.lb-hor {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.99rem;
+/* Dirección. La clase estaba en el markup pero nunca tuvo CSS: antes
+   se veía bien por accidente porque los <span> eran etiquetas sueltas
+   ("Dirección", "Ciudad"). Ahora cada parte va en su línea. */
+.lb-addr {
+  display: grid;
+  gap: 2px;
+  margin: 0 0 4px;
 }
-.lb-hor th,
-.lb-hor td {
-  padding: 11px 0;
-  text-align: left;
-  border-bottom: 1px solid var(--lb-line);
-  font-weight: 400;
+.lb-addr > b {
+  font-weight: 600;
+  line-height: 1.35;
 }
-.lb-hor th {
-  color: var(--lb-ink);
-  font-weight: 500;
-}
-.lb-hor td {
+.lb-addr > span {
   color: var(--lb-mut);
-  text-align: right;
-  white-space: nowrap;
+  font-size: 0.94rem;
+  line-height: 1.35;
 }
-.lb-hor tr:last-child th,
-.lb-hor tr:last-child td {
+.lb-addr:last-of-type {
+  margin-bottom: 0;
+}
+.lb-cont h3 + .lb-addr {
+  margin-bottom: 18px;
+}
+
+/* Horarios: los días con el mismo horario van agrupados en una sola
+   fila ("Lunes a Jueves", "Viernes a Sábado"), en vez de una fila por día
+   con cuatro líneas repetidas. */
+.lb-hor {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.lb-hg {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 4px 14px;
+  padding: 11px 2px;
+  border-bottom: 1px solid var(--lb-line);
+}
+.lb-hor .lb-hg:last-child {
   border-bottom: 0;
 }
-.lb-card {
-  background: var(--lb-card);
-  border: 1px solid var(--lb-line);
-  border-radius: var(--lb-r-md);
-  padding: 22px 20px;
-}
-.lb-field {
-  display: grid;
-  gap: 6px;
-  margin-bottom: 14px;
-}
-.lb-field label {
-  font-size: 0.84rem;
+.lb-hg b {
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--lb-mut);
-}
-.lb-field input,
-.lb-field textarea {
-  width: 100%;
-  /* 16px mínimo: evita el zoom automático de iOS */
-  font-family: "Barlow", sans-serif;
   font-size: 1rem;
-  color: var(--lb-ink);
-  background: var(--lb-bg);
-  border: 1px solid var(--lb-line);
-  border-radius: var(--lb-r-sm);
-  padding: 13px 14px;
-  min-height: 52px;
+  text-transform: capitalize;
 }
-.lb-field textarea {
-  min-height: 132px;
-  resize: vertical;
+.lb-hg-h {
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--lb-brass);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
-.lb-field input::placeholder,
-.lb-field textarea::placeholder {
+.lb-hg-h i {
+  font-style: normal;
+  font-size: 0.72em;
+  opacity: 0.7;
+}
+.lb-hg small {
+  grid-column: 1 / -1;
+  font-size: 0.82rem;
   color: var(--lb-mut);
-  opacity: 1;
 }
-.lb-field input:focus-visible,
-.lb-field textarea:focus-visible {
-  outline: 2px solid var(--lb-brass);
-  outline-offset: 1px;
-  border-color: var(--lb-brass);
+.lb-hg--cerrado b,
+.lb-hg--cerrado span {
+  color: var(--lb-mut);
 }
-.lb-field[data-bad="1"] input,
-.lb-field[data-bad="1"] textarea {
-  border-color: var(--lb-bad);
-}
-.lb-err {
-  font-size: 0.86rem;
-  color: var(--lb-bad);
-  min-height: 1.2em;
-}
-.lb-status {
-  margin-top: 12px;
-  font-size: 0.96rem;
-  min-height: 1.4em;
-}
-.lb-status[data-k="ok"] {
-  color: var(--lb-ok);
-}
-.lb-status[data-k="bad"] {
-  color: var(--lb-bad);
-}
-.lb-addr {
-  margin-top: 20px;
+.lb-hg--cerrado .lb-hg-h,
+.lb-hg--cerrado span {
+  font-family: inherit;
   font-size: 0.95rem;
-  color: var(--lb-mut);
+  font-weight: 600;
 }
-.lb-addr b {
-  display: block;
-  color: var(--lb-ink);
-  font-weight: 500;
+.lb-cont .lb-hg {
+  padding: 9px 2px;
 }
-.lb-cont-soc {
-  margin-top: 22px;
-  padding-top: 18px;
-  border-top: 1px solid var(--lb-line);
-}
-.lb-cont-soc .lb-soc-lnk {
-  flex: 1;
-  justify-content: center;
-}
-.lb-hor td small {
-  display: block;
-  font-size: 0.82em;
-  color: var(--lb-mut);
-}
+
 .lb-hint {
   margin-top: 14px;
   font-size: 0.95rem;
@@ -2319,6 +2286,137 @@ body[data-theme="light"] #mebadge {
 body[data-theme="light"] .msg {
   background: var(--card);
   color: var(--ink);
+}
+
+
+
+/* ---------- modo claro: controles con color clavado ----------
+   En styles.css hay varios fondos y textos escritos a mano (#141c26,
+   #a9b4c4, #6f7d90) que en vez de seguir al tema quedan oscuros con la
+   pagina en claro: los <select> del formulario de agendar y los <input
+   type="date"> del panel salian como recuadros negros sobre fondo marfil. */
+body[data-theme="light"] select,
+body[data-theme="light"] textarea,
+body[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]) {
+  background: var(--bg);
+  color: var(--ink);
+  border-color: var(--line);
+}
+body[data-theme="light"] input::placeholder,
+body[data-theme="light"] textarea::placeholder {
+  color: var(--mut);
+}
+/* La lista desplegable de <datalist>/<select> la pinta el navegador segun
+   el color-scheme. Sin esto el desplegable sale negro en claro. */
+body[data-theme="light"] {
+  color-scheme: light;
+}
+body:not([data-theme="light"]) {
+  color-scheme: dark;
+}
+body[data-theme="light"] option {
+  background: var(--card);
+  color: var(--ink);
+}
+body[data-theme="light"] .reglas,
+body[data-theme="light"] .clave .ver,
+body[data-theme="light"] label small {
+  color: var(--mut);
+}
+body[data-theme="light"] .ver:hover {
+  color: var(--ink);
+}
+/* El calendario del asistente se desborda en pantallas anchas: las celdas
+   quedan de 130 px y hay que scrollear para ver el mes entero. Se limita
+   el ancho de la hoja en escritorio, que es donde el problema aparece. */
+@media (min-width: 900px) {
+  .wz-sheet {
+    max-width: 460px;
+  }
+  .wz-cel {
+    min-height: 46px;
+    font-size: 1rem;
+  }
+  .wz-dows span {
+    font-size: 0.64rem;
+  }
+}
+
+
+
+/* ---------- pestana de la resena ----------
+   Las estrellas quedaban juntas, pegadas al centro, y el hover de una
+   tapaba a la de al lado. Ahora la fila ocupa todo el ancho de la tarjeta
+   y cada estrella se estira, asi el area sensible es la mitad de la fila. */
+.rev-tit {
+  text-align: center;
+}
+.rev-card {
+  max-width: 560px;
+  margin: 10px auto 0;
+  text-align: center;
+}
+.rev-card h2 {
+  margin-bottom: 6px;
+}
+.rev-estrellas {
+  display: flex;
+  gap: 6px;
+  margin: 6px 0 4px;
+}
+.rev-estrella {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 60px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: var(--rad, 10px);
+  font-size: clamp(30px, 9vw, 44px);
+  line-height: 1;
+  color: var(--mut);
+  cursor: pointer;
+  transition: color 0.15s, transform 0.15s;
+}
+.rev-estrella.on {
+  color: var(--brass);
+}
+.rev-estrella:hover {
+  transform: scale(1.12);
+}
+.rev-estrella:focus-visible {
+  outline: 3px solid var(--brass);
+  outline-offset: 2px;
+}
+.rev-hint {
+  margin: 10px 0 0;
+  font-size: 0.9rem;
+  color: var(--brass);
+}
+.rev-hint--vacio {
+  color: var(--mut);
+}
+.rev-hint .lnk2 {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--mut);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
+.rev-hint .lnk2:hover {
+  color: var(--ink);
+}
+@media (prefers-reduced-motion: reduce) {
+  .rev-estrella {
+    transition: none;
+  }
+  .rev-estrella:hover {
+    transform: none;
+  }
 }
 
 

@@ -14,8 +14,6 @@ const V = "barberia-v7",
     "assets/icon-maskable-512.png",
     "assets/apple-touch-icon.png",
     "assets/logo-256.png",
-    "assets/instagram.svg",
-    "assets/whatsapp.svg",
   ],
   OK = ["www.gstatic.com", "fonts.googleapis.com", "fonts.gstatic.com"];
 /* Un archivo faltante no debe romper la instalación: se cachea cada uno por separado. */

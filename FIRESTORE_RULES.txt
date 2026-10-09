@@ -38,12 +38,34 @@ service cloud.firestore {
       allow create, update, delete: if isBarberoOrOwner();
     }
 
-    // Reseñas públicas de la landing. Se leen sin sesión (por eso el
-    // carrusel de la web las muestra), pero solo las escribe la barbería.
-    // Sin este bloque Firestore las deniega y la sección nunca aparece.
+    // Reseñas. Se leen sin sesión (el carrusel de la web las muestra).
+    //
+    // IMPORTANTE: los clientes SÍ dejan dejar reseña desde su panel. Con
+    // "create: if isBarberoOrOwner()" el write se denegaba siempre, porque
+    // un cliente no es barbero ni dueño, y la reseña no se guardaba nunca.
+    // Ahora cada cliente escribe la suya y no puede tocar la de otro; los
+    // textos van acotados para que el campo no sirva de buzón.
+    //
+    // Lo que las reglas NO pueden impedir es que alguien se haga cuentas
+    // y publique varias reseñas: eso requiere un contador por usuario, que
+    // Firestore no permite sin backend. Si más adelante molesta, la
+    // solución es un Cloud Function.
     match /resenas/{docId} {
       allow read: if true;
-      allow create, update, delete: if isBarberoOrOwner();
+      allow create: if isBarberoOrOwner()
+                    || (isSignedIn()
+                        && request.resource.data.uid == request.auth.uid
+                        && request.resource.data.keys().hasAll(['uid', 'nm', 'texto', 'estrellas'])
+                        && request.resource.data.estrellas is int
+                        && request.resource.data.estrellas >= 1
+                        && request.resource.data.estrellas <= 5
+                        && request.resource.data.nm is string
+                        && request.resource.data.nm.size() <= 60
+                        && request.resource.data.texto is string
+                        && request.resource.data.texto.size() >= 1
+                        && request.resource.data.texto.size() <= 600);
+      allow update, delete: if isBarberoOrOwner()
+                           || (isSignedIn() && resource.data.uid == request.auth.uid);
     }
 
     // ---------- usuarios ----------
@@ -96,7 +118,17 @@ service cloud.firestore {
 
     match /staff/{uid} {
       allow read: if isSignedIn() && (request.auth.uid == uid || isStaff() || isOwner());
-      allow write: if isOwner();
+      // El dueño puede escribir cualquier ficha de barbero.
+      allow create, delete: if isOwner();
+      // Un barbero sólo puede tocar SU propia ficha, y sólo el campo "foto"
+      // (y el nombre, que usa en la tarjeta de la landing). Antes era
+      // "if isOwner()" a secas, así que cuando un barbero subía su foto el
+      // write se denegaba, el error se tragaba un .catch y al recargar la
+      // página volvía la inicial: la foto nunca se guardaba.
+      allow update: if isOwner()
+                    || (request.auth.uid == uid
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                             .hasOnly(['n', 'foto', 'pd', 'tel', 'ig', 'desc']));
     }
 
     match /turnos/{id} {
