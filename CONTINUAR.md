@@ -645,13 +645,389 @@ disparar el pop-up (que abriría otra pestaña y pediría una cuenta real).
 
 ---
 
+## 14. El nombre del barbero se guardaba en tres lugares - **HECHO**
+
+El dueño cambió el nombre del barbero en "Mi perfil en la web" y no se verá en
+ningún panel: ni en el encabezado del barbero, ni en la lista **Barberos** del
+dueño, ni en los chips de la agenda.
+
+### Por qué pasaba
+
+El nombre estaba en tres documentos y cada parte de la app leía uno distinto:
+
+| Dónde | Qué lee de ahí |
+|---|---|
+| `staff/{uid}.n` | el encabezado del panel del barbero (`SB && SB.n`) |
+| `config/barberos.l[].n` | la landing y las tarjetas |
+| `config/finanzas.bs[].n` | lista **Barberos** y chips de agenda del dueño |
+
+`guardarPerfil()` escribía **sólo el segundo**. Con eso el encabezado se
+quedaba con el nombre viejo para siempre.
+
+Y había un segundo bug, más grave: el sincronizador que corre **cada vez que el
+dueño entra al panel** (el `setDoc(config/barberos)` dentro del listener de
+`config/finanzas`) armaba la lista con `n: b.n`, o sea el nombre viejo de la
+lista del dueño. Cada entrada del dueño **borraba** el nombre que el barbero se
+acababa de poner. Por eso el cambio "no se veía": no era que no se guardara,
+era que se guardaba y después se deshacía.
+
+### Qué se implementó
+
+1. **`nomBar(b)`** (helper nuevo, arriba de `let CA`): devuelve el nombre
+   publicado de un barbero y, si no hay ficha publicada, el de la lista del
+   dueño. Se usa en los cuatro lugares que leían el viejo: encabezado de la
+   agenda, columna de la agenda, chips de "Agendar turno" y tarjetas de
+   **Barberos**, más el texto del cartel de "Quitar".
+2. **`guardarPerfil()`** ahora escribe en las dos colecciones con `Promise.all`:
+   `config/barberos` (la landing) y `staff/{uid}.n` (el encabezado). Actualiza
+   `SB` y `FN` en memoria para que no haya que esperar el snapshot. Las reglas
+   ya permitían al barbero actualizar `n` en su propio documento de `staff`.
+3. **El sincronizador del dueño** cambió `n: b.n` por `n: prev.n || b.n`: una
+   vez que existe ficha publicada, manda esa. `b.n` sólo se usa para el barbero
+   que se acaba de agregar.
+
+### La regla que queda
+
+**El nombre canónico es el publicado.** Si un barbero se cambia el nombre en su
+ficha, ese nombre manda en todas partes. El dueño puede poner el nombre al
+agregar un barbero, pero después de eso manda lo que puso el barbero.
+
+Ojo con la tentación de "que el dueño pueda renombrar desde Finanzas": para eso
+haría falta que el barbero pudiera escribir `config/finanzas`, y ese documento
+tiene los **porcentajes de reparto**. No se hizo a propósito.
+
+### Para probarla
+
+```
+node tests\panel.nombre.js
+```
+
+Hace el ciclo completo: el barbero se cambia el nombre, se verifica el
+encabezado y la lista, se recarga, entra el dueño (que antes lo pisaba), se
+mira la landing sin sesión y al final **devuelve el nombre original**. Son 11
+comprobaciones.
+
+Si se corta a la mitad queda `NOMBRE PRUEBA 12345` puesto:
+
+```
+node tests\nombre.restaurar.js asda
+```
+
+Dos trampas del test, por si lo tocás:
+
+1. **El `<details>` de la ficha arranca cerrado** y Playwright no ve los campos
+   de adentro. Hay que abrirlo con `page.click("details.perfil > summary")`,
+   no con `details.open = true` desde `evaluate`.
+2. **"Cerrar sesión" no cierra nada directo**: abre un cartel de confirmación y
+   hay que apretar `#mok` adentro. Y hay **dos** botones con `data-act="salir"`
+   (el del panel y el del menú de la foto), así que hay que tomar el `:visible`.
+   El dueño además no cae en `#/agenda` sino en `#/dashboard`.
+
+---
+
+## 15. Tarjeta de barbero del mockup + "Quitar" de los cargados a mano - **HECHO**
+
+Dos cosas del dueño: la tarjeta nueva (desktop y celular, los dos PNG) y el
+botón "Quitar" de los barberos cargados a mano, que no hacía nada.
+
+### El botón "Quitar" que no hacía nada
+
+`askQuitBar(uid)` buscaba con `(uid ? x.uid === uid : x.id === uid)`. Al
+barbero agregado a mano desde "+ Agregar barbero" se lo pasa su **`id`**
+(no tiene `uid`), así que la condición terminaba siempre en
+`x.uid === "bmv44rw19"`, que no lo matchea con nadie. `b` quedaba
+`undefined` y la función salía en el primer `if (!b) return`: sin cartel, sin
+error en consola, sin nada. Los barberos con cuenta funcionaban porque a ellos
+se les pasa el `uid` de verdad.
+
+Ahora busca por uid **o** por id. `tests/panel.quitar.js` lo cubre sin borrar
+nada: abre el cartel de los tres y lo cierra con "Volver".
+
+Ojo al escribir ese test: `data-args` es un JSON con comillas
+(`["bmv44rw19"]`) y **no se puede meter en un selector de CSS**. Hay que ir por
+posición (`nth`).
+
+### La tarjeta nueva
+
+Dorso, de arriba abajo: franja de barbería, nombre + botón ↻, oficio en
+pastilla con borde, "SOBRE {NOMBRE}", descripción, **bloque ATIENDE** con el
+horario, **SERVICIOS** con nombre y precio, WhatsApp e Instagram como botones
+con borde, y el botón dorado "Reservar con X". Frente: franja, foto, nombre,
+pastilla dorada, descripción y los dos botones.
+
+Todo sale de lo que carga el barbero: `lbFichaBarbero(b)` para la ficha y
+**`CFB(b.id)` para el horario**, que es el mismo que usa la reserva (el propio
+del barbero si tiene uno en `config/horario.por`, si no el general). O sea que
+lo que dice la tarjeta es lo mismo que después bloquea los horarios.
+
+#### Tres cosas que hubo que arreglar para que entre
+
+1. **El dorso es más alto que el frente.** La foto 4/5 hace el frente enorme y
+   el dorso (con horario y servicios) no entraba. SeJnmidió el pie de dos
+   botones mientras la tarjeta está abierta: el dorso ya trae su propio
+   "Reservar con X" (como el mockup) y el pie medía 144 px en el celular.
+   `lbAltoDorso()` mide el dorso **con el pie oculto y el dorso en el flujo**,
+   porque con `position:absolute; inset:0` la caja del dorso siempre mide lo
+   que la tarjeta y no dice nada de cuánto contenido tiene.
+2. **`.lb-barber-giro` no se estiraba.** Es un ítem flex de `.lb-barber`
+   (columna) y sin `flex:1` medía lo que mide el frente. Con la tarjeta estirada
+   a 628 el dorso se quedaba en 533 y no podía usar los 95 px de más.
+3. **`.lb-barber-int` necesita `height:100%`**, o el `inset:0` del dorso se
+   resuelve contra el frente y no contra la tarjeta. Sin esto, en el celular
+   el bloque de WhatsApp e Instagram quedaba tapado detrás del botón dorado.
+
+Medido con viewports reales: la tarjeta abierta queda en **700 px en
+1440x900** y **628 px en 390x844**, y el cuerpo del dorso **no scrollea** en
+ninguno (623/623 y 551/551).
+
+### La franja de barbería: aviso
+
+El mockup trae la franja roja/blanca/azula arriba de las dos caras, y **la
+puse**. Ojo que en el LOGIN esa misma franja se pidió quitar (lote 4,
+`styles.css` `.franja { display:none }`). Son dos lugares distintos con
+decisiones distintas. Si también la querés fuera de la tarjeta, es borrar el
+bloque `.lb-franja` de `landing.css` y los dos `<span class="lb-franja">` del
+HTML.
+
+### Lo que NO se puede hacer todavía
+
+**Los servicios son globales, no por barbero.** No hay forma de que un barbero
+diga "yo hago estos dos": la lista del dorso muestra los mismos servicios para
+todos, los mismos que cobra la reserva. Si algún día se quiere, el lugar es
+`lbDorso`, filtrando `S`. Requiere un campo nuevo en `config/barberos` y una
+pantalla para cargarlo, así que **no se inventó**.
+
+### Para probarla
+
+`landing.barberos.js` grew de 105 a **147 comprobaciones**: la franja de las dos
+caras, el bloque ATIENDE con horario en `hh:mm`, la lista de servicios con
+nombre y precio, que el botón ↻ sea un `<button>` real con etiqueta, que la
+flecha cierre la ficha y que el pie vuelva a verse, y que los botones de redes
+digan sólo "WhatsApp"/"Instagram" (antes iban con el número pegado).
+
+Con capturas: `tests/_shot.js <nombre>` saca frente y dorso en escritorio y
+celular a `tests/tmp_shots/`.
+
+---
+
+## 17. SEO local - **HECHO**
+
+Dominio: **codigobarber.com.ar** (lo confirmó el dueño; antes el head apuntaba
+a `don-estilo.vercel.app`, que ya no se usa en ningún lado).
+
+### Qué se agregó
+
+- **`<head>`**: title y description con la ciudad, `<link rel="canonical">`,
+  `lang="es-AR"`, las seis `og:*` que faltaban (`og:url`, `og:image`,
+  `og:image:alt`) con textos que nombran el local y la ciudad, y las metas
+  `geo.region` / `geo.placename` / `geo.position` / `ICBM`.
+- **JSON-LD `BarberShop`** en el `index.html`: dirección, geo, teléfono,
+  horarios, precio, `sameAs` de Instagram y `hasOfferCatalog` con los tres
+  servicios y sus precios.
+- **`robots.txt`** y **`sitemap.xml`** en la raíz.
+
+### Cuatro correcciones al JSON que pasó el dueño
+
+| Venía | Ahora | Por qué |
+|---|---|---|
+| `"streetAddress": "Puerto Iguazú"` | `"Av. Su Santidad y Papa Francisco"` | "Puerto Iguazú" es la **ciudad**, no la calle. Con la ciudad en el campo de calle, Google no ubicaba el local en el mapa. La calle real ya estaba en `config.js`. |
+| `openingHoursSpecification` como objeto | como **arreglo** | Schema.org la declara como propiedad repetida y Google la lee así. |
+| `"image": ".../logo.png"` | `assets/logo-256.png` | No existe un `/logo.png` en la raíz. |
+| `"telephone": "+543757000000"` | los dos WhatsApp reales | Ese número no es de nadie. |
+
+### El teléfono: por qué es lo más delicado de todo esto
+
+**NO hay fijo.** El local tiene dos WhatsApp (`5493757699335` de Roman y
+`5493757644751` de Yan). Se puso el de Roman como `telephone` y los dos como
+`contactPoint`.
+
+Un teléfono inventado en el JSON-LD es lo peor que se puede hacer en SEO local:
+Google lo contrasta contra Google Maps y contra las reseñas, y si no coinciden
+te desalinea el negocio entero. **Por eso no se inventó uno**, y por eso hay un
+`TODO` visible: cuando consigas el fijo, es cambiar **una** línea.
+
+Ojo con un error que se cometió y la prueba cazó: al pasar los números a
+formato internacional se les **caía el `9` del móvil argentino**
+(`5493757699335` → se puso `+543757699335`). El correcto es `+5493757699335`
+(54 país + 9 móvil + 375 área + 7699335). Con el número corto, el "llamar
+ahora" de Google marca a otro número o a nadie.
+
+### Horarios: quedó el general, con un aviso
+
+El JSON-LD quedó **lun a sábado de 09:00 a 17:00**, que es el horario general
+por defecto del proyecto (`CFD` en `src/config.js` y `HORARIO_GENERAL` que se
+agregó).
+
+**Ojo:** el horario que está cargado hoy en Firestore es **lun a jue 09:00–17:00
+con pausa de 11:30 a 13:30**. Si el general real es Lun–Sáb, hay que cambiarlo
+en `config/horario` de Firestore; si es otro, se cambia `HORARIO_GENERAL` en
+`src/config.js` **y** el `opens`/`closes`/`dayOfWeek` del `index.html`, que son
+dos lugares distintos.
+
+### aggregateRating: NO va, a propósito
+
+Es el bloque que más rinde en SEO local y no se puso porque **no hay reseñas
+reales**: hoy en Firestore hay 13, de las cuales **10 son de prueba**. Poner un
+puntaje que no corresponde es penalizado por Google y además es una mentira.
+Cuando estén limpias las reseñas, el bloque se arma desde Firestore.
+
+### El problema de fondo: el mismo dato vive en cinco lugares
+
+Como la web es una SPA y Google tiene que leer el JSON-LD **sin ejecutar
+JavaScript**, el `index.html` es estático y no puede leer `config.js`. Entonces
+el dominio, la calle, las coordenadas, el teléfono y el horario viven en:
+
+1. `src/config.js` (`DOMINIO`, `CP`, `LAT`, `LON`, `CALLE`, `HORARIO_GENERAL`…)
+2. `index.html` (canonical, og:url, metas geo, JSON-LD)
+3. `robots.txt` (línea `Sitemap:`)
+4. `sitemap.xml` (cada `<loc>`)
+5. Firestore (`config/horario`, `config/barberos`)
+
+Nada se avisa si uno cambia. **`tests\seo.js` (63 comprobaciones) compara todos
+contra `config.js` y falla si se separan.** Es lo mismo que se hizo con el logo
+del loader.
+
+### Bugs que aparecieron de paso
+
+- **Había tres `<meta name="theme-color">`**, y el último estaba sin `media`:
+  pisaba a los dos buenos y en modo claro la barra del navegador salía azul
+  oscuro en vez de marfil. Se fue el que sobra.
+- **`FIRESTORE_RULES.txt` queda público en la raíz** y publica el id del
+  proyecto de Firebase y el **UID del dueño**. Las reglas siguen protegiendo las
+  escrituras, pero es información que no hace falta darle. Se agregó
+  `Disallow: /FIRESTORE_RULES.txt` a `robots.txt`. **Lo mejor sería no
+  publicarlo**: en Vercel se saca del build, no se renombra.
+
+### La marca: "Codigo Barber", sin tilde (RESUELTO)
+
+El dueño decidió que la marca se escribe **sin tilde**. El SEO decía
+"Código Barber" y `NOMBRE` en `config.js` y `manifest.json` decían
+"Codigo Barber": dos nombres para el mismo local, y Google los necesita iguales
+(y iguales a la ficha de Google Maps).
+
+Se unificó todo a "Codigo Barber" y `tests\seo.js` ahora compara el title, el
+`og:site_name`, el `author`, el `name` del JSON-LD y el `short_name` del manifest
+contra `NOMBRE` de `config.js`, y falla si aparece la versión con tilde.
+
+Ojo: el reemplazo fue de la cadena completa "Código Barber". Palabras sueltas
+como "barbería" o "peluquería" **conservan su tilde**, que en español es lo
+correcto y es lo que va en la descripción.
+
+### Lo que sigue pendiente del SEO
+
+- **El sitemap tiene una sola URL** y es lo correcto: las secciones son rutas con
+  `#`, que los buscadores no indexan. Poner una por sección sería inventar
+  direcciones que devuelven la misma página. Cuando haya páginas de verdad
+  (políticas, privacidad como `.html` separadas), se suman.
+- **`FIRESTORE_RULES.txt` sigue en la raíz y se publica.** Va con `Disallow` en
+  `robots.txt`, pero la forma correcta es sacarlo del build de Vercel.
+- **`aggregateRating` sigue sin ponerse** hasta que las reseñas sean reales
+  (hoy 13 en Firestore, 10 de prueba).
+### Para probarla
+
+```
+node tests\seo.js
+```
+
+63 comprobaciones: que el JSON-LD sea JSON válido y sea `BarberShop`, que la
+dirección del JSON sea la de `config.js` (y no la ciudad), que el teléfono sea
+alguno de los reales y **no** el de ejemplo, que `openingHoursSpecification` sea
+arreglo, que los largos de title y description estén en rango, que las OG estén
+todas, que no haya metas duplicadas, que los dos formatos de coordenadas
+(`geo.position` con `;` e `ICBM` con `,`) no estén intercambiados, y que
+`robots.txt`, `sitemap.xml` y el canonical apunten al mismo dominio.
+
+Dos trampas de esa prueba, por si la tocás:
+
+- **Los comentarios del HTML se sacan antes de buscar.** Varios explican por
+  qué **no** se puso un dato (el teléfono de ejemplo, el dominio viejo) y si no,
+  la prueba cree que el dato está puesto.
+- **Para ver si hay metas duplicadas hay que parsear la etiqueta entera**, no
+  usar un patrón que asuma el orden de los atributos: en el archivo `media` va
+  después de `content`, y las dos `theme-color` (una por modo de color) están
+  bien y parecían duplicadas.
+
+---
+
+## 16. Loader con el logo y franja fuera de las tarjetas - **HECHO**
+
+### El loader
+
+El poste de barbero con franjas girando (`.bp`, `@keyframes bp`) se fue por el
+logo de Codigo Barber. El bloque entero, incluidas las reglas del
+`prefers-reduced-motion` que lo apagaban, está borrado: `tests\loader.js` falla
+si vuelve a aparecer.
+
+Dos cosas que costaron:
+
+1. **El logo es un PNG con fondo NEGRO OPACO.** Medido con el canvas de
+   Chromium: 0% de píxeles transparentes, la esquina es `rgba(0,0,0,255)`. La
+   primera versión lo puso sobre un disco marfil y **tapaba el escudo entero**;
+   la segunda, sobre el fondo del loader, dejaba ver el cuadrado negro. Lo que
+   funciona es el mismo tratamiento que ya usa el header (`.lg`): cuadrado
+   redondeado con aro dorado, `object-fit: cover`, y **fondo `#000`**, que es
+   exactamente el negro del PNG, así que el borde del cuadrado se funde con la
+   imagen y lo único que dibuja la forma es el aro.
+2. **El `src` va escrito en `index.html`, no asignado desde JS** como el logo
+   del header. El loader se muestra *antes* de que cargue el módulo: si el src
+   llegara por JS, el primer segundo se vería un disco vacío. El precio es que
+   la ruta está duplicada (`index.html` y `LOGO` en `src/config.js`), y para
+   que no se desincronicen sin que nadie se entere, `tests\loader.js` compara
+   las dos y falla si no coinciden.
+
+Animación: el disco late suave y un arco dorado gira alrededor (2,1 s y 1,15 s).
+Con `prefers-reduced-motion` no hay ninguna de las dos, pero el logo y el texto
+siguen ahí. El `role="status"` y el `aria-live="polite"` no se tocaron.
+
+### Las franjas de las tarjetas, afuera
+
+El dueño las vio montadas y las pidió sacar. Se fue el bloque `.lb-franja` de
+`landing.css` y los dos `<span class="lb-franja">` del HTML (uno por cara).
+`landing.barberos.js` ahora comprueba lo contrario de lo que comprueba antes:
+que **no** exista el elemento y que **ningún** elemento de la tarjeta tenga un
+`repeating-linear-gradient` (así no vuelve por otro lado).
+
+### Dos cosas que encontré de paso
+
+**`landing.barberos.js` depended de tus datos de trabajo.** Exigía al menos 2
+barberos en Firestore y se caía con "n=1" si no los había, sin decir por qué.
+Ahora, si hay menos de dos, inyecta tres sintéticos **en memoria**
+(`__test.setBars`, no escribe nada) y lo avisa con un `skip`. Sigue midiendo
+contra tus datos reales cuando hay dos o más.
+
+**`panel.quitar.js` cerraba el cartel buscando el botón por texto.** Si mañana
+"Volver" se llama distinto, el filtro deja de encontrarlo y el `.first()` se
+cae en **el botón que confirma**, que borra un barbero de verdad. Ahora aprieta
+`#mo [data-act="Mx"]`, que es el cancelar por su acción y no por su palabra, y
+además espera 4 s y vuelve a contar en el panel **y en Firestore** antes de dar
+por bueno que no se borró nadie (la espera anterior era de 700 ms y `quitBar`
+es async: un borrado se seguía sin ver).
+
+### Lo que NO se tocó (avisado, no hecho)
+
+Quedan dos franjas rojas/blancas/azules en la app, en partes que el dueño no
+nombró:
+
+- **El poste del login** (`.poste` con `.rayas`, `styles.css` ~2447): sigue
+  girando con franjas. En el lote 4 se sacaron la franja de arriba del login
+  (`.franja`) y el `::before` de la tarjeta, pero el poste en sí quedó.
+- **La franja diagonal de la landing** (`.lb-stripe`, justo abajo del header):
+  roja, marfil y azul, 6 px.
+
+Ninguna se toca sin que lo pidas.
+
+---
+
+## Lo que ya está hecho y NO hay que romper
+---
+
 ## Lo que ya está hecho y NO hay que romper
 
 - **Asistente de reserva de 6 pasos** (servicio → barbero → día con calendario del mes → turno mañana/tarde → horario → resumen). Es **un solo componente** que usan la landing (modal) y el panel del cliente (`resH()` devuelve `wizH()`). El calendario calcula disponibilidad real leyendo `ocupados`.
 - **Ver la web desde el panel**: barra dorada arriba cuando mirás la landing con sesión, y el header de la app se esconde para no quedar dos headers apilados. **El botón cambió de lugar**: para el dueño sigue suelto en el header, para el cliente vive en el menú de la foto (`#pmenu`), igual que "Cerrar sesión". La acción (`verWebOn`) es la misma en los dos casos.
 - **Login**: logo real (antes era un SVG inline de una navaja), botón "Volver a la web".
 - **Modo claro de los paneles**: estaba roto de raíz, `styles.css` no redefinía los tokens.
-- **Perfil del barbero**: la ficha vive en `config/barberos`, NO en `staff/{uid}`, porque **`staff` exige sesión para leerse** y la landing muestra el equipo sin sesión. Foto sí va a `staff`. Se edita desde "Mi perfil en la web" en el panel del barbero.
+- **Perfil del barbero**: la ficha vive en `config/barberos`, NO en `staff/{uid}`, porque **`staff` exige sesión para leerse** y la landing muestra el equipo sin sesión. Foto sí va a `staff`. Se edita desde "Mi perfil en la web" en el panel del barbero. El **nombre** sí va a las dos (`guardarPerfil` escribe `config/barberos` y `staff/{uid}.n`): ver sección 14, el nombre estaba en tres lugares y cada parte leía uno.
 - **Tarjeta de barbero que se da vuelta**: al tocarla rota 180° y muestra el dorso con la ficha (oficio, descripción, WhatsApp, Instagram, otras redes y el botón "Reservar con X"). **Al tocar otro barbero se cierra el anterior y se abre el nuevo**: sólo hay una abierta (`lbFlip` / `lbCierraTodos` en `main.js`, CSS al final de la sección 12 de `landing.css`). También se cierra con Escape o con un clic fuera.
 
 **De la tarjeta, dos cosas que conviene no deshacer:**

@@ -36,7 +36,28 @@ export const WA_LISTA = [WA_ROMAN, WA_YAN];
 // igual en modo claro y oscuro. Los PNG de 388 KB y 30 KB ya no se usan.
 export const INSTAGRAM = "codigobarber_1"; // usuario de Instagram (sin @)
 export const RESERVAR_URL = "#login"; // destino único y configurable de los botones "Reservar ahora"
-export const MAP_IFRAME = "https://www.google.com/maps?q=-25.618,-54.5701752&z=15&output=embed"; // iframe de ubicación
+// ===== SEO local =====
+// El dominio con el que se publica. OJO: si esto cambia hay que cambiar, en
+// el mismo lote, las cuatro cosas de abajo que lo repiten:
+//   index.html   <link rel="canonical">, og:url, twitter:url, el @id y el
+//                "url" del JSON-LD, y las metas geo.*
+//   robots.txt   la línea Sitemap:
+//   sitemap.xml  cada <loc>
+// `tests\seo.js` compara las cinco contra este valor y falla si se separan.
+export const DOMINIO = "https://codigobarber.com.ar";
+export const CP = "3370"; // código postal (es el de toda la ciudad)
+// Coordenadas del local. Tienen que coincidir con MAP_IFRAME y con el "geo"
+// del JSON-LD, o Google muestra el negocio en el punto equivocado.
+export const LAT = -25.618;
+export const LON = -54.5701752;
+export const MAP_IFRAME = `https://www.google.com/maps?q=${LAT},${LON}&z=15&output=embed`; // iframe de ubicación
+// Horario GENERAL del local (no el de cada barbero), en minutos desde las 00:
+// 540 = 09:00. Va en el JSON-LD como openingHoursSpecification y tiene que
+// coincidir con lo que esté cargado en config/horario de Firestore.
+// TODO: el horario cargado HOY en Firestore es Lun a Jue 09:00-17:00 con pausa
+// de 11:30 a 13:30. Si el horario general real es otro, cambialo acá y en el
+// index.html (son dos lugares; `tests\seo.js` avisa si no coinciden).
+export const HORARIO_GENERAL = { dias: [1, 2, 3, 4, 5, 6], a: 540, c: 1020 };
 // Dirección. Las coordenadas de arriba son de Puerto Iguazú y coinciden con
 // esta dirección; si la barbería se muda hay que cambiar las dos.
 export const BARRIO = "Los Trabajadores";

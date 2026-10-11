@@ -418,6 +418,21 @@ let UA = [],
      variable no declarada y en un módulo eso es ReferenceError al cargar
      ("PUB is not defined"), con la landing entera en blanco. */
   PUB = { servicios: null, barberos: null, horario: null };
+/* Nombre vigente de un barbero.
+   El nombre vive en tres lugares y cada parte de la app leía uno:
+     staff/{uid}.n          -> encabezado del panel del barbero
+     config/barberos.l[].n  -> landing pública
+     config/finanzas.bs[].n -> lista del dueño (Barberos / Finanzas)
+   Cuando el barbero se cambia el nombre desde "Mi perfil en la web" solo se
+   escribía el segundo, así que el encabezado seguía con el viejo y el panel del
+   dueño con el suyo. Acá se lee siempre el nombre publicado y, si todavía no
+   hay, se cae al de la lista del dueño. */
+const nomBar = (b) => {
+  const id = b && b.id;
+  const pub = id ? BARS.find((x) => x.id === id) : null;
+  return ((pub && pub.n) || (b && b.n) || "Barbero").trim() || "Barbero";
+};
+
 let CA = [],
   cx = null,
   rep = 0, // id del turno que se está reprogramando (0 = ninguno)
@@ -781,7 +796,13 @@ function setup(a) {
             return {
               ...prev,
               id: b.id,
-              n: b.n,
+              /* Antes ponía `n: b.n` (el de la lista del dueño) y eso
+                 BORRABA el nombre que el barbero se había puesto en "Mi
+                 perfil en la web": cada vez que el dueño entraba al panel, la
+                 landing volvía al nombre viejo. Ahora el nombre publicado gana
+                 si ya existe; `b.n` sólo se usa para el barbero que recién se
+                 agrega y todavía no tiene ficha publicada. */
+              n: prev.n || b.n,
               foto: prev.foto || (b.uid === me.uid && SB && SB.foto) || "",
             };
           });
@@ -2652,12 +2673,18 @@ Object.assign(W, {
          estos no tenían botón de quitar y quedaban registrados para
          siempre: no se podían sacar de la web. */
   askQuitBar(uid) {
-    const b = FN.bs.find((x) => (uid ? x.uid === uid : x.id === uid));
+    /* Busca por uid O por id. Antes era `(uid ? x.uid === uid : x.id === uid)`:
+       como al barbero agregado a mano se lo pasa su `id` (no tiene `uid`), la
+       condición preguntaba siempre `x.uid === "b1abc..."`, que no lo matchea
+       nunca, `b` quedaba indefinido y la función salía sin hacer nada: el
+       botón "Quitar" de los barberos cargados a mano no hacía absolutamente
+       nada, sin cartel ni error. */
+    const b = FN.bs.find((x) => (uid && x.uid === uid) || x.id === uid);
     if (!b) return;
     const conCuenta = !!b.uid;
     M({
       k: "q",
-      h: "¿Quitar a " + esc(b.n) + " como barbero?",
+      h: "¿Quitar a " + esc(nomBar(b)) + " como barbero?",
       b: conCuenta
         ? "Vuelve a ser un cliente común y pierde el acceso de barbero. Sus cobros anteriores se conservan."
         : "Se lo saca del equipo y deja de aparecer en la web. No tiene cuenta de barbero, así que no hay nada más que revertir.",
@@ -3466,6 +3493,40 @@ function lbTablaHorarios() {
   return `<ul class="lb-hor">${filas}</ul>`;
 }
 
+/* Horario de un barbero en una línea, para la tarjeta: "Lun a Jue · 09:00 a
+   17:00 hs". Toma el horario propio si tiene (config/horario -> .por[bid]) y
+   si no el general, que es lo mismo que usa la reserva: lo que dice la tarjeta
+   es exactamente lo que después bloquea los horarios.
+   Devuelve "" si el barbero no tiene ningún día abierto: en ese caso la
+   tarjeta no muestra el bloque ATIENDE en vez de mentir con un horario. */
+const lbHorarioTxt = (bid) => {
+  const c = CFB(bid);
+  const CORTO = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+  /* Los días van de lunes a sábado para que la semana se lea en orden; sólo
+     si el domingo es el único día abierto se pone primero. */
+  const orden = c.dias.includes(0) || !c.dias.includes(1) ? [0, 1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5, 6, 0];
+  /* Un día puede estar en `dias` y en `libres` (cerrado ese día exacto). */
+  const abiertos = orden.filter((d) => c.dias.includes(d) && !c.libres.includes(d));
+  if (!abiertos.length) return "";
+
+  let dias;
+  if (abiertos.length === 7) dias = "Todos los días";
+  else {
+    const corrido = abiertos.every((d, i) => i === 0 || d === abiertos[i - 1] + 1);
+    dias =
+      corrido && abiertos.length > 1
+        ? `${CORTO[abiertos[0]]} a ${CORTO[abiertos[abiertos.length - 1]]}`
+        : abiertos.map((d) => CORTO[d]).join(", ");
+  }
+
+  const horas = `${hm(c.a)} a ${hm(c.c)} hs`;
+  /* La pausa al mediodía no se anuncia en el mockup, pero si el barbero la
+     tiene cargada el cliente tiene que saberlo antes de venir. Va en otra
+     línea: pegada a la principal, en el celu la línea se partía al medio y
+     quedaba "Pausa 11:30 a / 13:30". */
+  return { dias, horas, pausa: c.al && c.ah ? `Pausa ${hm(c.al)} a ${hm(c.ah)}` : "" };
+};
+
 /* Ficha ampliada de un barbero, para el diálogo de la landing.
    Los datos salen de config/barberos porque es lo único legible sin sesión
    (ver comentario de la tarjeta). Todo es opcional: si el barbero no cargó
@@ -3546,6 +3607,44 @@ function lbAltoTarjeta(cara) {
   return lbAltoCara(cara) + pieAlto + 2;
 }
 
+/* Alto NATURAL del dorso, con el pie de botones oculto.
+
+   El dorso está en `position:absolute; inset:0`, así que su caja siempre
+   mide lo que la tarjeta y no dice nada sobre cuánto contenido tiene: pedirle
+   el alto a él es asking al espejo. La única forma de que un `inset:0`
+   reporte su alto real es sacarlo del flujo con el frente oculto y el pie
+   sin medir, y recién ahí leerlo.
+
+   Hace falta porque, con el dorso nuevo (horario + lista de servicios), en el
+   celular el dorso necesita ~640 px y con el pie de dos botones apilados
+   (144 px) sólo quedaban 533: el bloque de WhatsApp e Instagram quedaba
+   tapado detrás del botón dorado y había que scrollear adentro de la tarjeta.
+   While está abierta, el pie se oculta (CSS) y el dorso trae su propio
+   "Reservar con X", así que no se pierde ninguna acción. */
+function lbAltoDorso(atras, frente) {
+  const tarjeta = lbTarjeta(atras.closest(".lb-barber-giro") || atras);
+  const pie = tarjeta.querySelector(".lb-barber-pie");
+  const antes = {
+    alto: tarjeta.style.height,
+    pie: pie ? pie.style.display : null,
+    pos: atras.style.position,
+    rot: atras.style.transform,
+    frente: frente ? frente.style.display : null,
+  };
+  if (frente) frente.style.display = "none";
+  atras.style.position = "static";
+  atras.style.transform = "none";
+  if (pie) pie.style.display = "none";
+  tarjeta.style.height = "";
+  const h = Math.ceil(atras.getBoundingClientRect().height) + 2;
+  tarjeta.style.height = antes.alto;
+  atras.style.position = antes.pos;
+  atras.style.transform = antes.rot;
+  if (frente) frente.style.display = antes.frente;
+  if (pie) pie.style.display = antes.pie;
+  return h;
+}
+
 /* Abre o cierra una tarjeta. */
 function lbAbre(giro, abrir) {
   const atras = giro.querySelector(".lb-barber-atras");
@@ -3559,8 +3658,12 @@ function lbAbre(giro, abrir) {
      alto de los dos, así el toque no redimensiona nada bajo el dedo y sólo
      rota. Antes se animaba de frente a dorso y ese cambio de tamaño se leía
      como un tirón. Si algún día el dorso queda más alto que el frente (una
-     ficha larga), la tarjeta crece igual, pero nunca se encoge. */
-  const h = Math.max(lbAltoTarjeta(frente), lbAltoTarjeta(atras));
+     ficha larga), la tarjeta crece igual, pero nunca se encoge.
+
+     Al ABRIR se mide el dorso solo (sin el pie, que se oculta) porque es el
+     que tiene que entrar entero; al CERRAR se mide el frente con su pie, que
+     es como se ve la tarjeta en la grilla. */
+  const h = abrir ? lbAltoDorso(atras, frente) : lbAltoTarjeta(frente);
   const actual = Math.ceil(tarjeta.getBoundingClientRect().height);
   const cambia = Math.abs(h - actual) > 1;
 
@@ -3783,28 +3886,62 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
    así sirve aunque la ficha esté vacía. */
   const lbDorso = (b) => {
     const f = lbFichaBarbero(b);
+    const nombre = (b.n || "el barbero").trim();
+    const primero = nombre.split(" ")[0] || "el barbero";
     const wa = lbTelWa(f.tel);
-    const enlaces = [
-      wa
-        ? `<a class="lb-bd-red" href="https://wa.me/${esc(wa)}" target="_blank" rel="noopener">
-            <img src="assets/whatsapp-96.png" alt="" width="18" height="18"> WhatsApp${f.tel ? " · " + esc(f.tel) : ""}</a>`
-        : "",
-      f.ig
-        ? `<a class="lb-bd-red" href="https://www.instagram.com/${esc(f.ig.replace(/^@/, ""))}" target="_blank" rel="noopener">
-            <img src="assets/instagram-96.png" alt="" width="18" height="18"> @${esc(f.ig.replace(/^@/, ""))}</a>`
-        : "",
-      ...f.redes.map(
-        (r) => `<a class="lb-bd-red" href="${esc(r.url)}" target="_blank" rel="noopener">
-          ${r.ic ? `<img src="${esc(r.ic)}" alt="" width="18" height="18">` : ""} ${esc(r.n || r.url)}</a>`,
-      ),
-    ]
-      .filter(Boolean)
-      .join("");
-    const vacio = !f.desc && !enlaces;
-    return `${f.esp ? `<p class="lb-bd-esp">${esc(f.esp)}</p>` : ""}
-      ${f.desc ? `<p class="lb-bd-desc">${esc(f.desc)}</p>` : ""}
-      ${enlaces ? `<div class="lb-bd-redes">${enlaces}</div>` : ""}
-      ${vacio ? '<p class="lb-bd-vacio">Todavía no cargó su información de contacto.</p>' : ""}`;
+
+    /* Los servicios son los de la peluquería, los mismos que muestra la
+       sección de servicios y los que cobra la reserva: no hay forma de que un
+       barbero diga "yo hago estos dos". Si algún día se agrega eso, este es el
+       lugar donde se filtra. */
+    const servicios = S.length
+      ? S.map(
+          (x) => `<li class="lb-bd-sv">
+            <span class="lb-bd-sv-t"><b>${esc(x.n)}</b>${
+              x.tag || x.tx ? `<small>${esc([x.tag, x.tx].filter(Boolean).join(" · "))}</small>` : ""
+            }</span>
+            <b class="lb-bd-sv-p">${$$(x.p)}</b>
+          </li>`,
+        ).join("")
+      : '<li class="lb-bd-sv-n">Todavía no hay servicios cargados.</li>';
+
+    const horario = lbHorarioTxt(b.id);
+
+    return `<div class="lb-bd-cab">
+        <b class="lb-bd-nom">${esc(nombre)}</b>
+        <button class="lb-bd-giro" type="button" data-act="lbFlip" data-args="${A(b.id)}" aria-label="Volver a la foto de ${esc(nombre)}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 12a8.5 8.5 0 1 1-2.5-6"/><path d="M20.5 4v5h-5"/></svg>
+        </button>
+      </div>
+      ${f.esp ? `<p class="lb-bd-esp">${esc(f.esp)}</p>` : ""}
+      ${f.desc ? `<p class="lb-bd-sobre">Sobre ${esc(primero)}</p><p class="lb-bd-desc">${esc(f.desc)}</p>` : ""}
+      ${horario ? `<div class="lb-bd-atiende">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+        <span><small>Atiende</small><b>${esc(horario.dias)} · ${esc(horario.horas)}</b>${horario.pausa ? `<em>${esc(horario.pausa)}</em>` : ""}</span>
+      </div>` : ""}
+      <p class="lb-bd-lab">Servicios</p>
+      <ul class="lb-bd-svs">${servicios}</ul>
+      ${/* WhatsApp e Instagram van como botones con borde, uno al lado del
+           otro como en el mockup. Las demás redes que cargue el barbero van
+           debajo, en lista, para no romper la grilla de dos. */
+        wa || f.ig || f.redes.length
+          ? `<div class="lb-bd-redes">${
+              wa
+                ? `<a class="lb-bd-red" href="https://wa.me/${esc(wa)}" target="_blank" rel="noopener">
+                    <img src="assets/whatsapp-96.png" alt="" width="20" height="20"> WhatsApp</a>`
+                : ""
+            }${
+              f.ig
+                ? `<a class="lb-bd-red" href="https://www.instagram.com/${esc(f.ig.replace(/^@/, ""))}" target="_blank" rel="noopener">
+                    <img src="assets/instagram-96.png" alt="" width="20" height="20"> Instagram</a>`
+                : ""
+            }${f.redes
+              .map(
+                (r) => `<a class="lb-bd-red" href="${esc(r.url)}" target="_blank" rel="noopener">
+                ${r.ic ? `<img src="${esc(r.ic)}" alt="" width="20" height="20">` : ""} ${esc(r.n || r.url)}</a>`,
+              )
+              .join("")}</div>`
+          : '<p class="lb-bd-vacio">Todavía no cargó su información de contacto.</p>'}`;
   };
 
   /* ---------- equipo (mockup del dueño) ----------
@@ -3830,11 +3967,15 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
         <div class="lb-barber-int">
           <span class="lb-barber-cara lb-barber-frente">
             <span class="lb-barber-ph">${b.foto ? `<img src="${esc(b.foto)}" alt="${esc(b.n)}" loading="lazy" decoding="async" width="400" height="400">` : `<span class="lb-barber-falta" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M20 4 8.5 15.5M14.5 14.5 20 20M8.5 15.5 4 20"/></svg><small>[Foto]</small></span>`}</span>
-            <span class="lb-barber-id"><b>${esc(b.n)}</b><span class="lb-barber-pill">${esc(ficha.esp || "Barbero")}</span></span>
+            <span class="lb-barber-id">
+              <b>${esc(b.n)}</b>
+              <span class="lb-barber-pill">${esc(ficha.esp || "Barbero")}</span>
+              ${ficha.desc ? `<span class="lb-barber-desc">${esc(ficha.desc)}</span>` : ""}
+            </span>
           </span>
           <span class="lb-barber-cara lb-barber-atras" aria-hidden="true" inert>
-            <b class="lb-bd-nom">${esc(b.n)}</b>
-            ${lbDorso(b)}
+            <div class="lb-bd-cuerpo">${lbDorso(b)}</div>
+            <button class="lb-btn lb-btn--pri lb-btn--full lb-bd-res" type="button" data-act="lbReservarBar" data-args="${A(b.id)}">Reservar con ${esc(nombre)}</button>
           </span>
         </div>
       </div>
@@ -5215,7 +5356,7 @@ const cxForm = (t) =>
   `<div class="sub"><label>${isAdm() ? "Motivo de la cancelación" : "¿Por qué cancelás?"}</label><div class="chips">${(isAdm() ? MB : MC).map((m, i) => `<button class="chip ${cr === m ? "on" : ""}" aria-pressed="${!!(cr === m)}" data-act="setMot" data-args="${A(i)}">${m}</button>`).join("")}</div>${cr === "Otro motivo" ? `<input id="cn" maxlength="80" placeholder="Contá el motivo (opcional)" value="${esc(cn)}" data-in="setCn" data-args="${A("@el")}">` : ""}<small>El horario se libera para otros clientes.</small><div class="chips"><button class="main" ${cr ? "" : "disabled"} data-act="cancel" data-args="${A(t.id)}">Confirmar cancelación</button><button data-act="closeX">Volver</button></div></div>`;
 const barSel = () =>
   isOwner() && FN.bs.length > 1
-    ? `<label>Barbero</label><div class="chips">${FN.bs.map((b) => `<button class="chip ${dbi === b.id ? "on" : ""}" aria-pressed="${!!(dbi === b.id)}" data-act="setDbi" data-args="${A(b.id)}">${esc(b.n)}</button>`).join("")}</div>`
+    ? `<label>Barbero</label><div class="chips">${FN.bs.map((b) => `<button class="chip ${dbi === b.id ? "on" : ""}" aria-pressed="${!!(dbi === b.id)}" data-act="setDbi" data-args="${A(b.id)}">${esc(nomBar(b))}</button>`).join("")}</div>`
     : "";
 const manH = () => {
   const m = mv;
@@ -5345,7 +5486,20 @@ async function guardarPerfil() {
     : [...BARS, { ...nueva, id }];
   try {
     busy(1, "Guardando…", 1);
-    await setDoc(doc(db, "config", "barberos"), { l }, { merge: true });
+    /* Se escribe en las DOS colecciones del nombre. Antes solo iba a
+       config/barberos (la landing) y el encabezado del panel seguía sacando
+       el nombre de staff/{uid}, que nunca se actualizaba: el barbero se
+       cambiaba el nombre y no se veía en ninguna parte menos en la web.
+       Las reglas permiten al propio barbero actualizar `n` en su documento
+       de staff. */
+    await Promise.all([
+      setDoc(doc(db, "config", "barberos"), { l }, { merge: true }),
+      setDoc(doc(db, "staff", id), { n: nueva.n }, { merge: true }),
+    ]);
+    /* Se actualiza en memoria para que el encabezado y la lista del dueño no
+       sigan mostrando el nombre viejo hasta el próximo snapshot. */
+    if (SB) SB = { ...SB, n: nueva.n };
+    FN = { ...FN, bs: FN.bs.map((b) => (b.id === id ? { ...b, n: nueva.n } : b)) };
     msg = "Tu ficha se guardó. Ya está visible en la web.";
     R();
   } catch (e) {
@@ -5368,7 +5522,7 @@ function barH() {
   const mySBFoto = SB && SB.foto ? SB.foto : "";
   return (
     `<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;max-width:640px">${mySBFoto ? `<img src="${esc(mySBFoto)}" alt="" width="44" height="44" style="border-radius:50%;object-fit:cover">` : `<span class="aval" style="width:44px;height:44px;font-size:20px;flex:0 0 auto">${esc(((SB && SB.n) || (me && me.displayName) || "?")[0].toUpperCase())}</span>`}<div style="flex:1"><b>${esc((SB && SB.n) || (me && me.displayName) || "Tu barbería")}</b><br><small>Tu foto aparece para los clientes al reservar.</small></div><button data-act="fotoTomar" style="flex:0 0 auto">Cambiar foto</button></div>` + perfilH() +
-    `<div class="head" style="margin-top:0;flex-wrap:wrap"><div><h1 style="margin-bottom:4px">Agenda</h1><small>${ag ? fd(ag) : "Todos los días"} · ${p.length} ${p.length === 1 ? "turno" : "turnos"}</small></div><div class="chips" style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px">${[["", "Todos"], ...[...new Set([hoy, ...days()])].sort().map((d) => [d, d === hoy ? "Hoy" : fd(d)])].map((a) => `<button class="chip ${ag === a[0] ? "on" : ""}" aria-pressed="${!!(ag === a[0])}" data-act="setAg" data-args="${A(a[0])}" style="border:0">${a[1]}</button>`).join("")}</div><div class="chips"><button data-act="openMan">+ Carga manual</button><button data-act="agOpen">+ Agendar turno</button></div></div>${manH()}${agT ? agH() : ""}<div class="chips" style="margin-bottom:14px">${isOwner() ? [["", "Todos"], ...FN.bs.map((b) => [b.id, b.n])].map((x) => `<button class="chip ${bf === x[0] ? "on" : ""}" data-act="setBf" data-args="${A(x[0])}">${esc(x[1])}</button>`).join("") : ""}</div>` +
+    `<div class="head" style="margin-top:0;flex-wrap:wrap"><div><h1 style="margin-bottom:4px">Agenda</h1><small>${ag ? fd(ag) : "Todos los días"} · ${p.length} ${p.length === 1 ? "turno" : "turnos"}</small></div><div class="chips" style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px">${[["", "Todos"], ...[...new Set([hoy, ...days()])].sort().map((d) => [d, d === hoy ? "Hoy" : fd(d)])].map((a) => `<button class="chip ${ag === a[0] ? "on" : ""}" aria-pressed="${!!(ag === a[0])}" data-act="setAg" data-args="${A(a[0])}" style="border:0">${a[1]}</button>`).join("")}</div><div class="chips"><button data-act="openMan">+ Carga manual</button><button data-act="agOpen">+ Agendar turno</button></div></div>${manH()}${agT ? agH() : ""}<div class="chips" style="margin-bottom:14px">${isOwner() ? [["", "Todos"], ...FN.bs.map((b) => [b.id, nomBar(b)])].map((x) => `<button class="chip ${bf === x[0] ? "on" : ""}" data-act="setBf" data-args="${A(x[0])}">${esc(x[1])}</button>`).join("") : ""}</div>` +
     `<div class="cols3">${barbers
       .concat(
         p.some((t) => !t.bid || !FN.bs.some((b) => b.id === t.bid))
@@ -5377,7 +5531,7 @@ function barH() {
       )
       .map((b) => {
         const tt = p.filter((t) => (b.id === "__x" ? !t.bid || !FN.bs.some((x) => x.id === t.bid) : t.bid === b.id));
-        return `<div class="bcol"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span>${(BARS.find((x) => x.id === b.id) || {}).foto ? `<img src="${esc((BARS.find((x) => x.id === b.id) || {}).foto)}" alt="" width="30" height="30" style="border-radius:50%;object-fit:cover;display:inline-grid;vertical-align:middle;margin-right:8px">` : `<span class="aval" style="width:30px;height:30px;font-size:15px;display:inline-grid;vertical-align:middle;margin-right:8px">${esc((b.n || "?")[0].toUpperCase())}</span>`}<b>${esc(b.n)}</b></span><small>${tt.length} turnos</small></div>` +
+        return `<div class="bcol"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span>${(BARS.find((x) => x.id === b.id) || {}).foto ? `<img src="${esc((BARS.find((x) => x.id === b.id) || {}).foto)}" alt="" width="30" height="30" style="border-radius:50%;object-fit:cover;display:inline-grid;vertical-align:middle;margin-right:8px">` : `<span class="aval" style="width:30px;height:30px;font-size:15px;display:inline-grid;vertical-align:middle;margin-right:8px">${esc(nomBar(b)[0].toUpperCase())}</span>`}<b>${esc(nomBar(b))}</b></span><small>${tt.length} turnos</small></div>` +
           (tt.length
             ? tt
                 .map(
@@ -5523,7 +5677,7 @@ function barsH() {
           const u = UA.find((x) => x.id === b.uid),
             cortes = HA().filter((t) => t.bid === b.id && t.d.startsWith(ymd().slice(0, 7))).length;
           const farmFoto = (BARS.find((x) => x.id === b.id) || {}).foto || "";
-          return `<div class="card" style="text-align:center">${farmFoto ? `<img src="${esc(farmFoto)}" alt="" width="64" height="64" style="border-radius:50%;object-fit:cover;margin:0 auto 12px;display:block">` : `<div class="aval" style="margin:0 auto 12px">${esc((b.n || "?")[0].toUpperCase())}</div>`}<h2 style="margin:0">${esc(b.n)}</h2><small>Dueño ${b.pd}% · Barbero ${100 - b.pd}%</small><div style="margin:12px 0"><span class="pill st-hecho">Activo</span></div><div class="line" style="justify-content:space-around"><span><small>Porcentaje</small><br><b style="color:var(--brass)">${100 - b.pd} %</b></span><span><small>Este mes</small><br><b>${cortes} cortes</b></span></div><div class="chips" style="margin-top:14px"><button style="flex:1" data-act="go" data-args="${A("fin")}">✎ Editar</button><button style="flex:1" data-act="fotoBarbero" data-args="${A(b.id)}">📷 Foto</button>${/* "Quitar" para los dos tipos. Antes sólo se mostraba si el barbero
+          return `<div class="card" style="text-align:center">${farmFoto ? `<img src="${esc(farmFoto)}" alt="" width="64" height="64" style="border-radius:50%;object-fit:cover;margin:0 auto 12px;display:block">` : `<div class="aval" style="margin:0 auto 12px">${esc(nomBar(b)[0].toUpperCase())}</div>`}<h2 style="margin:0">${esc(nomBar(b))}</h2><small>Dueño ${b.pd}% · Barbero ${100 - b.pd}%</small><div style="margin:12px 0"><span class="pill st-hecho">Activo</span></div><div class="line" style="justify-content:space-around"><span><small>Porcentaje</small><br><b style="color:var(--brass)">${100 - b.pd} %</b></span><span><small>Este mes</small><br><b>${cortes} cortes</b></span></div><div class="chips" style="margin-top:14px"><button style="flex:1" data-act="go" data-args="${A("fin")}">✎ Editar</button><button style="flex:1" data-act="fotoBarbero" data-args="${A(b.id)}">📷 Foto</button>${/* "Quitar" para los dos tipos. Antes sólo se mostraba si el barbero
         tenía cuenta (b.uid), así que a los agregados a mano con "+ Agregar
         barbero" no se los podía sacar nunca: quedaban publicados en la web
         sin salida. */ `<button style="flex:1" data-act="askQuitBar" data-args="${A(b.uid || b.id)}">Quitar</button>`}</div></div>`;

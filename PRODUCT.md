@@ -80,6 +80,119 @@ esa pantalla; al ingresar no se pide nada). Es una red de seguridad: si después
 esa persona pierde el acceso a Google o a Facebook, entra con su correo y esa
 contraseña en lugar de perder sus puntos, su historial y sus turnos. Hay un
 botón para saltárselo, con el aviso de qué pasa si lo hace.
+### La tarjeta del barbero muestra su horario real (2026-10-11)
+
+El dorso de la tarjeta tiene un bloque **ATIENDE** con el horario de ese barbero
+—"Lun a Jue · 09:00 a 17:00 hs"— y la lista de servicios con precio. La regla
+que lo sostiene:
+
+- **Lo que dice la tarjeta es lo que bloquea la reserva.** El horario sale de
+  `CFB(bid)`: el propio del barbero si cargó uno en *Ajustes → Horarios*
+  (`config/horario.por[bid]`), si no el general de la peluquería. No es una
+  descripción escrita a mano: es el mismo dato que después calcula los horarios
+  disponibles.
+- Si el barbero no tiene ningún día abierto, el bloque **no se muestra**: es
+  preferible que falte a que prometa un horario que no existe.
+- La pausa al mediodía se muestra aparte, en línea propia y más apagada, sólo
+  si el barbero la cargó.
+
+**Lo que todavía no se puede**: los servicios son **globales**, no por barbero.
+No hay forma de que un barbero declare "yo hago estos dos"; la lista del dorso
+muestra los mismos para todos. Hace falta un campo en `config/barberos` y una
+pantalla para cargarlo, así que no se inventó.
+
+### La franja de barbería fuera de la tarjeta (2026-10-11)
+
+El dueño pidió la franja roja/blanca/azula arriba de las dos caras en el mockup
+nuevo, y dos días después la pidió quitar al verla montada. **Las dos señales
+valen**: la tarjeta ya no tiene franja. No es una contradicción con el login,
+donde también se sacó: es la misma decisión aplicada a los dos lugares.
+
+Lo que **queda con franjas** y está pendiente de que el dueño se exprese:
+
+- el poste del login (`.poste` con `.rayas`), que gira con rojo/blanco/azul;
+- la franja diagonal de la landing (`.lb-stripe`), de 6 px bajo el header.
+
+### SEO local: el dato del negocio vive en cinco lugares (2026-10-11)
+
+Dominio **codigobarber.com.ar**. La web tiene un `BarberShop` en JSON-LD,
+metas OG completas, `canonical`, `robots.txt` y `sitemap.xml`. Tres decisiones
+que no son obvias:
+
+- **El teléfono es el dato más delicado de todo el SEO local.** El local no
+  tiene fijo: hay dos WhatsApp. Se usa el principal como `telephone` y los dos
+  como `contactPoint`. **Nunca se inventa un número**, porque Google lo
+  contrasta contra Maps y contra las reseñas y un desajuste hunde el
+  posicionamiento local.
+- **`aggregateRating` no está, a propósito.** Es el bloque que más rinde y
+  exige reseñas reales y públicas. Hoy hay 13 en Firestore de las cuales 10 son
+  de prueba. Poner un puntaje inventado es penalizado y además es una mentira.
+- **No hay `aggregateRating` pero sí `hasOfferCatalog`**, con los servicios y
+  precios reales: eso sí se sostiene con los datos que ya están cargados.
+
+Como la web es una SPA y Google tiene que leer el JSON-LD sin ejecutar
+JavaScript, el `index.html` es estático y no puede leer `config.js`. El dominio,
+la dirección, las coordenadas, el teléfono y el horario quedan repetidos en
+`config.js`, `index.html`, `robots.txt`, `sitemap.xml` y Firestore. **`tests\seo.js`
+compara los cinco contra `config.js` y falla si se separan.** Si cambia el
+dominio, hay que cambiar los cinco en el mismo lote.
+
+### El nombre de la marca es "Codigo Barber", SIN tilde (2026-10-11)
+
+Había dos escrituras: el SEO decia "Código Barber" (con tilde) y `NOMBRE` en
+`config.js` y `manifest.json` decian "Codigo Barber". Google exige que el nombre
+del negocio coincida **exactamente** con el de la ficha de Google Maps, así que
+no puede haber dos.
+
+**Decisión del dueño: "Codigo Barber", sin tilde.** Ahora el title, las OG, el
+`author`, el `name` del JSON-LD y el `manifest.json` usan la misma cadena.
+
+`tests\seo.js` lo verifica: compara esos cinco lugares contra `NOMBRE` de
+`config.js` y además falla si aparece alguna vez "Código Barber" con tilde. Si
+algún día se cambia la marca, se cambia `NOMBRE` en `config.js` y la prueba avisa
+dónde falta actualizar.
+### Loader con el logo, no un poste (2026-10-11)
+
+La pantalla de carga muestra el escudo de Codigo Barber sobre un cuadrado
+redondeado con aro dorado —el mismo tratamiento que el logo del header— con un
+latido suave y un arco dorado girando. Antes era un poste de barbero con franjas
+girando.
+
+Dos restricciones que vienen del material, no de una preferencia:
+
+- **El PNG del logo es negro opaco, no transparente** (medido: 0% de píxeles con
+  alfa). Por eso va sobre su propio cuadrado negro y no sobre un disco claro.
+- **La ruta del `src` está escrita en `index.html`**, no asignada desde el
+  módulo, porque el loader aparece antes de que el JS corra. El riesgo de que
+  se desincronice de `LOGO` en `config.js` está cubierto por una prueba que
+  compara las dos.
+
+### Quitar un barbero agregado a mano (2026-10-11)
+
+"+ Agregar barbero" crea un barbero **sin cuenta**: no tiene documento en
+`staff` ni rol, es sólo una fila en `config/finanzas.bs`. Quitarlo no es
+"degradarlo a cliente" sino sacarlo de la lista. El botón existe desde el lote
+7 pero no hacía nada: buscaba el barbero por `uid` y un barbero sin cuenta sólo
+tiene `id`. Ahora busca por cualquiera de los dos.
+
+### El nombre del barbero vive en un solo lugar (2026-10-11)
+
+El nombre de un barbero estaba guardado **tres veces** en Firestore y cada parte de la app leía una distinta:
+
+| Dónde | Quién lo lee |
+|---|---|
+| `staff/{uid}.n` | el encabezado del panel del barbero |
+| `config/barberos.l[].n` | la landing pública |
+| `config/finanzas.bs[].n` | la lista **Barberos** y los chips de la agenda, en el panel del dueño |
+
+Consecuencia real que reportó el dueño: se cambiaba el nombre en "Mi perfil en la web", la landing lo cambiaba, y **el panel seguía mostrando el nombre viejo**. Peor: cada vez que el dueño entraba al panel, su sincronización reescribía la lista pública con el nombre viejo y el cambio del barbero se perdía para siempre.
+
+Regla que queda:
+
+- **El nombre canónico es el publicado** (`config/barberos`). Si un barbero se cambia el nombre en su ficha, ese nombre manda en todas partes.
+- El barbero **no** necesita permiso de edición de porcentajes: guardar la ficha escribe su nombre en `staff/{uid}` y en la lista pública, nada más.
+- El dueño puede poner el nombre al **agregar** un barbero, pero una vez que la ficha existe manda lo que el barbero haya puesto.
+
 ### El barbero puede cargar turnos desde Agenda (2026-10-10)
 
 Cargar un turno a nombre de un cliente desde el panel es una operación **normal del negocio**, no una excepción: el barbero lo hace cuando alguien llega sin haber reservado. Por eso las reglas de Firestore tienen que permitirlo (punto 6 del comentario de `FIRESTORE_RULES.txt`). Si algún día el barbero vuelve a ver "no tenés permiso", lo primero que hay que revisar es que las reglas de la consola estén publicadas, no el código.
@@ -99,7 +212,7 @@ Cargar un turno a nombre de un cliente desde el panel es una operación **normal
   - `index.html` → `<title>`, `og:site_name` (estáticos: no los reescribe el JS, hay que cambiarlos a mano)
   - `manifest.json` → `name` y `short_name` (estáticos, y ahora sin BOM para que lo parsee cualquier `JSON.parse`)
   - La etiqueta del logo nuevo dice "Codigo Barber"; antes el mockup decía "Don Estilo", nombre que ya no se usa en ningún lado.
-  - Instagram `@codigobarber_1` y email `codigobarber1.com` sugieren "Código Barber" sin el sufijo numérico, que parece residuo del scaffold.
+  - Instagram `@codigobarber_1` y email `codigobarber1.com` sugieren "Codigo Barber" sin el sufijo numérico, que parece residuo del scaffold.
   Decisión del owner (2026-10-08): **dejarlo cableado a `NOMBRE` en `src/config.js` y que él lo cambie.** La landing no debe hardcodear el nombre; todo texto de marca sale de `NOMBRE`.
 
 ## Evidence on Hand

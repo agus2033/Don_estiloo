@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  sitemap.xml de Codigo Barber.
+
+  Una sola URL a propósito. La web es una SPA: las secciones (Servicios,
+  Equipo, Reseñas, Contacto, el asistente de reserva) son rutas con # dentro
+  de index.html, y los buscadores no las ven ni las indexan. Poner una URL
+  por sección sería inventar direcciones que devuelven la misma página.
+
+  La última vez que se cambió la web de verdad: 2026-10-11. Google usa esta
+  fecha sólo como pista, no como dato; si queda vieja, no pasa nada.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://codigobarber.com.ar/</loc>
+    <lastmod>2026-10-11</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>

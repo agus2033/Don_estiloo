@@ -1193,7 +1193,12 @@ body[data-theme="light"] header #nav button {
   width: auto;
   flex: 1;
 }
-/* Loader (poste de barbero) */
+/* Loader (logo de Codigo Barber)
+
+   Antes era un poste de barbero con franjas rojas, blancas y azules girando
+   (.bp). El dueño lo pidió cambiado por el logo. El poste y sus keyframes
+   (.bp, .bp i, @keyframes bp) se fueron con él: si algún día vuelve, no
+   reciclar estas reglas. */
 #ld {
   position: fixed;
   inset: 0;
@@ -1219,46 +1224,76 @@ body[data-theme="light"] header #nav button {
   visibility: hidden;
   pointer-events: none;
 }
-.bp {
+/* El logo es un PNG con fondo NEGRO OPACO (medido: 0% de píxeles
+   transparentes, esquina = rgba(0,0,0,255)). Por eso no va pelado sobre el
+   azul del loader —se vería el cuadrado— ni sobre un disco claro, que es lo
+   que se probó primero y tapaba el escudo entero. Va como lo muestra el
+   header (`.lg`): cuadrado redondeado, aro dorado y la imagen filling. */
+.lgc {
   position: relative;
-  width: 44px;
-  height: 104px;
-  padding: 12px 0;
+  display: grid;
+  place-items: center;
+  width: 168px;
+  height: 168px;
+  border-radius: 34px;
+  /* Negro puro y no el #0b0f16 del loader: el PNG del logo también es negro
+     puro, así que el borde del cuadrado se funde con la imagen y lo único que
+     dibuja la forma es el aro dorado. Con un fondo distinto se veía un
+     cuadrado ligeramente más claro alrededor del escudo. */
+  background: #000;
+  box-shadow:
+    0 0 0 2px #c9a24b,
+    0 26px 60px -18px #000e,
+    0 0 76px -14px #c9a24b4d;
+  animation: ldLatido 2.1s ease-in-out infinite;
 }
-.bp::before,
-.bp::after {
+.lgl {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+/* El arco dorado que da vuelta: es lo que dice "está trabajando" sin
+   inventar una barra de progreso que no puede saber cuánto falta. */
+.lgc::after {
   content: "";
   position: absolute;
-  left: -5px;
-  right: -5px;
-  height: 12px;
-  border-radius: 4px;
-  background: var(--brassFill);
+  inset: -13px;
+  /* El radio tiene que crecer lo mismo que el inset (34 + 13) para que el
+     arco sea concéntrico con las esquinas del cuadrado y no se vea torcido
+     al girar. */
+  border-radius: 47px;
+  border: 2px solid transparent;
+  border-top-color: #c9a24b;
+  border-right-color: #c9a24b55;
+  animation: ldGiro 1.15s linear infinite;
 }
-.bp::before {
-  top: 0;
+@keyframes ldLatido {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.03);
+  }
 }
-.bp::after {
-  bottom: 0;
-}
-.bp i {
-  display: block;
-  height: 100%;
-  border: 2px solid #2b3644;
-  border-radius: 4px;
-  background: repeating-linear-gradient(
-    -45deg,
-    var(--red) 0 10px,
-    #fff 10px 20px,
-    var(--blue) 20px 30px,
-    #fff 30px 40px
-  );
-  background-size: 56.57px 56.57px;
-  animation: bp 1s linear infinite;
-}
-@keyframes bp {
+@keyframes ldGiro {
   to {
-    background-position: 0 56.57px;
+    transform: rotate(360deg);
+  }
+}
+/* Con "reducir movimiento" no hay giro ni latido: el logo queda quieto y la
+   palabra "Cargando" sigue diciendo lo mismo, que es lo que importa. */
+@media (prefers-reduced-motion: reduce) {
+  .lgc,
+  .lgc::after {
+    animation: none;
+  }
+  .lgc::after {
+    border-top-color: #c9a24b;
+    border-right-color: #c9a24b;
+    opacity: 0.5;
   }
 }
 /* Ventanas modales */
@@ -1382,7 +1417,8 @@ body[data-theme="light"] header #nav button {
   color: #2e7d4f;
 }
 @media (prefers-reduced-motion: reduce) {
-  .bp i,
+  /* El `.bp i` que estaba acá era el del poste de barbero del loader, que ya
+     no existe. La animación del logo nuevo se apaga en su propio bloque. */
   .mb {
     animation: none;
   }

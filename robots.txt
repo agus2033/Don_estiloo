@@ -1,0 +1,26 @@
+# robots.txt de Codigo Barber
+# El dominio tiene que coincidir con DOMINIO en src/config.js, con el
+# <link rel="canonical"> y con og:url del index.html, y con cada <loc> del
+# sitemap.xml. `tests\seo.js` compara los cuatro y falla si se separan.
+
+User-agent: *
+Allow: /
+
+# La web es una SPA: todo el contenido vive en "/" y las demás vistas son
+# rutas con # (hashtag), que los buscadores no ven ni indexan. Por eso el
+# sitemap tiene una sola URL y no una por sección.
+
+# Archivos que NO tienen que aparecer indexados. No es que haya secretos
+# adentro: es que no le sirven a nadie y los buscadores los pierden de vista.
+Disallow: /FIRESTORE_RULES.txt
+Disallow: /skills-lock.json
+
+# Los buscadores de IA (y los que respetan esta directiva) pueden leer la
+# web para responder consultas. Si algún día preferís que no, sacá las dos
+# líneas siguientes.
+User-agent: GPTBot
+Allow: /
+User-agent: ClaudeBot
+Allow: /
+
+Sitemap: https://codigobarber.com.ar/sitemap.xml

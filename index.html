@@ -1,18 +1,39 @@
 <!doctype html>
-<html lang="es">
+<html lang="es-AR">
   <head>
     <meta charset="utf-8" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
-    <title>Codigo Barber · Turnos y puntos</title>
-    <!-- El título y la descripción siguen a NOMBRE (src/config.js): cambialos
-         juntos cuando se defina el nombre de la marca. -->
+    <!-- ===================== SEO LOCAL =====================
+         Todo lo de esta sección tiene que coincidir con `DOMINIO`, `CP`,
+         `LAT`, `LON`, `CALLE`, `CIUDAD`, `PROVINCIA`, `S`, `MP` y
+         `HORARIO_GENERAL` de src/config.js. Son dos lugares porque index.html
+         es estático y Google tiene que leerlo sin ejecutar JavaScript:
+         `tests\seo.js` compara los dos y falla si se separan.
+
+         El dominio también aparece en robots.txt y en sitemap.xml. Son cinco
+         lugares en total. Si cambia el dominio, se cambian los cinco. -->
+
+    <title>Codigo Barber | Barbería en Puerto Iguazú, Misiones</title>
     <meta
       name="description"
-      content="Reservá tu turno de barbería online, sumá 5 puntos por cada corte y canjealos por descuentos y cortes gratis."
+      content="La mejor barbería y peluquería masculina en Puerto Iguazú. Cortes de pelo modernos, perfilado de barba y el mejor estilo. ¡Reservá tu turno online en Codigo Barber!"
     />
+    <link rel="canonical" href="https://codigobarber.com.ar/" />
+    <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+
+    <!-- Señales de ubicación para buscadores. Complementan al JSON-LD: Google
+         las usa para mostrar el nombre y el teléfono junto al resultado.
+         OJO con los dos formatos, que son distintos y se confunden:
+         geo.position va "latitud;longitud" (punto y coma) e ICBM va
+         "latitud,longitud" (coma). -->
+    <meta name="geo.region" content="AR-M" />
+    <meta name="geo.placename" content="Puerto Iguazú, Misiones" />
+    <meta name="geo.position" content="-25.618;-54.5701752" />
+    <meta name="ICBM" content="-25.618, -54.5701752" />
+    <meta name="author" content="Codigo Barber" />
     <meta name="theme-color" content="#141c26" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#f5f0e6" media="(prefers-color-scheme: light)" />
 
@@ -20,21 +41,142 @@
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Codigo Barber" />
     <meta property="og:locale" content="es_AR" />
-    <meta property="og:title" content="Tu turno, sin vueltas. Reservá online." />
+    <meta property="og:title" content="Codigo Barber - Barbería en Puerto Iguazú" />
     <meta
       property="og:description"
-      content="Reservá tu turno de barbería online, sumá puntos por cada corte y canjealos por descuentos y cortes gratis."
+      content="Cortes de pelo y perfilado de barba profesionales en Puerto Iguazú, Misiones."
     />
-    <meta property="og:image" content="https://don-estilo.vercel.app/assets/icon-512.png" />
-    <meta property="og:image:width" content="512" />
-    <meta property="og:image:height" content="512" />
+    <meta property="og:url" content="https://codigobarber.com.ar/" />
+    <meta property="og:image" content="https://codigobarber.com.ar/assets/logo-256.png" />
+    <meta property="og:image:width" content="256" />
+    <meta property="og:image:height" content="256" />
+    <meta property="og:image:alt" content="Codigo Barber, barbería en Puerto Iguazú" />
     <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="Tu turno, sin vueltas. Reservá online." />
+    <meta name="twitter:title" content="Codigo Barber - Barbería en Puerto Iguazú" />
     <meta
       name="twitter:description"
-      content="Reservá online y sumá puntos por cada corte."
+      content="Cortes de pelo y perfilado de barba profesionales en Puerto Iguazú, Misiones."
     />
-    <meta name="twitter:image" content="https://don-estilo.vercel.app/assets/icon-512.png" />
+    <meta name="twitter:image" content="https://codigobarber.com.ar/assets/logo-256.png" />
+
+    <!-- ============ DATOS ESTRUCTURADOS (Schema.org / BarberShop) ============
+         BarberShop es el tipo correcto: hereda de HairSalon y de LocalBusiness,
+         así que Google lo usa para el paquete de información local (nombre,
+         mapa, teléfono, horarios y reseñas).
+
+         Cuatro correcciones sobre el JSON que se pasó. Como estaba, Google lo
+         ignoraba o mostraba el local en el lugar equivocado:
+           1. "streetAddress" decía "Puerto Iguazú", que es la CIUDAD, no la
+              calle. Con la ciudad repetida en el campo de calle, Google no
+              lograba ubicar el negocio en el mapa.
+           2. "openingHoursSpecification" era un objeto suelto. Schema.org la
+              declara como propiedad repetida y Google la espera como ARREGLO.
+           3. "image" apuntaba a "/logo.png", que no existe: el logo está en
+              assets/logo-256.png.
+           4. El teléfono +543757000000 no es de nadie. Van los dos WhatsApp
+              reales del local. NO hay fijo, así que no se inventa uno: un
+              teléfono falso en el JSON-LD es lo peor que se puede hacer en
+              SEO local, porque Google lo contrasta contra Maps y contra las
+              reseñas y te desalinea el negocio. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BarberShop",
+        "@id": "https://codigobarber.com.ar/#negocio",
+        "name": "Codigo Barber",
+        "description": "Barbería y peluquería masculina en Puerto Iguazú, Misiones. Cortes de pelo, perfilado de barba y reservas online.",
+        "url": "https://codigobarber.com.ar/",
+        "image": ["https://codigobarber.com.ar/assets/logo-256.png"],
+        "logo": "https://codigobarber.com.ar/assets/logo-256.png",
+        "telephone": "+5493757699335",
+        "contactPoint": [
+          {
+            "@type": "ContactPoint",
+            "contactType": "customer service",
+            "telephone": "+5493757699335",
+            "areaServed": "AR",
+            "availableLanguage": ["es"]
+          },
+          {
+            "@type": "ContactPoint",
+            "contactType": "reservations",
+            "telephone": "+5493757644751",
+            "url": "https://wa.me/5493757699335",
+            "areaServed": "AR",
+            "availableLanguage": ["es"]
+          }
+        ],
+        "address": {
+          "@type": "PostalAddress",
+          "streetAddress": "Av. Su Santidad y Papa Francisco",
+          "addressLocality": "Puerto Iguazú",
+          "addressRegion": "Misiones",
+          "postalCode": "3370",
+          "addressCountry": "AR"
+        },
+        "geo": {
+          "@type": "GeoCoordinates",
+          "latitude": -25.618,
+          "longitude": -54.5701752
+        },
+        "openingHoursSpecification": [
+          {
+            "@type": "OpeningHoursSpecification",
+            "dayOfWeek": [
+              "https://schema.org/Monday",
+              "https://schema.org/Tuesday",
+              "https://schema.org/Wednesday",
+              "https://schema.org/Thursday",
+              "https://schema.org/Friday",
+              "https://schema.org/Saturday"
+            ],
+            "opens": "09:00",
+            "closes": "17:00"
+          }
+        ],
+        "priceRange": "$$",
+        "currenciesAccepted": "ARS",
+        "paymentAccepted": "Efectivo, Transferencia",
+        "areaServed": {
+          "@type": "City",
+          "name": "Puerto Iguazú",
+          "containedInPlace": { "@type": "State", "name": "Misiones" }
+        },
+        "hasOfferCatalog": {
+          "@type": "OfferCatalog",
+          "name": "Servicios",
+          "itemListElement": [
+            {
+              "@type": "Offer",
+              "priceCurrency": "ARS",
+              "price": "15000",
+              "itemOffered": {
+                "@type": "Service",
+                "name": "Corte (Incluye cejas)",
+                "description": "Corte de pelo con perfilado de cejas, 30 minutos."
+              }
+            },
+            {
+              "@type": "Offer",
+              "priceCurrency": "ARS",
+              "price": "8000",
+              "itemOffered": { "@type": "Service", "name": "Barba", "description": "Perfilado de barba, 30 minutos." }
+            },
+            {
+              "@type": "Offer",
+              "priceCurrency": "ARS",
+              "price": "20000",
+              "itemOffered": { "@type": "Service", "name": "Corte + barba", "description": "Corte de pelo y perfilado de barba, 60 minutos." }
+            }
+          ]
+        },
+        "sameAs": ["https://www.instagram.com/codigobarber_1"]
+      }
+    </script>
+    <!-- aggregateRating NO va hasta que haya reseñas REALES y públicas en la
+         web: Google penaliza el puntaje inventado. Hoy en Firestore hay 13
+         reseñas de las cuales 10 son de prueba. Cuando estén limpias, este
+         bloque se arma desde Firestore (ver CONTINUAR.md, sección 17). -->
 
     <!-- Las fuentes son el recurso de terceros más pesado del arranque -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -49,7 +191,10 @@
     <link rel="stylesheet" href="src/styles.css?v=3" />
     <link rel="stylesheet" href="src/landing.css?v=1" />
     <link rel="manifest" href="manifest.json" />
-    <meta name="theme-color" content="#141c26" />
+    <!-- Este theme-color SIN media estaba acá y pisaba a los dos de arriba,
+         que sí lo tienen: en el modo claro la barra del navegador salía
+         azul oscuro en vez de marfil. Los dos de arriba (con media) son los
+         que quedan. -->
     <link rel="icon" href="assets/icon-192.png" sizes="192x192" />
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -57,7 +202,17 @@
   </head>
   <body>
     <div id="ld" role="status" aria-live="polite">
-      <div class="bp"><i></i></div>
+      <!--
+        El logo va con `src` fijo en el HTML y NO asignado desde main.js como
+        el del header (`#lg`, que sí lo pone `LOGO` de config.js): el loader
+        se muestra ANTES de que cargue el módulo, y si el src llegara por JS
+        el primer segundo se vería un disco vacío. El precio de hardcodear la
+        ruta es que puede desincronizarse de `LOGO` en config.js, así que
+        `tests\loader.js` compara las dos y falla si se separan.
+      -->
+      <span class="lgc">
+        <img class="lgl" src="assets/logo-256.png" alt="" width="168" height="168" />
+      </span>
       <span id="ldt">Cargando…</span>
     </div>
     <header>

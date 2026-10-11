@@ -1093,6 +1093,12 @@ body[data-theme="light"] .lb-btn--pri:hover {
   cursor: pointer;
   perspective: 1400px;
   padding: 0;
+  /* Es un ítem flex de .lb-barber (columna): sin `flex` mide lo que mide el
+     frente y, cuando el dorso es más alto —en el celular, con horario y
+     servicios— la tarjeta quedaba con el alto puesto y 90 px de vacío
+     abajo, sin que el dorso pudiera usar ese espacio. Estirándolo, el
+     `inset:0` del dorso sí llega al alto real de la tarjeta. */
+  flex: 1 1 auto;
   min-height: 0;
 }
 .lb-barber-giro:focus-visible {
@@ -1102,6 +1108,14 @@ body[data-theme="light"] .lb-btn--pri:hover {
 .lb-barber-int {
   position: relative;
   width: 100%;
+  /* `height:100%` para que el dorso, que es `position:absolute; inset:0`,
+     tome el alto REAL de la tarjeta y no el del frente. Sin esto el
+     `inset:0` se resolvía contra el frente (533 px en el celular) y, con la
+     tarjeta estirada a 628, el dorso no ocupaba los 95 px de más: el bloque
+     de WhatsApp e Instagram quedaba fuera de vista.
+     Contra un padre de alto `auto` el 100% no resuelve y cae a `auto`, que es
+     lo mismo que:before de esta regla. */
+  height: 100%;
   transform-style: preserve-3d;
   transition: transform 0.5s var(--lb-ease);
 }
@@ -1137,7 +1151,11 @@ body[data-theme="light"] .lb-btn--pri:hover {
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-/* En el dorso el botón de reservar manda: va al pie, con aire arriba. */
+/* El botón de reservar va clavado al pie del dorso, con `margin-top: auto`.
+   El dorso es más bajo que el frente (la foto 4/5 es alta), así que sin esto
+   el botón queda flotando en el medio y el borde de abajo de la tarjeta no
+   coincide entre las dos caras. Medido con viewports reales, el aire que queda
+   entre el último bloque y el botón es de 55 a 86 px: se lee como respiro. */
 .lb-barber-atras .lb-btn--full {
   margin-top: auto;
 }
@@ -1369,6 +1387,13 @@ body[data-theme="light"] .lb-btn--pri:hover {
   padding: 14px 16px 16px;
   background: var(--lb-card);
 }
+/* Con la tarjeta dada vuelta el pie se oculta: el dorso ya trae su propio
+   "Reservar con X" al final (como en el mockup) y, en el celular, el pie de
+   dos botones apilados medía 144 px y tapaba el bloque de WhatsApp e
+   Instagram. Así queda una sola acción visible y el dorso entra entero. */
+.lb-barber--abierta .lb-barber-pie {
+  display: none;
+}
 .lb-barber-pie .lb-btn {
   flex: 1;
   margin-top: 0;
@@ -1505,6 +1530,261 @@ body[data-theme="light"] .lb-btn--pri:hover {
 .lb-barber small {
   color: var(--lb-mut);
 }
+
+/* ---------- TARJETA DE BARBERO: mockup del dueño (desktop y celular) ----------
+
+   La franja de barbería (rojo/blanco/azul) que el mockup traía arriba de las
+   dos caras ESTÁ FUERA: el dueño la pidió sacar después de verla montada, y
+   además ya la había hecho sacar del login. No hay reglas que reciclar acá:
+   si algún día vuelve, es un <span class="lb-franja"> más un bloque de CSS
+   como el que estaba acá, y el hueco de arriba lo vuelve a tapar el borde
+   redondeado de la tarjeta. */
+
+/* Descripción en el frente, bajo el nombre. */
+.lb-barber-id {
+  flex-wrap: wrap;
+}
+.lb-barber-desc {
+  flex: 1 0 100%;
+  color: var(--lb-mut);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+/* --- Dorso ------------------------------------------------------------- */
+.lb-barber-atras {
+  padding: 0 0 14px;
+  gap: 0;
+  overflow: hidden;
+}
+/* El cuerpo scrollea y el botón de reservar queda clavado abajo: con el dorso
+   nuevo (horario + servicios) el contenido es más alto que la tarjeta y sin
+   esto el botón se iba fuera de vista al abrirla. */
+.lb-bd-cuerpo {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 14px 16px 0;
+}
+.lb-bd-res {
+  flex: 0 0 auto;
+  margin: 14px 16px 0;
+  width: calc(100% - 32px);
+}
+.lb-bd-cab {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.lb-bd-cab .lb-bd-nom {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 1.7rem;
+  letter-spacing: 0.03em;
+}
+/* El botón de volver a girar la tarjeta. Va arriba a la derecha como en el
+   mockup; es un <button> real y no un div, así que el teclado lo alcanza solo
+   (el div que gira ya tiene su listener de Enter/Espacio, pero ese no lo
+   registra dentro del dorso). */
+.lb-bd-giro {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid var(--lb-line);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--lb-ink);
+  cursor: pointer;
+}
+.lb-bd-giro svg {
+  width: 21px;
+  height: 21px;
+}
+.lb-bd-giro:hover {
+  border-color: var(--lb-brass);
+  color: var(--lb-brass);
+}
+.lb-bd-giro:focus-visible {
+  outline: 3px solid var(--lb-brass);
+  outline-offset: 2px;
+}
+/* En el dorso el oficio va como pastilla con borde (en el frente va dorada). */
+.lb-barber-atras .lb-bd-esp {
+  display: inline-block;
+  margin: 6px 0 0;
+  padding: 4px 12px;
+  border: 1px solid var(--lb-brass);
+  border-radius: 999px;
+  background: transparent;
+  font-size: 0.72rem;
+}
+.lb-bd-sobre {
+  margin: 16px 0 2px;
+  color: var(--lb-mut);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.lb-bd-desc {
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+/* Bloque ATIENDE: horario del barbero, el mismo que usa la reserva. */
+.lb-bd-atiende {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--lb-line);
+  border-radius: 12px;
+  margin-bottom: 18px;
+  color: var(--lb-brass);
+}
+.lb-bd-atiende svg {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+}
+.lb-bd-atiende span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.lb-bd-atiende small {
+  color: var(--lb-mut);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.lb-bd-atiende b {
+  color: var(--lb-ink);
+  font-size: 0.95rem;
+  line-height: 1.3;
+}
+/* La pausa al mediodía, en su propia línea y más apagada: es un dato
+   secundario, no parte del horario. */
+.lb-bd-atiende em {
+  color: var(--lb-mut);
+  font-size: 0.82rem;
+  font-style: normal;
+}
+
+/* Lista de servicios con precio. */
+.lb-bd-lab {
+  margin: 0 0 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--lb-line);
+  color: var(--lb-mut);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.lb-bd-svs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.lb-bd-sv {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--lb-line-soft);
+}
+.lb-bd-sv:last-child {
+  border-bottom: 0;
+}
+.lb-bd-sv-t {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.lb-bd-sv-t b {
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.lb-bd-sv-t small {
+  color: var(--lb-mut);
+  font-size: 0.82rem;
+}
+.lb-bd-sv-p {
+  flex: 0 0 auto;
+  color: var(--lb-brass);
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 1.15rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.lb-bd-sv-n {
+  padding: 6px 0;
+  color: var(--lb-mut);
+  font-size: 0.9rem;
+}
+
+/* WhatsApp / Instagram: botones con borde, de a dos, como en el mockup.
+   Antes eran pastillas en fila con el número pegado; ahora la etiqueta es fija
+   y el link va al perfil, que es lo que hace la gente. */
+.lb-bd-redes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+.lb-bd-red {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--lb-line);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--lb-ink);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.92rem;
+  min-height: 46px;
+  overflow-wrap: anywhere;
+}
+.lb-bd-red img {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+}
+.lb-bd-red:hover {
+  border-color: var(--lb-brass);
+  color: var(--lb-brass);
+}
+/* Las redes extra que carga el barbero no entran en la grilla de dos (el
+   nombre no siempre es corto y se rompería la línea): van a lo ancho. */
+.lb-bd-redes .lb-bd-red:nth-child(n + 3) {
+  grid-column: 1 / -1;
+}
+.lb-bd-vacio {
+  margin: 16px 0 0;
+  color: var(--lb-mut);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+/* En el celular los dos botones del pie van apilados, pero el de reservar
+   primero: ya lo hace el bloque .lb-barber-pie de arriba. */
+
 
 /* ---------- 13. TESTIMONIOS ---------- */
 /* Contenedor del carrusel de reseñas. minmax(0, 1fr) y no 1fr a secas:

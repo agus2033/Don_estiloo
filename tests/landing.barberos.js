@@ -21,7 +21,28 @@ const SINTETICOS = [
     redes: [{ n: "TikTok", url: "https://tiktok.com/@asda" }],
   },
   { id: "tb2", n: "pablo", esp: "Colorista" },
+  { id: "tb3", n: "nico", esp: "Barbero" },
 ];
+
+/* La tarjeta se prueba con la lista de barberos REAL, que es lo que importa,
+   pero si en Firestore hay menos de dos la prueba se cae y no dice por qué.
+   Los barberos de prueba que el dueño carga y saca son datos de trabajo, no
+   parte del producto: cuando la lista real tiene uno solo, se injectan
+   sintéticos EN MEMORIA (`__test.setBars`) para poder seguir midiendo la
+   tarjeta. No escribe nada en Firestore. */
+const completaBarberos = async (page, out, tag) => {
+  const n = await page.evaluate(() => document.querySelectorAll(".lb-barber").length);
+  if (n >= 2) return;
+  await page.evaluate((bars) => window.__test.setBars(bars), SINTETICOS);
+  await page.waitForTimeout(700);
+  const m = await page.evaluate(() => document.querySelectorAll(".lb-barber").length);
+  out.push([
+    "SKIP",
+    `${tag} · en Firestore hay ${n} barbero(s): se mide con ${m} sintéticos`,
+    "",
+  ]);
+  console.log(`  skip  ${tag} · en Firestore hay ${n} barbero(s): se mide con ${m} sintéticos`);
+};
 
 (async () => {
   const browser = await chromium.launch();
@@ -59,12 +80,16 @@ const SINTETICOS = [
     await page.waitForTimeout(3500);
     const tag = `${tema}/${w}`;
 
-    const base = await page.evaluate(() => {
-      /* Los atributos del giro (data-act, tabindex, role, aria-expanded) y
-         la `perspective` viven en `.lb-barber-giro`, no en la tarjeta: con
-         el rediseño la tarjeta se partió en la zona que gira y el pie con
-         los botones. */
-      const cs = [...document.querySelectorAll(".lb-barber")].map((c) => {
+    /* Si en Firestore hay un solo barbero se miden los sintéticos (ver
+       `completaBarberos` arriba): si no, el test se cae con "n=1" y parece
+       un error de la tarjeta cuando lo que falta son datos de trabajo. */
+    await completaBarberos(page, out, tag);
+    /* Los atributos del giro (data-act, tabindex, role, aria-expanded) y la
+       `perspective` viven en `.lb-barber-giro`, no en la tarjeta: con el
+       rediseño la tarjeta se partió en la zona que gira y el pie con los
+       botones. */
+    const base = await page.evaluate(() =>
+      [...document.querySelectorAll(".lb-barber")].map((c) => {
         const g = c.querySelector(".lb-barber-giro");
         return {
           act: g ? g.dataset.act : null,
@@ -79,9 +104,8 @@ const SINTETICOS = [
           backface: getComputedStyle(c.querySelector(".lb-barber-frente")).backfaceVisibility,
           pie: [...c.querySelectorAll(".lb-barber-pie .lb-btn")].map((x) => x.textContent.trim()),
         };
-      });
-      return cs;
-    });
+      }),
+    );
     chk(base.length >= 2, `${tag} · hay al menos 2 tarjetas`, `n=${base.length}`);
     chk(
       base.every((c) => c.act === "lbFlip" && c.tab === "0" && c.role === "button" && c.exp === "false"),
@@ -141,7 +165,12 @@ const SINTETICOS = [
     );
     chk(despues.atrasVisible, `${tag} · el dorso queda accesible (inert fuera, aria-hidden=false)`);
     chk(despues.frenteInert, `${tag} · el frente queda fuera del taborder`);
-    chk(despues.alto >= despues.dorsoAlto - 4, `${tag} · la tarjeta creció para contener el dorso`, `tarjeta=${despues.alto} dorso=${despues.dorsoAlto} antes=${antes.alto}`);
+    /* Con el dorso nuevo la tarjeta puede ENCOGER al abrir: al abrir se oculta
+       el pie de dos botones (el dorso trae su propio "Reservar con X") y ese
+       pie medía 82 px en escritorio y 144 en celular. Lo que no puede pasar es
+       que el dorso quede más alto que la tarjeta, porque se le cortaría lo de
+       abajo. */
+    chk(despues.alto >= despues.dorsoAlto - 4, `${tag} · la tarjeta contiene el dorso entero`, `tarjeta=${despues.alto} dorso=${despues.dorsoAlto} antes=${antes.alto}`);
 
     /* ---------- sólo una abierta ---------- */
     const n = await page.evaluate(() => document.querySelectorAll(".lb-barber").length);
@@ -238,7 +267,24 @@ const SINTETICOS = [
       `${tag} · al abrir, la tarjeta entera queda a la vista`,
       JSON.stringify(enVista),
     );
-    await page.locator(".lb-barber-pie [data-act='lbReservarBar']").first().click();
+    /* Con la ficha ABIERTA el pie se oculta: el dorso trae su propio
+       "Reservar con X", como en el mockup del dueño. Con la ficha cerrada
+       sigue siendo el del pie, y eso se comprueba más arriba. */
+    const pieAbierto = await page.evaluate(() => {
+      const t = document.querySelector(".lb-barber--abierta");
+      if (!t) return { abierta: false };
+      const b = t.querySelector(".lb-bd-res");
+      return {
+        abierta: true,
+        oculto: getComputedStyle(t.querySelector(".lb-barber-pie")).display === "none",
+        dorsoBoton: !!b,
+        dorsoTexto: b ? b.textContent.trim() : "",
+      };
+    });
+    chk(pieAbierto.abierta && pieAbierto.oculto, `${tag} · con la ficha abierta el pie se oculta`, JSON.stringify(pieAbierto));
+    chk(pieAbierto.dorsoBoton, `${tag} · el dorso trae su propio botón de reservar`);
+    chk(/Reservar con /.test(pieAbierto.dorsoTexto), `${tag} · y dice con quién`, pieAbierto.dorsoTexto);
+    await page.locator(".lb-barber--abierta .lb-bd-res").first().click();
     await page.waitForTimeout(800);
     const salto = await page.evaluate(() => ({ hash: location.hash, abiertas: document.querySelectorAll(".lb-barber--abierta").length }));
     chk(/#\/reservar/.test(salto.hash), `${tag} · "Reservar con…" lleva a la reserva`, salto.hash);
@@ -283,6 +329,83 @@ const SINTETICOS = [
       dorso.enlaces.join(" "),
     );
     chk(dorso.vacio || dorso.desc.length > 0, `${tag} · muestra la descripción`, dorso.desc.slice(0, 40));
+
+    /* ---------- dorso nuevo: franja, horario, servicios y botón de giro ---- */
+    const nuevo = await page.evaluate(() => {
+      const t = document.querySelector(".lb-barber--abierta");
+      const d = t.querySelector(".lb-barber-atras");
+      const frente = t.querySelector(".lb-barber-frente");
+      const sv = [...d.querySelectorAll(".lb-bd-sv")].map((li) => ({
+        nombre: (li.querySelector(".lb-bd-sv-t b") || {}).textContent || "",
+        precio: (li.querySelector(".lb-bd-sv-p") || {}).textContent || "",
+      }));
+      const at = d.querySelector(".lb-bd-atiende");
+      const giro = d.querySelector(".lb-bd-giro");
+      return {
+        franjaDorso: d.querySelectorAll(".lb-franja").length,
+        franjaFrente: frente.querySelectorAll(".lb-franja").length,
+        /* Y que además no quede ninguna franja dibujada a otra manera: se
+           buscan todos los `repeating-linear-gradient` dentro de la tarjeta. */
+        rayas: [...document.querySelectorAll(".lb-barber *")]
+          .filter((e) => {
+            const f = getComputedStyle(e).backgroundImage;
+            return f && f.indexOf("repeating-linear-gradient") >= 0;
+          })
+          .map((e) => String(e.className).slice(0, 30)),
+        sobre: (d.querySelector(".lb-bd-sobre") || {}).textContent || "",
+        atiende: at ? at.innerText.replace(/\n/g, " / ") : null,
+        lab: (d.querySelector(".lb-bd-lab") || {}).textContent || "",
+        servicios: sv,
+        giroEsBoton: giro ? giro.tagName : null,
+        giroEtiqueta: giro ? giro.getAttribute("aria-label") : null,
+        redes: [...d.querySelectorAll(".lb-bd-red")].map((a) => a.textContent.trim()),
+      };
+    });
+    chk(nuevo.franjaDorso === 0, `${tag} · el dorso NO tiene la franja de barbería`, `${nuevo.franjaDorso}`);
+    chk(nuevo.franjaFrente === 0, `${tag} · el frente NO tiene la franja de barbería`, `${nuevo.franjaFrente}`);
+    chk(
+      nuevo.rayas.length === 0,
+      `${tag} · ninguna parte de la tarjeta dibuja franjas`,
+      JSON.stringify(nuevo.rayas.slice(0, 3)),
+    );
+    chk(/^Sobre /.test(nuevo.sobre), `${tag} · el dorso rotula "Sobre {nombre}"`, nuevo.sobre);
+    chk(!!nuevo.atiende, `${tag} · el dorso muestra el bloque ATIENDE`, nuevo.atiende);
+    /* El texto llega en mayúsculas porque el bloque ATIENDE las aplica por
+       CSS (text-transform), no en el HTML: la comparación va sin distinguir
+       mayúsculas de minúsculas. */
+    chk(
+      /\d\d:\d\d a \d\d:\d\d hs/i.test(nuevo.atiende || ""),
+      `${tag} · el horario tiene horas en hh:mm`,
+      nuevo.atiende,
+    );
+    chk(nuevo.lab.toLowerCase().indexOf("servicios") >= 0, `${tag} · el dorso rotula SERVICIOS`, nuevo.lab);
+    chk(nuevo.servicios.length > 0, `${tag} · el dorso lista los servicios`, JSON.stringify(nuevo.servicios.slice(0, 2)));
+    chk(
+      nuevo.servicios.every((s) => s.nombre && /^\$/.test(s.precio)),
+      `${tag} · cada servicio trae nombre y precio`,
+      JSON.stringify(nuevo.servicios.slice(0, 2)),
+    );
+    chk(nuevo.giroEsBoton === "BUTTON", `${tag} · el botón de volver a girar es un <button>`, nuevo.giroEsBoton);
+    chk(/^Volver a la foto/.test(nuevo.giroEtiqueta || ""), `${tag} · y tiene etiqueta para lector de pantalla`, nuevo.giroEtiqueta);
+    chk(
+      nuevo.redes.every((x) => /^(WhatsApp|Instagram)$/.test(x)),
+      `${tag} · los botones de redes dicen sólo el nombre, sin el número pegado`,
+      JSON.stringify(nuevo.redes),
+    );
+
+    /* El botón de la flecha tiene que devolver la tarjeta al frente. */
+    await page.locator(".lb-barber--abierta .lb-bd-giro").first().click();
+    await page.waitForTimeout(900);
+    const volvio = await page.evaluate(() => ({
+      abiertas: document.querySelectorAll(".lb-barber--abierta").length,
+      grados: getComputedStyle(document.querySelector(".lb-barber-int")).transform,
+      pie: getComputedStyle(document.querySelector(".lb-barber-pie")).display,
+    }));
+    chk(volvio.abiertas === 0, `${tag} · la flecha cierra la ficha`, `${volvio.abiertas}`);
+    chk(volvio.pie !== "none", `${tag} · y el pie de botones vuelve a verse`, volvio.pie);
+    /* Se deja como estaba para el bloque de contraste que sigue. */
+    await page.locator(".lb-barber .lb-barber-giro").first().click();
+    await page.waitForTimeout(900);
 
     /* ---------- contraste del dorso ---------- */
     const con = await page.evaluate(({ src }) => {
