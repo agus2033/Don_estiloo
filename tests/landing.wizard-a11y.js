@@ -46,14 +46,36 @@ const parse = (s) => {
       3: [".wz-cal-top b", ".wz-nav", ".wz-dows span", ".wz-cel.libre", ".wz-cel.cerrado", ".wz-leyenda .p"],
       4: [".wz-turno b", ".wz-turno small", ".wz-turno em"],
       5: [".wz-hora", ".wz-hora.oc", ".wz-ocupadas"],
-      6: [".wz-sum span", ".wz-sum b", ".wz-pol", ".wz-aviso", ".wz-btn--pri"],
+      /* El resumen ya no es la tabla .wz-sum: ahora son las tarjetas
+         .wz-rf (icono + etiqueta + valor + "Cambiar") al lado del precio. */
+      6: [".wz-rf-t > span", ".wz-rf-t b", ".wz-res-precio b", ".wz-res-precio small", ".wz-pol", ".wz-aviso", ".wz-btn--pri"],
     };
 
     for (const paso of [1, 2, 3, 4, 5, 6]) {
-      // avanzar explícitamente hasta el paso pedido
+      /* Avanzar explícitamente hasta el paso pedido.
+         En celular (este test corre a 390) el asistente avanza SOLO al
+         elegir, así que no hay botón de "continuar" que clickear. Como
+         quien llama acaba de tocar una opción, alcanza con esperar a que
+         el paso cambie. Antes este click daba timeout de 30 s al
+         desaparecer el botón.
+
+         La comparación es contra el paso DELANTE del que se está, no
+         contra el paso destino: si se esperara "llegar al 3" mientras
+         todavía no saltó el avance desde el 2, retornaría al instante
+         y el test seguiría clicks en la pantalla equivocada. */
+      const pasoActual = () =>
+        p.evaluate(() => {
+          const on = document.querySelector(".wz-paso.on b");
+          return on ? +on.textContent : -1;
+        });
       const next = async () => {
-        await p.click(".wz-pie .wz-btn--pri");
-        await p.waitForTimeout(400);
+        const antes = await pasoActual();
+        for (let i = 0; i < 40; i++) {
+          const act = await pasoActual();
+          if (act > 0 && act !== antes) return act;
+          await p.waitForTimeout(120);
+        }
+        return -1;
       };
       if (paso === 2) {
         await p.click(".wz-item:not(.on)");

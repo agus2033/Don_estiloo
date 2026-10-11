@@ -107,32 +107,105 @@ async function entrar(p, email, pass) {
       console.log("  ATENCIÓN: esta cuenta tiene documento staff/, así que el router");
       console.log("  la trata como barbero y le niega la pestaña de reseñas.");
     } else {
+      /* Marca única por corrida: sirve para (a) reconocer esta reseña entre
+         las de producción y (b) borrarla al final sin tocar ninguna otra.
+         Las 7 reseñas "Prueba automatica de reglas" que quedaron en el
+         carrusel fueron de este test, que antes no limpiaba nada. */
+      const MARCA = "qa-reglas-" + Date.now();
+      const TEXTO = MARCA + " Se borra sola al final del test.";
+
       await p.evaluate(() => { location.hash = "#/resena"; });
       await p.waitForTimeout(1800);
       const st = await p.$$(".rev-estrella");
       check(st.length === 5, "se ven las 5 estrellas", String(st.length));
 
+      /* El asistente tiene TRES pasos: estrellas -> texto -> revisar.
+         Antes el test esperaba un modal de "gracias" al final, pero
+         revSend() en ÉXITO no abre ningún modal: sólo pone un <p class="msg">
+         y vuelve al inicio. El modal sólo aparece si el write falla. Por eso
+         este test daba falso negativo aunque la reseña se guardara. */
       await st[3].click();
       await p.waitForTimeout(700);
-      await p.fill("#revText", "Prueba automatica de reglas. Se borra.");
+      await p.fill("#revText", TEXTO);
       await p.click('[data-act="revNext"]');
       await p.waitForTimeout(700);
       await p.click('[data-act="revSend"]');
-      await p.waitForTimeout(3000);
+      await p.waitForTimeout(4000);
 
       const res = await p.evaluate(() => {
         const m = document.querySelector("#mo");
         return {
-          titulo: m && !m.hidden ? m.querySelector("h2")?.textContent?.trim() : null,
-          cuerpo: m && !m.hidden ? m.querySelector(".mc")?.textContent?.trim()?.slice(0, 140) : null,
+          /* Éxito: el aviso en línea que deja revSend tras el await. */
+          aviso: (document.querySelector("#app .msg") || {}).textContent || "",
+          hash: location.hash,
+          /* Si hubo fallo, el modal lo diría. Ojo: el cuerpo del modal es
+             .mt, no .mc — antes se leía .mc y salía siempre undefined. */
+          titulo: m && !m.hidden ? (m.querySelector("h2") || {}).textContent?.trim() || null : null,
+          cuerpo: m && !m.hidden ? (m.querySelector(".mt") || {}).textContent?.trim()?.slice(0, 160) || null : null,
         };
       });
-      const ok = /gracias|reseña creada|recibimos/i.test(res.titulo || "");
+      /* El aviso en línea SÍ es prueba ahora: revSend lo pinta una sola vez
+         y a propósito (antes lo perdía al re-pintar por goNow). Es la
+         única confirmación que ve el cliente de que la reseña se guardó. */
+      check(/gracias/i.test(res.aviso), "el cliente ve la confirmación de que se guardó",
+        res.aviso || "(el aviso no aparece)");
+      check(!res.cuerpo, "no hubo modal de error al guardar", res.cuerpo || res.titulo || "ninguno");
+
+      /* Confirmación de verdad: la reseña tiene que estar en Firestore, no
+         sólo que la promesa haya resuelto. Se mira el carrusel público de la
+         landing en un contexto SIN sesión (resenas se lee sin login). */
+      const c2 = await p.context().browser().newContext({ viewport: { width: 1280, height: 900 } });
+      const p2 = await c2.newPage();
+      await p2.goto("http://127.0.0.1:8765/index.html", { waitUntil: "domcontentloaded" });
+      await p2.waitForSelector(".lb-tst", { timeout: 25000 });
+      await p2.waitForTimeout(3500);
+      const enFirestore = await p2.evaluate((marca) => {
+        const t = [...document.querySelectorAll(".lb-tst")];
+        return { n: t.length, esta: t.some((x) => x.innerText.includes(marca)) };
+      }, MARCA);
+      await c2.close();
+      const ok = enFirestore.esta;
       check(ok, "la reseña se guardó (las reglas dejan escribir)",
-        res.titulo || res.cuerpo || "sin diálogo");
-      if (!ok && res.cuerpo) console.log("         " + res.cuerpo);
+        ok ? `llegó a Firestore y está en el carrusel`
+           : `hay ${enFirestore.n} reseñas y NO está la de este test. modal=${res.cuerpo || res.titulo || "ninguno"}`);
+      check(ok, "la reseña se ve en el carrusel público de la web",
+        ok ? `hay ${enFirestore.n} reseñas y se encuentra la de este test` : `hay ${enFirestore.n} reseñas y NO se encuentra`);
+
+      /* Limpieza: se borran SÓLO los documentos cuyo texto empieza con la
+         marca de este test. La regla de /resenas deja borrar al propio
+         autor de la reseña, así que alcanza la sesión del cliente. Las
+         reseñas reales quedan intactas por construcción. */
+      const borradas = await p.evaluate(async (marca) => {
+        try {
+          const S = await import("https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js");
+          const F = await import("https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js");
+          /* La ruta es /src/config.js: el import dinámico es relativo a la
+             PÁGINA (que está en la raíz), no al archivo de este test. */
+          const cfg = (await import("./src/config.js")).firebaseConfig;
+          /* initializeApp con el mismo nombre y config devuelve la app ya
+             creada, con su auth: no se abre una sesión nueva. */
+          const app = S.getApps().length ? S.getApp() : S.initializeApp(cfg);
+          const db = F.getFirestore(app);
+          const snap = await F.getDocs(F.collection(db, "resenas"));
+          let n = 0;
+          for (const d of snap.docs) {
+            if (String(d.data().texto || "").startsWith(marca)) {
+              await F.deleteDoc(F.doc(db, "resenas", d.id));
+              n++;
+            }
+          }
+          return { ok: true, n };
+        } catch (e) {
+          return { ok: false, err: String(e) };
+        }
+      }, MARCA);
+      check(borradas.ok && borradas.n === (ok ? 1 : 0),
+        "el test limpió la reseña que creó",
+        borradas.ok ? `borradas ${borradas.n}` : "error: " + borradas.err);
+      if (!borradas.ok || borradas.n !== (ok ? 1 : 0))
+        console.log("  -> Borrar a mano en Firebase Console > Firestore > resenas: " + MARCA);
+
       await p.screenshot({ path: path.join(__dirname, "..", "tmp_shots", "REGLAS-resena.png"), clip: { x: 0, y: 0, width: 1440, height: 640 } });
-      if (ok) console.log("  -> Borrá la reseña de prueba desde Firebase Console > Firestore > resenas.");
     }
     check(errores.length === 0, "sin errores JS" + (errores.length ? ": " + errores[0].slice(0, 80) : ""));
     await ctx.close();

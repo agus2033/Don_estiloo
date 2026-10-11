@@ -1,0 +1,750 @@
+Continuamos con **Codigo Barber** (repo: `C:\Users\agus2\OneDrive\Documentos\GitHub\Don_estiloo`).
+
+**Leé `PRODUCT.md` primero**: tiene el schema actual del producto, las decisiones tomadas y la sección "Evidence on Hand" con lo que NO hay que inventar. Después `git log --oneline -8` para ver qué se fue haciendo.
+
+Sitio en vivo: `don-estilo.vercel.app`. Es HTML/CSS/JS estático, sin build. Firebase: proyecto `barberia-taccu`, Cloudinary `lvrsdw0h`.
+
+---
+
+## Cómo levantar y probar
+
+```powershell
+python -m http.server 8765          # tiene que quedar corriendo en otra terminal
+node tests\logic.test.mjs          # 20 tests puros de lógica de turnos
+node tests\landing.audit.js         # contraste AA + worst case sin overflow
+node tests\landing.header.js        # nombre de marca por 16 anchos
+node tests\landing.modal.js         # identidad y velo del modal de reserva
+node tests\landing.tema.js          # modo claro en los tres paneles
+node tests\landing.wizard.js        # los 6 pasos del asistente de reserva
+node tests\landing.wizard-a11y.js   # contraste del asistente
+node tests\landing.web.js           # ida y vuelta panel <-> landing
+node tests\landing.login.js         # 3 roles + las 12 rutas de cada uno
+node tests\landing.registro.js      # alta de cuenta real (crea una, se borra)
+node tests\landing.reglas.js        # foto del barbero + reseña (y limpia lo que crea)
+node tests\resenas.listado.js       # qué reseñas hay, agrupadas por texto
+node tests\resenas.limpiar.js       # borra las de prueba (dry-run sin --borrar)
+node tests\landing.sync.js
+node tests\landing.barberos.js      # la tarjeta que se da vuelta (giro, teclado, inert)
+node tests\flip.shots.js            # capturas de la tarjeta cerrada y dada vuelta
+node tests\politicas.js             # hoja móvil / documento escritorio + a11y del modal
+node tests\politicas.shots.js       # capturas de las 6 secciones
+node tests\tokens.claro.js          # tokens del panel: cuál gana y su contraste
+node tests\panel.contraste.js       # contraste real del panel, 3 roles x 2 temas
+node tests\botones.contraste.js     # nombra los botones que no llegan a 4.5:1
+node tests\css.muerto.js            # qué reglas del CSSOM no matchean nada
+node tests\panel.shell.js           # menú inferior, menú del perfil, Ajustes y borrar cuenta
+node tests\panel.turnos.js          # reprogramar y cancelar + la política de 2 h (no escribe en Firestore)
+node tests\panel.shots.js           # capturas del panel: escritorio y celular
+node tests\landing.shots.js
+```
+
+**Los que miden, no miran:** `tokens.claro.js`, `panel.contraste.js`, `botones.contraste.js`, `css.muerto.js` y `politicas.js` recorren el navegador real y dan números. Necesitan el servidor en el 8765; `panel.contraste.js` además lee `.env.local` (mismos roles que `landing.login.js`).
+
+`css.muerto.js` sólo mira la landing. Para el panel hay que cruzarlo con `Select-String` sobre `main.js`, porque muchos selectores compuestos (`body.login .lnd`) no aparecen por el nombre de clase.
+
+**`tests\color.js` es el parser de color compartido.** `P`, `comp`, `lum`, `ratio`, `hex`, `minimo` y `src` (las mismas, como string, para pegar dentro de `page.evaluate`). **Usalo en vez de volver a escribir el parser**: ya se reimplementó cuatro veces y falló tres. Para medir dentro de la página:
+
+```js
+page.evaluate(({ src }) => {
+  const { fondo, __P, __comp, __R, __min } = new Function(src + ";return {fondo,__P,__comp,__R,__min};")();
+  ...
+}, { src });
+```
+
+`new Function` y **no** `eval`: dentro de `page.evaluate` un `eval` con `const` no define nada en el ámbito de la función que lo contiene y tira `fondo is not defined`. Y definí las funciones con su **nombre real**, no renombradas al prefijo: `ratio.toString()` arrastra la referencia interna a `lum` por su nombre original.
+
+`landing.login.js`, `landing.registro.js`, `landing.web.js` y `landing.reglas.js` leen `.env.local` (está en `.gitignore`). Los roles son `cliente` / `barbero` / `dueno`, con sus vistas y nav esperados ya codificados en el archivo.
+
+Las capturas se escriben en `tmp_shots/`.
+
+---
+
+## Los cuatro pendientes, en orden de valor
+
+### 1. Auditoría del modo claro — el patrón que se repite
+
+**Este es el más importante y es una causa raíz, no un bug suelto.**
+
+Encontré esta clase de problema cuatro veces: **elementos del markup con clases que nunca tuvieron CSS de layout**, que en pantalla se veían bien solo por accidente y se rompen en cuanto se toca el markup.
+
+Casos ya encontrados y arreglados, para que no los repitas:
+
+| Clase | Qué pasaba |
+|---|---|
+| `.lb-field` | Sin layout. El `<textarea>` de contacto quedaba al lado de la etiqueta (es inline por defecto) y se encogía al ancho por defecto |
+| `.lb-addr` | Sin CSS. Las tres líneas de la dirección se corrían: "Francisco**Los** Trabajadores" |
+| `.lb-hor` | Era una `<table>` con 7 filas, 4 de ellas idénticas. Ahora es una `<ul>` agrupada por horario |
+| `#thm` | Fondo blanco fijo: en modo claro quedaba un cuadrado blanco |
+| `.polbox` (todo el modal de políticas) | **Cero CSS.** Salía `position:static` y empujaba la página de 844 a 2818 px, con el texto debajo del pliegue |
+
+**Lo que hay que hacer:** recorrer el modo claro completo mirando no solo si "se ve bien" sino si algo tiene **color hardcodeado** en vez de token. **Ya está hecho con medición, no a ojo** — corré `node tests\panel.contraste.js` y arreglá lo que reporte. Estado actual: **0 textos bajo el mínimo** en los 3 roles x 2 temas.
+
+Bugs reales que salieron de esa medición (ya arreglados):
+
+| Qué | Por qué rompía |
+|---|---|
+| Bloque `.lnd-*` de `styles.css` (~190 líneas) | De sus 44 clases sólo seguían en uso `.lnd-gal` y `.lnd-cta`. Al final redefinía `body[data-theme="light"]{--brass:#D4A84B...}` **después** del bloque canónico: misma especificidad, ganaba el último, y el dorado claro quedaba en **1.95:1** |
+| Un solo token `--brass` para texto y para fondo | requisitos opuestos: legible sobre marfil pide 5.09:1, pero como superficie tiene que dejar leer el `#141c26` de encima (7.76:1). Separado en `--brass` (tinta) y `--brassFill` (superficie), como ya hacía `landing.css` con `--lb-brass` / `--lb-brass-solid` |
+| Idem con `--red` | `#b3382c` como texto daba 2.43:1 sobre la tarjeta. Separado en `--red` (tinta, `#e0705c`) y `--redFill` (superficie, `#b3382c`, la que lleva texto blanco) |
+| `.boton.primario { color: var(--bg) }` | El fondo es dorado en los dos temas pero `--bg` es navy en oscuro y marfil en claro: el botón quedaba en **2.11:1** en modo claro. Ahora el texto es `#141c26` fijo |
+| `.kpis .card.kpi` con degradado duro `#1f2a38 → #1a2431` | No seguía el tema: en claro la tarjeta quedaba oscura con texto claro encima, a 1.01:1. Ahora se deriva con `color-mix` de `--card` y `--bg` |
+
+Queda como deuda menor, sin impacto medido en contraste: `header { box-shadow: 0 4px 18px #0b0f1559 }` y varios `color: #a9b4c4` / `background: #141c26` fijos que son sombras y acentos, no texto sobre superficie. Si algún día molestan, se pasan a token; el test no los marca.
+
+Los tokens claros ya existen: `styles.css` tiene un bloque `body[data-theme="light"]` con `--bg / --card / --ink / --mut / --line / --brass / --red / --green / --warn`, y `landing.css` tiene su juego `--lb-*`. **El objetivo es que no quede ni un color crudo** en estilos interactivos.
+
+Metodología que sirvió: no mirar capturas, **medir**. Sacar `getComputedStyle` de cada elemento y calcular el ratio contra el fondo real. Ojo con esto:
+
+- `backgroundColor` puede ser `rgba(0,0,0,0)` (transparente): hay que **subir por los ancestros** hasta encontrar el primer fondo real. Ya me pasó: `.card.kpi` es transparente y me dio un ratio falso de 1,2 cuando el CSS estaba bien.
+- `color-mix()` y `color()` devuelven `color(srgb 0.9 0.87 0.8)` con canales de 0 a 1. Un parser ingenuo lee 0,9 como 0,9/255 y reporta contrastes falsos.
+- Si agregás contraste a un test nuevo, reusá el `parse()` de `tests/landing.audit.js`, que ya resuelve las dos cosas.
+
+### 2. Políticas en modal (celular) / página completa (escritorio) — **HECHO**
+
+**Lo que había:** `polH()` existía, `openPol`/`cerrarPol` existían… y **cero CSS**. `.polbox` no tenía ni una regla en `styles.css`: el modal salía con `position:static` y **empujaba la página de 844 a 2818 px**, con todo el texto debajo del pliegue. Inaccesible. Es la quinta vez del patrón de "clase del markup sin CSS".
+
+**Lo que hay ahora** (`src/main.js` `polH()`, CSS al final de `styles.css`):
+
+- **Celular:** hoja desde abajo con tirador, encabezado y pie **fijos**, sólo scrollea `.pol-body`. La ✕ nunca queda fuera de pantalla.
+- **Escritorio (≥861px):** hoja a pantalla casi completa, 1040 px, con las 6 solapas de navegación arriba y el pie fijo abajo. El tirador se oculta.
+- **6 secciones** con solapas reales (`role="tablist"` + `role="tab"` + `aria-selected` + `aria-controls` + `role="tabpanel"`): En resumen / Datos / Uso / Derechos / Condiciones / Cambios. 13 bloques numerados, como el mockup.
+- **Contenido nuevo respecto al texto anterior:** tabla de "qué datos / para qué / si es obligatorio" (7 filas), las 4 tarjetas de derechos **con su plazo** (10 / 5 días hábiles), íconos de línea en SVG, y las 4 de "en resumen".
+- **A11y:** foco atrapado dentro del modal, Escape cierra, **el foco vuelve al link que lo abrió** (con `preventScroll`), ← → Home End mueven las solapas y enfocan, la solapa activa se trae al centro de la fila si quedó fuera de vista.
+
+**Lo que NO se inventó:** razón social y domicilio no están en `config.js`, así que salen como chips punteados con la etiqueta del hueco (`.pol-pend`) en vez de un dato falso. El email sí viene de `EMAIL` en `config.js`.
+
+> **El texto legal necesita que lo revise el dueño.** La estructura y los plazos salen del mockup, pero el texto largo lo compuse yo a partir del que ya estaba y de lo legible en la imagen de referencia (que estaba a baja resolución). Las frases de "Tus derechos" y "Con quién los compartimos" son las que más conviene revisar palabra por palabra.
+
+`tests\politicas.js` (132 checks) y `tests\politicas.shots.js` (capturas de las 6 secciones).
+
+### 3. Galería: hover + "ver más"
+
+Hoy la galería **muestra todas las fotos, sin tope** (fue una decisión explícita: no recortar nunca contenido del cliente).
+
+- **Hover** con algo discreto: un velo sutil y/o zoom lento, respetando `prefers-reduced-motion`.
+- Si hay **más de 8 fotos**, mostrar 8 y poner un botón **"Ver más"** que lleve a **otra página** con todas.
+
+Para la página nueva hay que decidir la ruta: el router (`RT` en `main.js`) maneja `#/inicio`, `#/servicios`, `#/galeria` etc., pero `galeria` es una vista del panel del barbero, no de la landing. Lo más limpio es un archivo aparte tipo `galeria.html` que lea `galeria` de Firestore, o una ruta nueva en `RT`. **Decidilo y dejalo escrito en `PRODUCT.md`.**
+
+### 4. Las reglas de Firestore — **funcionan. El test mentía.**
+
+**Las reglas publicadas están bien**: un cliente **sí** puede dejar su reseña. Se comprobó mirando el tráfico de red — la escritura va a `documents/resenas/…` y vuelve `200`, sin `PERMISSION_DENIED` — y la reseña aparece en el carrusel público de la landing.
+
+El que estaba roto era `tests\landing.reglas.js`, por cuatro cosas a la vez:
+
+1. **El asistente tiene TRES pasos** (estrellas → texto → revisar) y `revSend` está en el tercero. El test llegaba al segundo y después buscaba el botón, no lo encontraba y daba "sin diálogo". Yo caí en lo mismo con mis sondas: **no se estaba probando nada**.
+2. **Esperaba un modal de "gracias" que la app nunca muestra.** En éxito `revSend` no abre ningún modal: pone un `<p class="msg">` y vuelve al inicio. El modal sólo aparece si el write falla.
+3. **Leía el cuerpo del modal como `.mc`**, pero `M()` lo escribe en `.mt`. Aunque hubiera habido error, el mensaje salía `undefined`.
+4. **No borraba la reseña que creaba.** De ahí las huérfanas.
+
+Ahora el test verifica lo que importa — que la reseña **llegue a Firestore** (mirando el carrusel público en un contexto sin sesión) — y **limpia lo que creó** borrando sólo los documentos cuyo texto empieza con la marca única de la corrida. Las reseñas reales no se tocan por construcción.
+
+### 4b. Un bug real que salió de ahí: el cliente no veía confirmación
+
+`revSend` hacía `msg = …; R(); W.goNow("home")`. Pero `R()` **borra `msg` al final de pintarlo** (línea ~4982) y `goNow` vuelve a llamar a `R()`. Los dos renders pasan en el mismo tick, así que el navegador **nunca llegaba a mostrar el mensaje**: el cliente guardaba su reseña y no veía ninguna confirmación. Ahora se replica el patrón del resto de la app —preparar, poner el mensaje, un solo `R()`— y `landing.reglas.js` lo cubre.
+
+### 4c. Limpiar las reseñas de prueba que quedaron en producción
+
+Hay **12 reseñas: 10 de prueba y 2 reales**. Las 10 se ven en el carrusel de la web.
+
+```
+node tests\resenas.limpiar.js            # lista, NO borra
+node tests\resenas.limpiar.js --borrar   # borra sólo las de prueba
+```
+
+El script clasifica por el prefijo del texto (`qa-reglas-`, `Diagnostico `, `Prueba automatica de reglas`) y las reales quedan intactas. Si preferís hacerlo a mano, son estos IDs:
+
+| ID | Texto |
+|---|---|
+| `14cw9sLaJdyP3qrX7ejk` | Diagnostico 21:45:23 |
+| `5E5yLjI8pQMJF6TVC8tC` | Prueba automatica de reglas |
+| `CzOVnZcN3LtYfQdT6QDN` | Prueba automatica de reglas |
+| `QWO1DdbSh8nfxFIUac99` | Prueba automatica de reglas |
+| `QtM3AWwcPb7qM9Ok3O3r` | Prueba automatica de reglas |
+| `XVj1YiwktPlve7KMGotZ` | Prueba automatica de reglas |
+| `jRof7AEDoFnD4C5tJNgk` | Prueba automatica de reglas |
+| `neGbRozpqGk0QSFEJzdB` | Prueba automatica de reglas |
+| `yppNl95dvNLoKivsT2aT` | Prueba automatica de reglas |
+| `zkjuSa1sALQIopBj8les` | qa-reglas-1791582451204 |
+
+**Las 2 que hay que conservar:** `IHvda4eBBWXsHhrE56YS` ("asd") y `rEZrVeJ8hwAphQng5U9g` ("Muy bueno el corte").
+
+> `node tests\resenas.listado.js` reimprime el listado en cualquier momento.
+
+---
+
+## 5. Rediseño del panel del cliente - **HECHO**
+
+Adaptación de tres mockups del dueño (`Panel · Inicio@2x.png`, `Panel · Reseña@2x.png`, `Panel · Reseña celular@2x.png`).
+
+**Lo que pidió, y cómo quedó:**
+
+| Pedido | Cómo quedó |
+|---|---|
+| Menú abajo en el celular | Ya existía como `position: fixed`; se ajustó la sección activa a píldora dorada. En escritorio la barra queda en línea dentro del header. |
+| Hamburguesa **en la foto de perfil** | Nuevo `#perfil` (las rayitas) al lado de la foto. Abre `#pmenu`, un dropdown propio **separado del `#nmenu` del admin**: el cliente no tiene secciones de configuración, sólo **Ajustes / Ver la web / Cerrar sesión**. |
+| Editar el perfil de cliente | Nueva vista `ajusH()` en `#/mi-cuenta`, con nombre, teléfono y "Guardar cambios" (`guardarPerfilCli`). |
+| "Eliminar cuenta" **al final** de Ajustes | Última tarjeta, con borde rojo. El botón es `borrarAsk`, o sea el **mismo modal de aviso** de antes: no se agregó uno nuevo. |
+| Diseño de Inicio | `homeH()` reescrito: saludo con subrayado dorado, "Tus puntos" + "Próximo turno" en dos columnas, tres accesos (el primero dorado) y la franja "¿Cómo te fue en tu último corte?". Los premios quedan **abajo**, no se sacaron. |
+| Diseño de Reseña | `revH()` reescrito: indicador de 3 pasos, 5 estrellas en cajas con su etiqueta ("Muy bueno"), y **vista previa** de cómo se va a ver en la web. |
+
+**Cuatro decisiones que no son obvias:**
+
+1. **El hash del cliente es `#/mi-cuenta`, no `#/ajustes`.** El dueño ya tenía `cfg: "ajustes"`; si el cliente compartiera la palabra, caería en la vista de reglas y premios.
+2. **"Ver la web" y "Cerrar sesión" no se borraron, se movieron.** `#web` y `#lo` siguen en el HTML (el admin los usa) pero para el cliente se ocultan **con CSS** (`body:not(.adm) #web, body:not(.adm) #lo`), no sólo con `hidden`: los dos tienen `display:inline-flex`, y eso le gana al `[hidden]` del navegador.
+3. **El `prep()` cierra el menú del perfil.** Sin eso, entrar a Ajustes desde la foto dejaba el dropdown abierto encima de la vista nueva.
+4. **La pantalla de Reseña usa `grid-template-areas`, no dos contenedores.** Agrupar título+panel a la izquierda e indicador+previa a la derecha fijaba el orden, y en el celular el indicador quedaba **debajo** de la tarjeta en vez de arriba como en el mockup.
+
+**Dos bugs que salieron al medir, no al mirar:**
+
+- La tarjeta dorada "Reservar turno" salía **oscura con texto oscuro**, ilegible. `.card` está declarado más abajo en `styles.css` y le ganaba a `.ini-acc--pri` por tener la misma especificidad. Se arregló con `.card.ini-acc--pri` (dos clases).
+- Al volver los títulos con subrayado dorado (`display:inline-block`) **ítems de grilla**, se blockifican y el `justify-self` por defecto los estira: el texto quedaba centrado y la raya dorada estirada. Llevan `justify-self: start`.
+
+`tests\panel.shell.js` (51 checks) y `tests\panel.shots.js` (capturas escritorio + celular).
+
+### 5b. Un test que mentía: `landing.web.js`
+
+Buscaba el botón `#web` en el header del cliente. Después del rediseño ya no está ahí, así que el test crasheaba con un timeout de 30 s. Se actualizó para verificar que **el cliente llega a "Ver la web" por el menú del perfil** y que **el dueño lo sigue teniendo suelto en el header**. Un test que falla después de un cambio pedido no es un test roto: es un test que hay que actualizar, pero sólo si el cambio fue intencional.
+
+### 5c. Falla de contraste REAL, encontrada y **sin arreglar**: el asistente en modo claro
+
+`landing.wizard-a11y.js` reporta 2 fallos en tema claro, paso 1:
+
+```
+.wz-item-t b      1.44:1  (mínimo 4.5)
+.wz-item-t small  1.96:1
+```
+
+O sea **la lista de servicios del asistente es casi ilegible en modo claro**. **No lo introdujo este trabajo**: el diff de `landing.css` de esta sesión no toca `.wz-item-t`, ni `.wz-item`, ni `--lb-ink`.
+
+Y no cuadra con los números: `.wz-item` usa `background: var(--lb-bg)` y `color: var(--lb-ink)`, y en claro son `#f5f0e6` / `#141c26`, que dan ~14.7:1, no 1.44:1. Con `--lb-mut` (`#55637a`) el cálculo da los 5.36:1 que dice el comentario. **Así que el fallo medido no viene de donde parecería**: hay que abrir el asistente en claro y sacar la cadena real de colores hasta el fondo antes de tocar nada. Es el próximo paso, y no se debe "arreglar" a ciega oscureciendo un token.
+
+### 5d. El bug de contraste del asistente: **RESUELTO** (era CSS filtrado, no tokens)
+
+El punto 5c de arriba ("contraste del asistente en modo claro, 1.44:1 y 1.96:1, sin explicación") quedó resuelto, y **la causa no eran los tokens**. Era esto:
+
+`styles.css` (el CSS del **panel**, que se carga en el mismo documento) tiene
+
+```css
+button:hover:not(:disabled) { background: #2a3849; }
+```
+
+Un azul oscuro **clavado**, pensado para los botones del panel. Como el asistente de la landing vive en la misma página, esa regla le entraba a sus tarjetas: al pasar el mouse, `.wz-turno` (un `<button>`) se ponía azul noche con el texto casi negro encima. En el celular era peor, porque **`:hover` se queda pegado después de tocar**: la tarjeta quedaba oscura fija.
+
+Cómo se encontró: `landing.wizard-a11y.js`|reportaba 1.44:1, pero `--lb-mut` sobre `--lb-bg` da 5.36:1 — o sea, los números no cuadraban con el CSS. Listingando las reglas del CSSOM que matcheaban el elemento apareció `button:hover` con un fondo que en `--lb-*` no existe. Mismo método que en `.wz-dows`: el número raro es la señal de que hay que ver **qué regla gana de verdad**, no asumir por el nombre de la clase.
+
+**Dos lessons que ya están anotadas como trampas 10h e 10i.**
+
+Además se bajó `opacity` a nada en `.wz-turno.off`: el "apagado" se marca ahora con color y tachado. Con `opacity: .45` el texto quedaba en 2.8:1 en claro, y **no hay opacidad que llegue a 4.5:1** sin que la tarjeta deje de leerse como apagada (a `.85` seguía en 3.93:1).
+
+---
+
+## 6. Lote de cambios del dueño (11 pedidos) - **HECHO**
+
+| # | Pedido | Qué se hizo |
+|---|---|---|
+| 1 | Arreglar la vista previa de la reseña | Ahora muestra **el texto**, no sólo foto + nombre + estrellas. Contexto: lo único que se publica es el texto, y la vista previa mostraba lo mismo para cualquier reseña. |
+| 2 | Achicar el calendario en computadora | El asistente del panel **no tenía ancho máximo**: `.wz-sheet{max-width:520px}` sólo existe en el modal, así que en el panel ocupaba los 1040px y las celdas quedaban de ~140×140. Con `#wiz{max-width:560px}` volvieron a 77×77. |
+| 3 | En celular, sacar los botones de "continuar" | `wzEsCelular()` + `wzAvanzaSolo()`: al elegir se pasa solo (280 ms). Quedan "Atrás" y "Confirmar turno". El botón de escritorio **no se quita**. |
+| 4 | Reprogramar y cancelar desde los paneles | `reprogramar()` reusa el asistente en **modo edición** (`rep`): abre en el paso 3, avisa "Estás reprogramando un turno" y al confirmar **reescribe el turno**, no crea otro. Misma política de `CHSv` horas que cancelar. |
+| 5 | Mejorar el resumen | `.wz-res`: título, 4 tarjetas con icono + **"Cambiar" que va a su propio paso**, precio aparte y política de cancelación en caja propia. |
+| 6 | El "Siguiente" de las estrellas no tiene sentido | `revStars()` **ya** saltaba al paso 2, así que el botón era inalcanzable. Se eliminó y en su lugar quedó la explicación. |
+| 7 | Arreglar el logo de WhatsApp | `assets/whatsapp.svg` era un SVG de CorelDRAW con `viewBox` de **35900×35900**; a 18 px se leía como un cuadrado blanco. Rehecho en 24×24. El de Instagram tenía el mismo problema (70000×70000). |
+| 8 | Sacar el hamburguesa del header | Desaparecen `#hamb` y `#perfil`. **La foto (`#mebadge`) es el botón**, y es el mismo disparador para los dos roles: el cliente abre `#pmenu`, el admin `#nmenu`. |
+| 9 | Arreglar dónde se despliega el menú | `position:fixed` con `top/right` fijos lo dejaba flotando a metros de la foto al scrollear. Ahora los dos menús van con `position:absolute` dentro de un wrapper relativo. |
+| 10 | La foto del barbero en los servicios | **No era un bug**: la foto carga bien en landing y asistente (1120×1404, `cargo:true`). Lo que pasa es que **sólo `pablo` la tiene**; `asda` cae en la inicial "A". |
+| 11 | Arreglar el estilo de las reseñas | 3 por vista en escritorio y contador "1–3 de 12" en vez de 12 puntitos. Ver abajo, que ahí apareció un bug serio. |
+
+### 6b. El bug más grave del lote: los botones del carrusel no se podían tocar
+
+Al cambiar el carrusel a 3 columnas, Playwright dijo "element is outside of the viewport" en el celular. **No era el test**: el botón estaba en `x:939` con un viewport de 390.
+
+```
+div.lb-car-ctl   w:1717   ← el control ocupaba 1717px
+div#lbcar.lb-car w:1717
+div.lb-test      w:350  grid-template-columns: 1717.39px   ← el culpable
+```
+
+`.lb-test` es un grid de **una** columna, y un item de grid tiene `min-width:auto`: adopta el min-content de su contenido, que es el track del carrusel (12 tarjetas al 100% = 1717px). **La misma trampa de `1fr` que ya estaba documentada en `.wz-dows`.** Con `minmax(0, 1fr)` el botón volvió a `x:255` y se pudo tocar.
+
+Y como `.lb-test` ya tenía `repeat(3, 1fr)` de cuando las reseñas eran tarjetas sueltas en grilla, en escritorio el carrusel también se estiraba a 1717px: por eso la caja se veía tan vacía en el mockup del dueño.
+
+### 6c. El `translateX` del carrusel no podía ir en porcentaje
+
+`translateX(-25%)` movía **429px** en vez de los ~1770 de una página. El porcentaje del `transform` se mide contra el **ancho de border-box del track**, y como es un flex dentro de una caja con `overflow:hidden`, ese ancho es el de la caja, no el ancho desplazable. Ahora va en píxeles: `-(pag * (anchoCaja + 14))`.
+
+`--lb-car-por` (CSS) tiene que coincidir con `lbCarPorVista()` (JS), o la caja queda con huecos.
+
+### 6d. Sección de Contacto rehecha
+
+Adaptada al mockup: mapa con etiqueta arriba y "Cómo llegar", tarjeta "Dónde estamos" con ícono, bloque de horarios con el descanso y la pastilla "Cerrado", formulario con "Enviar", y "También podés escribirnos por" con pastillas de Instagram y los dos WhatsApp.
+
+- **`lbMapLink()`** arma el link de Google Maps desde el **mismo `MAP_IFRAME`** del mapa, para que no se desincronicen.
+- **`lbBloqueHorarios()`** (no `lbHorarios`, que ya existe para la agenda) lee el descanso de los datos (`al`/`ah`). Si el dueño no cargó ninguno, no se muestra la línea en vez de inventarla.
+- **Días consecutivos como "Lunes a jueves"**, con módulo 7 para que el domingo cierre la semana y no la abra: sin eso salía "viernes, sábado, domingo".
+
+### 6e. Un bug que salió de hacer `#mebadge` botón
+
+`tokens.claro` pasó a contar **un botón más** en modo claro y falló: `#mebadge` con `color:#e6ebf0` (el color del header **oscuro**) sobre el header **claro** → 1.06:1, el nombre invisible. Le saqué el color fijo para que herede del header, que ya cambia con el tema.
+
+**Un test que pasa a contar un elemento más es una señal, no un ruido**: ahí apareció una regresión real.
+
+### 6f. Sección nueva de tests
+
+- `tests/panel.turnos.js` (33 checks): reprogramar y cancelar, **con turnos sintéticos en memoria** (`window.__test.setTurnos`). No escribe nada en Firestore, así que se puede recorrer la política de las 2 horas sin tocar los turnos de los clientes. Ojo: `T` está atado al snapshot de Firestore, así que inyectar y actuar tienen que ir en el **mismo** `evaluate`.
+- `window.__test` ganó `setTurnos`, `turnos`, `rep`, `sel`, `CHSv`, `uid`, `reprogramar`, `repSalir` y `askCancel`.
+
+---
+
+## 7. Segundo lote del dueño (Barberos + varios arreglos) - **HECHO**
+
+| Pedido | Qué se hizo |
+|---|---|
+| Sección de Barberos según el mockup | Tarjeta partida en dos: la **zona que gira** (foto + nombre) y el **pie con los dos botones**, que no gira. Antes era un solo elemento con `role="button"` que giraba entero y no podía tener dos botones (un `<button>` dentro de otro no es HTML válido). Se agregan la franja de barbería, el placeholder `[Foto]` con tijeras y la tarjeta "Elegí con quién cortarte". |
+| Fotos de barbero **sin recortar** | `object-fit: contain` en vez de `cover`. |
+| Redes fuera del menú | Se sacaron del panel desplegable de la landing (quedan en el pie y en Contacto). |
+| Redes fuera del pie en celular | Se envuelven en `.ft-soc` y se ocultan con media query. |
+| Los números 1–6 del celular | `.lb-wpasos` se oculta bajo 640 px: era una lista decorativa de pasos que en pantalla chica salía como seis números sueltos. |
+| Comentarios innecesarios | Fuera el eyebrow del hero, la nota "20 puntos de bienvenida" y "El precio final se muestra al confirmar el turno". |
+| **Al cerrar sesión no carga el equipo** | Bug real, ver abajo. |
+| Fotos en las reseñas | `revSend` **ya guardaba** la foto; el carrusel no la pintaba. Agregada con inicial de respaldo. |
+| Orden de Contacto | `dónde estamos → horarios → mapa → cómo llegar`, con el botón de cómo llegar suelto al final. |
+| Orden del header | `inicio · servicios · puntos · galería · equipo · reseñas · contacto` (en el nav y en el panel). |
+| Logo con marco en todos los paneles | Cuadrado redondeado (14px) con anillo dorado, igual en header del panel, pie, landing y asistente. |
+| **"Quitar" en barberos agregados a mano** | No, no estaba bien: el botón sólo salía si el barbero tenía cuenta. Ahora existe para los dos tipos. |
+| Puntos de bienvenida configurables | Nuevo `PTSRv` en Servicios y premios. |
+
+### 7b. Bug real: al cerrar sesión la landing se quedaba vacía
+
+`config/servicios`, `config/barberos` y `config/horario` se escuchan con `onSnapshot(doc(db, ...))`. **`doc()` sólo dispara el callback cuando el documento cambia.** Al cerrar sesión se limpian las variables (`BARS = []` entre otras), pero en Firestore esos documentos no habían cambiado, así que ningún callback volvía a correr y la landing quedaba con "Equipo sin cargar" para siempre.
+
+Se guardó la última copia recibida en `PUB` y se reaplica al limpiar. Ojo con declararla: tiene que ir **en la cadena de `let`** del estado, no como línea suelta — si queda afuera es una variable no declarada y en un módulo eso es `ReferenceError` al cargar, con la landing entera en blanco.
+
+### 7c. El giro de la tarjeta de barbero se rompió al reestructurarla
+
+Al partir la tarjeta en dos, `LB_GRUPO` apuntaba a `.lb-barber`, pero `data-args` quedó en `.lb-barber-giro`. `lbFlip` buscaba el turno dentro del grupo y no lo encontraba: **el giro dejaba de funcionar entero**, y con él "sólo una ficha abierta" y el Escape.
+
+Ahora `LB_GRUPO` es la zona que gira, y `lbTarjeta()` sube a la tarjeta para lo que necesita el borde (el alto animado y la clase `lb-barber--abierta`). `landing.barberos.js` pasó de 96 a **99 checks** cubriendo la estructura nueva.
+
+### 7d. El logo ya era transparente
+
+`logo-256.png` tiene los bordes en alfa 0: lo que parecía "un cuadrado blanco" era el **badge claro del propio emblema** sin marco. No se puede borrar ese blanco con un flood fill porque la tipografía del logo también es blanca y desaparecería con él. La solución fue enmarcarlo (cuadrado redondeado + anillo dorado) para que se lea como una decisión.
+
+### 7e. "Quitar barbero" para los agregados a mano
+
+`askQuitBar(uid)` buscaba por `uid`, y los barberos de "+ Agregar barbero" no tienen cuenta. Ahora busca por `uid` **o** por `id`, y `quitBar` sólo borra `staff` y el rol del usuario si hay cuenta (si no, esos documentos no existen y escribirlos sería basura).
+
+### 7f. Puntos de bienvenida: estaban clavados en TRES lugares
+
+`pt: 20` aparecía en el alta por email, en el alta por Google/Facebook y en el "perfil básico" que se crea si el documento no existe. Los tres usan ahora `PTSRv`, que sale de `config/reglas.ptsRegistro` y se edita en **Servicios y premios** (pestaña "Reglas de puntos").
+
+> Con este se trigó `ReferenceError: PUB is not defined` al cargar: la variable había quedado fuera de la cadena de `let`. **Un ReferenceError en un módulo deja la página entera en blanco sin ver ningún error visible en el DOM**, así que si la app no renderiza, primero mirá la consola.
+
+### 7g. `landing.login.js` es flaky por rate-limit de Firebase
+
+Cuando se corren los tests seguidos, `landing.login.js` falla a veces en un rol y después pasa en el mismo código. El síntoma cambia de rol (una vez barbero, otra cliente), y con 30–60 s de espera pasa. **No lo tomes como regresión sin volver a correrlo con más espera.**
+
+**Le pasa igual a `panel.shell.js`**: la pasada de celular puede morirse en el login con un `TimeoutError` sobre `#mebadge hidden`, mientras la de escritorio pasó entera. Es el mismo rate-limit, no una regresión: esperá 50 s y volvé a correr.
+
+---
+
+## 8. Tercer lote: fotos de servicio, tarjeta de barbero y pie de la landing - **HECHO**
+
+Lo que pidió el dueño, en su orden:
+
+1. **Las fotos de los servicios no se veían.** El dueño las sube desde "Servicios y premios" y el dato llegaba bien (`nsv()` mapea `img: x.img || ""`), pero **ninguna tarjeta lo pintaba**. No era un problema de carga ni de CORS: el `img` sencillamente no estaba en el template. Ahora va en tres lugares: `.lb-sv-img` en la grilla de la landing, `.lb-sv-mini` (48 px, al costado) en la lista angosta de celular, y `.wz-item-img` (72 px) en el paso 1 del asistente.
+   - Al meter la foto hubo que **sacarle el padding a `.lb-sv` y pasarlo a `.lb-sv-bd`**: si el padding se queda en la tarjeta, la foto sale inset dentro del borde en vez de sangrar de lado a lado.
+
+2. **Se fue el botón "Volver"** del dorso de la tarjeta de barbero (`.lb-barber-cta--atras`). El dorso ya muestra el nombre arriba, así que el "Volver" era redundante.
+
+3. **Se fue la franja roja/blanca/azul** de arriba de la foto (`border-image` con `repeating-linear-gradient`).
+
+### 8a. La foto del barbero: marco 4/5 con `contain` (decisión del dueño)
+
+El dueño vio el problema en una grabación y lo struck como bug. La foto **no se recorta nunca** —es una regla del proyecto—, así que se descartó `object-fit: cover` (cortaba el 17 % de abajo). Quedó un marco fijo **4/5 con `contain`**: la foto va entera y lo que sobra a los costados se ve como franja, con el fondo en `--lb-card` para que se lea como letterbox y no como caja rota.
+
+Las tres alternativas que se midieron sobre la foto real de ASDA (1024×1536):
+
+| Opción | Resultado | Alto de la tarjeta |
+|---|---|---|
+| Sin marco (`height:auto`) | Foto entera, sin deformar | **853 px** — no entra bajo el header fijo |
+| Marco 4/5 con `cover` | Llena el ancho, **recorta 17 % de abajo** | ~830 px |
+| **4/5 con `contain` (la elegida)** | Foto entera, franjas a los lados | 853 px |
+
+### 8b. TRAMPA: `max-height` en el padre + `height:100%` en el hijo **recorta la foto**
+
+Para que la tarjeta abierta entre bajo el header fijo (105 px) en una ventana de 900, el marco lleva `max-height: calc(100vh - 300px)` en escritorio.
+
+El primer intento dejó el `img` con `height: 100%`, y **eso rompe**: en cuanto el padre lleva `max-height`, su alto deja de ser un valor definitivo, el porcentaje del hijo no resuelve y cae a `auto`. La img pasaba a medir **571×857 dentro de una caja de 600 con `overflow:hidden`**, o sea que se le recortaban 128 px de arriba y 128 de abajo — justo la cabeza, que era lo único que no podía recortarse.
+
+**La img va `position:absolute; inset:0; width:100%; height:100%`.** Con posicionamiento absoluto los porcentajes sí se resuelven contra la caja y la foto nunca se recorta, se achique la caja o no. Verificalo midiendo que `img` y `.lb-barber-ph` den el mismo alto.
+
+El tope va **sólo en `@media (min-width: 900px)`**: en celular la 4/5 se respeta tal cual, porque el `max-height` de `100vh` en un teléfono chico agrandaría la caja en vez de achicarla.
+
+### 8c. TRAMPA: `scrollIntoView({block:"nearest"})` no esquiva un header sticky
+
+`lbAbre()` ya scrolleaba la tarjeta al abrirla, pero con `block:"nearest"`, que **mira los bordes del viewport, no el header**. Como la tarjeta abierta entraba justa en la ventana, `nearest` decía "no hay nada que mover" y la dejaba con los primeros ~100 px **debajo del header fijo**.
+
+Ahora el scroll se calcula a mano en `lbAbre()`: se lee `getBoundingClientRect().bottom` de `.lb-hd` (el header **real**, no el 68 fijo de antes — en celular son 65 px y en escritorio 105) y se hace `window.scrollBy` con la diferencia. Prioridad al borde de arriba, que es lo que queda tapado; si además no entra por abajo, al menos se garantiza ver el final, que es la parte accionable.
+
+### 8d. Se eliminó el pie compacto de la landing (`.lb-ft`)
+
+Era la franja con "© Codigo Barber · Turnos y puntos" y las redes. La landing ahora cierra con la banda dorada de "Reservar ahora" + el botón sticky.
+
+Al sacarlo se llevó por delante **toda la familia `.lb-soc*`**: el único que la usaba era `lbSoc()`, que **quedó sin llamadas** (las redes de la landing viven en Contacto como `.lb-pill`). Se borraron `lbSoc()` de `main.js` y en `landing.css` `.lb-soc`, `.lb-soc-lnk`, `.lb-soc-ico`, `.lb-soc-tx`, `.lb-hd-soc` y `.lb-panel-soc`.
+
+> **Ojo al borrar CSS muerto: `grep` sobre el nombre de la clase no alcanza.** Al limpiar este bloque borré de más `.lb-hd-cta`, `.lb-panel-btn` y `.lb-panel-res`, que sí se usan (1 producer cada una en `main.js`). El método que sí sirve es contar los **selectores del CSSOM** que matchean 0 elementos y, para cada uno, contar los usos en JS/HTML **antes** de tocarlo. `.lb-soc*` daba 0 en los tres lugares; las otras tres no.
+
+---
+
+## 9. Cuarto lote: giro de la tarjeta, fotos de servicio, agenda del barbero, resumen y tema claro - **HECHO**
+
+### 9a. El giro de la tarjeta se "contraía"
+
+La tarjeta se **achicaba 83 px al empezar el giro** y a los 620 ms saltaba de golpe al tamaño real. Medido cuadro a cuadro: la caja se quedaba en 656 px durante toda la animación y saltaba a 739 al final.
+
+**La causa:** `lbAbre()` le ponía a la TARJETA el alto de la CARA, pero la tarjeta no es la cara: es la cara **más el pie con los dos botones** (655 + 82 + 2 de borde = 739). Con 656, el pie se quedaba sin lugar.
+
+Ahora `lbAltoTarjeta()` mide la tarjeta entera, y la tarjeta toma **el alto del dorso más alto de los dos** (`Math.max`), así que **al girar no cambia de tamaño**: solo rota. Medido: 0 px de oscilación (antes 83).
+
+Dos detalles que importan:
+- La suelta del `height` a `auto` ahora espera el **`transitionend`**, no un timeout fijo. Con el timeout caía en el aire y se veía el salto.
+- `max(frente, dorso)` cubre el caso inverso: si algún día una ficha larga hace el dorso más alto que el frente, la tarjeta crece, pero **nunca se encoge**.
+
+### 9b. Las fotos de los servicios: se veía el 41 % de la foto
+
+La caja era de `height: 190px` sobre fotos verticales de ~1200×1350. Con `cover` se veía el **41-49 % del alto**: una franja con los ojos y la nariz, sin pelo ni mentón, donde el corte no se reconocía.
+
+Ahora el marco es **4/5**: entra el **100 % del alto** y se recorta como máximo el 17 % del ancho. Es el mismo criterio que el de las fotos de barbero.
+
+### 9c. El barbero no podía agendar turnos (bug de permisos)
+
+`+ Agendar turno` abría bien el formulario, pero al guardar tiraba **`Missing or insufficient permissions`** y el turno no se creaba nunca.
+
+**La causa estaba en las reglas de Firestore**, no en el código. En `/turnos` el `create` exigía `request.resource.data.uid == request.auth.uid`: sólo dejaba crear un turno **a nombre propio**. Cuando el barbero agenda para un cliente, el `uid` del documento es el del **cliente**, así que la condición no se cumplía. Era la única colección que se había quedado sin la rama de staff (`/ocupados`, `/espera` y `/activos` ya la tenían).
+
+`FIRESTORE_RULES.txt` quedó en `rules_version = '2'` (esa línea **sólo admite 1 y 2**: no hay versión 3). **OJO: cambiar el archivo no cambia Firestore.** Hay que copiarlo en *Firebase Console → Firestore Database → Reglas* y publicar, o el barbero sigue sin poder agendar.
+
+De paso, el mensaje de `permission-denied` ahora dice que revise las reglas, y el selector de clientes ya no muestra `undefined · undefined` (`etqUsuario()`).
+
+### 9d. Resumen del turno: fotos y casilla de términos
+
+- La fila de **servicio** y la de **barbero** muestran la foto (38 px, redonda la del barbero) en lugar del ícono. Si no hay foto, cae al ícono de siempre: nunca queda un cuadro vacío.
+- La **casilla de términos es obligatoria**. Sin marcar, "Confirmar turno" frena con un aviso que dice qué marcar. Lleva tres links: *términos y condiciones* (solapa "Datos"), *política de privacidad* (solapa "Uso") y *condiciones del servicio* (solapa "Condiciones"), cada uno abriendo la solapa correcta del modal (`openPolSec`).
+
+> **TRAMPA: `data-ch` sin `data-args` llama al handler sin argumentos.** La casilla se guardaba siempre en `false`. Y `@v` no sirve para checkboxes: su `value` es siempre `"on"` esté marcada o no. Hay un token nuevo, **`@ck`**, que devuelve `el.checked`.
+
+### 9e. La barra del cliente en tema claro: texto invisible
+
+En tema claro los botones de la barra de abajo quedaban con `--ink` (#141c26) **sobre el fondo `--navy`, que es el mismo color**: contraste 1:1, no se leía nada.
+
+**La causa:** la barra `#nav` vive **dentro del `<header>`**, y hay una regla `body[data-theme="light"] header button { color: var(--ink) }` pensada para los botones del encabezado. Como `nav button` es un selector mucho más corto, esa regla le ganaba. Es la misma fuga de la trampa 10h.
+
+**Y el mismo `#nav` se usa en los dos tamaños, sin parecerse en nada:**
+- en **celular** es la barra fija del fondo, **oscura en los dos temas**;
+- en **escritorio** va sobre el header, que **sí cambia con el tema**.
+
+Por eso los colores van **por tamaño**. Y ojo con `--brass`: en claro es un dorado **oscuro** (bueno para escribir sobre el header claro, malo como fondo), así que la sección activa usa dorado **clavado** `#c9a24b` en celular y texto dorado sobre tinte al 10 % en escritorio. Medido, las 4 combinaciones (tema × tamaño) dan entre 5,04 y 17,16:1.
+
+### 9f. Login sin franjas de barbería y headers iguales en celular
+
+Las dos franjas rojo/blanco/azul que quedaban (`.franja` fija arriba y `.tarjeta::before`) se fueron, como pidió el dueño.
+
+Los tres headers de celular ya salen iguales (69 px, logo 38×38, nombre en una línea). Antes barbero y dueño partían "CODIGO / BARBER" en dos líneas porque tienen un botón más y el espacio se achicaba; ahora el nombre no parte y baja de cuerpo si no entra. **El barbero y el dueño mantienen su botón de "ver la web"**: no se sacó, es funcionalidad; la diferencia es de botones, no de diseño.
+
+### 9g. Dos bugs de test que aparecieron de paso
+
+1. **`landing.tema.js` comparaba un fondo translúcido como si fuera opaco.** La píldora dorada es `color-mix(... 18%)` y el parser se comía el alfa, así que daba 1,00 contra el texto. Ahora compone el alfa **sobre el primer fondo opaco que encuentra subiendo por los ancestros** (en escritorio el nav no tiene fondo propio: `nav { background: none }`, hay que llegar al header).
+2. **`panel.turnos.js` mezclaba UTC con hora local.** Usaba `toISOString()` para la fecha (UTC) y `getHours()` para la hora (local). Después de las 21:20 en Argentina las dos no son el mismo día, el turno sintético quedaba con fecha de un día y hora de otro y el test **fallaba solo de noche**. Ahora va todo en local.
+
+---
+
+## 10. Quinto lote: el login (tamaño, fotos de servicio y tema claro) - **HECHO**
+
+### 10a. El login se iba de scroll y había queachicar el zoom
+
+El dueño lo vió con el navegador al 80 % para que entrara entero. Medido: en una ventana de 768 px de alto el login ya se pasaba 62 px, y eso con el padding de 64 px y la separación de 72 px **fijas**.
+
+Ahora el armazón se achica con la altura disponible en vez de comer el espacio:
+
+- `.shell`: `padding: clamp(16px, 4vh, 52px) 40px clamp(16px, 3.4vh, 40px)` y `gap: clamp(24px, 4.4vh, 72px)`
+- `.poste` (el poste de barbero): `height: clamp(170px, 33vh, 340px)` — era lo que más alto empujaba el panel
+- `.hero__texto h2`: `clamp(32px, 4.4vw, clamp(34px, 6.2vh, 64px))`
+- `.tarjeta`, `.marca`, `.ventajas`, `.hero`: rellenos y gaps con `clamp()`
+- Un bloque `@media (max-height: 830px)` aprieta el ritmo vertical de la tarjeta de ingreso (campos y botón a 46 px en vez de 52, que igual supera el mínimo táctil de 44, sello de 40 px). **Es por altura y no por ancho porque el problema es vertical.**
+
+Medido: entra entero en 1920×1080, 1600×900 y 1440×900. En 1366×768 quedan 5 px de scroll y en 1280×720 unos 50: en una pantalla de 720 px con la barra del navegador el alto real anda por 620, y ahí scrollear es lo normal.
+
+### 10b. El login no mostraba la foto de los servicios
+
+Las fotos estaban cargadas y se veían en la landing, pero la lista de precios del login (`lines()`) no las pintaba. Ahora cada fila lleva una de 42 px (34 px en pantallas bajas).
+
+### 10c. El texto del login en tema claro
+
+**El hallazgo de fondo:** `.hero` pinta `color: #fff` **fijo** pero su fondo es `var(--navy)`, que en claro **sigue siendo oscuro**. Entonces todo lo de adentro tomaba los tokens del tema para los fondos y el color fijo heredado para el texto: `.pricing` sacaba `--card` (blanco) y los nombres de los servicios quedaban **blancos sobre blanco, 1:1**. Eso era lo que faltaba, y por eso tampoco se leía ningún nombre en la captura del dueño.
+
+La solución es **pinar los tokens en `.hero`** (`--ink`, `--mut`, `--line`, `--card` y el `--brass` de marca), no una tanda de overrides sueltos: el panel del hero es oscuro en los dos temas y todo lo que está adentro tiene que comportarse como tal. Los nombres pasaron de 1,00:1 a 12,78:1.
+
+Además, tres textos tenían **el gris del tema oscuro clavado** (#a9b4c4) y en claro quedaban ilegibles:
+
+| Elemento | Antes (claro) | Ahora |
+|---|---|---|
+| `.vista .sub` (el subtítulo de la tarjeta) | 2,10:1 | 5,92:1 |
+| `.o` ("o continuá con") | 2,10:1 | 5,92:1 |
+| `.enlace` ("Ver servicios y precios") | 1,85:1 | 5,36:1 |
+
+Los tres pasaron a `var(--mut)`, que ya es temático.
+
+Y un cuarto, **desde `landing.css`**: `body[data-theme="light"] .marca .volver { color: #fff8e6 }` ponía marfil sobre el dorado. El dorado de superficie (`--brassFill`) es **más claro** en tema claro (#d4a84b) que en oscuro (#c9a24b), así que encima va tinta oscura en los dos casos: el override estaba al revés y dejaba el botón en 2,09:1. Se borró; la regla base ya dice `#141c26`, que da 7,76:1.
+
+### 10d. Trampa al medir el fondo de un elemento
+
+Una sonda que busca el color de fondo **mirando sólo `backgroundColor`** miente cuando el bloque se pinta con un gradiente: `.hero` usa `radial-gradient(...)` así que su `backgroundColor` es transparente, la sonda sube al `body` (crema en claro) y reporta falsos fallos en textos que están bien. Hay que mirar `backgroundImage` también.
+
+---
+
+## 11. Sexto lote: el login al 100% y los botones dorados al pasar el mouse - **HECHO**
+
+### 11a. El login segú needing scroll, pero por muy poco
+
+Con los recortes del lote anterior (clamp con vh) el login ya entraba, pero **justo**: en la altura real de un monitor de 1080 con la barra del navegador (945 px) quedaban 945 de contenido en 945 de ventana. Cero margen. Con la ventana 20 px más corta ya había scroll.
+
+> **Para medir si un login "entra", `scrollHeight` no sirve**: `.shell` tiene `min-height: 100svh`, así que `scrollHeight` siempre da igual a la ventana. Lo que hay que medir es **la distancia entre el último elemento y el borde de abajo**.
+
+Los recortes de este lote, todos con `body.login` para no tocar los formularios de los paneles (que tienen sitio de sobra):
+
+- `.entrada` y `.boton`: 52 → 48 px de alto (siguen por encima del mínimo táctil de 44)
+- `.campo`: margen inferior 18 → 14
+- `.tarjeta`: relleno `clamp(20px, 3.4vh, 36px) 30px clamp(16px, 2.6vh, 26px)`
+- `.marca b` 26 → 24 px, `.marca` margen `clamp(10px, 1.8vh, 18px)`
+- `.vista h1` 40 → 36 px, `.vista .sub` margen `6px 0 18px`
+- `.o` margen 20 → 16
+
+**Aire real que queda abajo:** 174 px en 1080 · 111 px en 945 · 90 px en 900 · 33 px en 768. En 1280×720 quedan 3 px de scroll: con la barra del navegador el alto real de esa pantalla anda por 620, y ahí scrollear es lo normal.
+
+### 11b. Los botones dorados se rompían al pasar el mouse
+
+El test de políticas falló de golpe: **"Aceptar y continuar" estaba en 1,44:1**. Texto `rgb(20,28,38)` sobre fondo `rgb(42,56,73)`. Invisible.
+
+No lo había causado este lote: es la **misma fuga de la trampa 10h**. `button:hover:not(:disabled) { background: #2a3849 }` es global, y `.pol-b--pri` (dorado, texto #141c26) es (0,2,0) contra (0,2,1) de esa regla: **le gana por la columna de elementos**. Sólo se ve si el cursor cae arriba del botón, por eso el test a veces lo pasaba y a veces no.
+
+**El arreglo NO es acotar la regla.** Verifiquéndolo: el login **vive dentro de `#app`** (el login reemplaza el contenido de la app), así que `#app button:hover` sube la especificidad a (1,0,3,1) y ahí no gana ninguna regla de clase. Probé eso y rompí el hover del botón "Volver a la web". Volví a la regla original y protegí los botones dorados uno por uno.
+
+Y ojo con la aritmética de `:hover`: **es una pseudo-CLASE**, cuenta en la columna de clases, no en la de elementos. `.pol-b--pri:hover` es (0,2,0) y NO le gana a (0,2,1). Hacen falta dos clases: `.pol-b.pol-b--pri:hover` = (0,3,0).
+
+Botones protegidos:
+
+| Botón | Con hover |
+|---|---|
+| `#po .pol-b--pri` ("Aceptar y continuar") | 7,15:1 (era 1,44:1) |
+| `#po .pol-b` (secundario) | 4,57:1 con tinte propio |
+| `.marca .volver` ("Volver a la web") | 5,44:1 |
+
+**Regla para el futuro: si agregás un botón dorado con texto oscuro, ponele su `:hover` con dos clases.** El comentario en `styles.css` junto a la regla genérica lo dice.
+
+---
+
+## 12. Iconos de redes del dueño y login con Google/Facebook - **HECHO**
+
+### 12a. Los íconos ahora son los PNG del dueño
+
+Los íconos de WhatsApp e Instagram se usan como **`<img>` con los PNG que puso el dueño**
+(`assets/whatsapp.png` e `assets/instagram.png`), no como los SVG que habíaamos redibujado.
+Están en los 6 lugares: contacto de la landing, pills de contacto, datos del
+barbero, pie del panel y login.
+
+**Los originales no se tocan.** Pesan 223 KB y 702 KB (éstos son para imprenta), así
+que se generaron dos versiones al 96 px con el canvas del navegador:
+
+| Archivo | Original | Derivado | Se usa |
+|---|---|---|---|
+| `whatsapp.png` | 4177×4177, 223 KB | `whatsapp-96.png`, 7 KB | 22×22 px |
+| `instagram.png` | 2500×2500, 702 KB | `instagram-96.png`, 14 KB | 22×22 px |
+
+925 KB de iconos que se pintan a 22 px se vuelven 21 KB. 96 px es 4x el tamaño
+real en pantalla, de sobra para un monitor retina.
+
+> **No hay ImageMagick ni sharp en la máquina.** Para reescalar se usa el canvas
+> de Chromium (`new Image()` + `drawImage` + `toDataURL`) sobre una página
+> `about:blank`. Ojo: hay que hacerlo en `about:blank` y no sobre la app, porque
+> la página redirige y el contexto de ejecución se destruye a mitad del dibujado.
+
+SeLeveró también el bloque de CSS que sobraba: `.ic-ig` / `.ic-wa` tenían
+`background-color: currentColor` y cuatro `mask-*`, que eran de cuando los
+íconos se pintaban como máscara de CSS. Sobre un `<img>` no hacen nada pero
+confunden a quien lea el archivo.
+
+### 12b. Google y Facebook: el código ya estaba, faltaba la consola
+
+Act.red(p) llama a `signInWithPopup` con `GoogleAuthProvider` y
+`FacebookAuthProvider`, y al primer ingreso le crea el documento en
+`users/{uid}` con los puntos de bienvenida. **No hay que escribir nada.**
+
+Lo que faltaba era la activación en la consola, que pide la cuenta del dueño.
+El paso a paso está en **`ACTIVAR_GOOGLE_FACEBOOK.md`**: Google se activa en
+Firebase directo; Facebook necesita además crear una app en Meta, agregar la
+URI `https://barberia-taccu.firebaseapp.com/__/auth/handler` y pegar el App ID y
+el App Secret en Firebase.
+
+Además se agregaron al mapa `ERR` los errores que de verdad se ven con esos
+botones, para que no salga el "Ocurió un error" genérico:
+`auth/operation-not-allowed` (proveedor sin activar), `auth/unauthorized-domain`
+(dominio sin autorizar), `auth/popup-blocked`,
+`auth/popup-closed-by-user`, `auth/account-exists-with-different-credential` y
+`auth/cancelled-popup-request`.
+
+> **Recordatorio: `localhost` viene autorizado de cualquiera.** Cuando la web se
+> suba a un dominio real hay que agregar ese dominio en *Authentication →
+> Settings → Authorized domains*, o el botón va a fallar con
+> `auth/unauthorized-domain` aunque el proveedor esté habilitado.
+
+---
+
+## 13. Google y Facebook en las dos pantallas - **HECHO**
+
+Pedido del dueño (2026-10-11): **que un cliente pueda entrar con su cuenta de
+Google o de Facebook**. Los dos botones van en las dos pantallas.
+
+**Por qué igual se le pide una contraseña al registrarse con una red social.**
+Con el botón de Facebook también en el ingreso, nadie queda encerrado: puede
+entrar con Facebook cuando quiera. La contraseña que se pide después es **red de
+seguridad**: si esa persona pierde el acceso a Google o a Facebook, tiene un
+correo y una contraseña para entrar en lugar de quedarse afuera con sus puntos y
+su historial. Se puede saltar, con el aviso de qué pasa si se saltea.
+
+### Qué se implementó
+
+- Los dos botones quedan en `#ingresar` y en `#registro`. En el ingreso van sin
+  segundo argumento (no se le pide nada a quien ya tenía cuenta); en el registro
+  van con `true`, que es lo que dispara la pantalla de contraseña.
+- `red(p, registro)` recibe un segundo argumento: si el botón se apretó desde la
+  pantalla de **registro** y la cuenta quedó **sin proveedor de tipo `password`**,
+  se abre la pantalla `#redpass` ("Elegí una contraseña").
+- Esa pantalla valida mínimo de 6 caracteres y que las dos claves coincidan, y guarda
+  con `updatePassword(auth.currentUser, n)`.
+- El documento en `users/{uid}` (con los puntos de bienvenida) se crea **antes** de
+  pedir la clave: si alguien cierra a mitad de camino igual tiene que quedar con
+  perfil. El `return` que se había puesto después del pop-up lo hacía al revés y
+  dejaba la cuenta sin crear.
+- Hay un "Ahora no, gracias" que avisa que sin clave no va a poder volver a entrar.
+  No bloquea, pero queda dicho.
+
+### Dos trampas de esta pantalla
+
+1. **Los campos no están dentro de un `<form>`**, así que su valor hay que llevar al
+   estado a mano con `data-in="redPassIn"`. Sin eso el botón guardaba cadena vacía
+   siempre.
+2. **La vista nueva se superponía con el ingreso.** El `hidden` de `#ingresar` decía
+   `${up || rec ? "hidden" : ""}` y con `tab = "redpass"` las dos condiciones dan
+   falso: el ingreso quedaba visible debajo. Hay que sumar `|| redPass`.
+
+### Para probarla
+
+`window.__test.setRedPass({n:"", c:"", red:"facebook"})` abre la pantalla sin
+disparar el pop-up (que abriría otra pestaña y pediría una cuenta real).
+
+---
+
+## Lo que ya está hecho y NO hay que romper
+
+- **Asistente de reserva de 6 pasos** (servicio → barbero → día con calendario del mes → turno mañana/tarde → horario → resumen). Es **un solo componente** que usan la landing (modal) y el panel del cliente (`resH()` devuelve `wizH()`). El calendario calcula disponibilidad real leyendo `ocupados`.
+- **Ver la web desde el panel**: barra dorada arriba cuando mirás la landing con sesión, y el header de la app se esconde para no quedar dos headers apilados. **El botón cambió de lugar**: para el dueño sigue suelto en el header, para el cliente vive en el menú de la foto (`#pmenu`), igual que "Cerrar sesión". La acción (`verWebOn`) es la misma en los dos casos.
+- **Login**: logo real (antes era un SVG inline de una navaja), botón "Volver a la web".
+- **Modo claro de los paneles**: estaba roto de raíz, `styles.css` no redefinía los tokens.
+- **Perfil del barbero**: la ficha vive en `config/barberos`, NO en `staff/{uid}`, porque **`staff` exige sesión para leerse** y la landing muestra el equipo sin sesión. Foto sí va a `staff`. Se edita desde "Mi perfil en la web" en el panel del barbero.
+- **Tarjeta de barbero que se da vuelta**: al tocarla rota 180° y muestra el dorso con la ficha (oficio, descripción, WhatsApp, Instagram, otras redes y el botón "Reservar con X"). **Al tocar otro barbero se cierra el anterior y se abre el nuevo**: sólo hay una abierta (`lbFlip` / `lbCierraTodos` en `main.js`, CSS al final de la sección 12 de `landing.css`). También se cierra con Escape o con un clic fuera.
+
+**De la tarjeta, dos cosas que conviene no deshacer:**
+
+1. **Todas las tarjetas se dan vuelta, tengan ficha o no.** Antes sólo era pulsable el que había cargado algo, y como ninguno lo había, la función no se veía nunca. El dorso de uno sin ficha avisa "Todavía no cargó su información de contacto" y muestra igual el botón de reservar.
+2. **La cara oculta lleva `inert`**, no sólo `backface-visibility:hidden`. Girada, la cara de atrás es invisible pero sigue en el árbol de accesibilidad: sin `inert` se podía tabular a un link de WhatsApp que no se veía. `lbCaras()` lo maneja en los dos sentidos.
+
+Para el 3D hacen falta las cuatro piezas juntas: `perspective` en `.lb-barber` (el contenedor), `transform-style: preserve-3d` en `.lb-barber-int` (la que rota), `backface-visibility: hidden` en las dos caras, y `rotateY(180deg)` en la cara de atrás para que quede mirando al frente al girar.
+
+Con `prefers-reduced-motion: reduce` **no gira**: se oculta el frente y el dorso pasa al flujo normal. El efecto sigue siendo claro porque el contenido es distinto, y el botón de reservar sigue ahí.
+
+**Estado real de los datos (a fecha de hoy):** hay 2 barberos en `config/barberos`; `asda` tiene foto cargada, `julian` no (por eso su tarjeta muestra el placeholder con tijeras y la letra J). **Ninguno cargó todavía la ficha** (teléfono, Instagram, descripción, redes), así que el dorso muestra el aviso de "sin cargar" más el botón de reservar. Para verlo completo hay que llenar "Mi perfil en la web" desde el panel de barbero.
+
+`tests\landing.barberos.js` (96 checks: giro, exclusivity, teclado, inert, Escape, clic fuera, botón del dorso y `prefers-reduced-motion`) y `tests\flip.shots.js` (capturas).
+
+---
+
+## Trampas del proyecto (aprendidas a la costa)
+
+0. **`ACT` es una COPIA de `W`, no una referencia.** `const ACT = Object.assign({}, W, {...})` (~línea 2484) congela los handlers en ese momento. Asignar `W.algo = fn` **después** de esa línea no registra nada y el `data-act` queda muerto sin error. Para handlers nuevos: `Object.assign(ACT, {...})` en un bloque posterior (es lo que hace `guardarPerfil`), o metelos en el `W` original.
+
+0b. **El ciclo de foco del modal (`#mo`) sólo tabulaba `<button>`.** La ficha del barbero mete enlaces (WhatsApp, Instagram) y quedaban inalcanzables con teclado. Ya se corrigió a `button, a[href], input, textarea, select` filtrando por `offsetParent`.
+
+0c. **`elemento` con `role="button"` + `tabindex="0"` no dispara nada con Enter ni Espacio.** Hay que traducir la tecla en un click (hay un listener global con `dRun`). Si no, la tarjeta se ve pulsable y no lo es.
+
+0d. **`setDoc` devuelve promesa: `try { setDoc(...) } catch` NO captura el error.** El `.catch(() => {})` se tragaba el permission-denied y la app mostraba "se guardó" sin guardar. Siempre `await` dentro del `try`.
+
+0e. **`getComputedStyle().getPropertyValue("--x")` devuelve HEX, no `rgb()`.** El `parse()` de `landing.audit.js` sólo entiende `rgba()` y `color()`: con hex leía `#141c26` como los números sueltos `14,26` y daba `NaN` o ratios de 1.03. Todo esto está resuelto en `tests\color.js`: usalo.
+
+0e2. **`color-mix()` devuelve `color(srgb 0.49 0.38 0.10 / 0.12)`**: canales de 0 a 1 y alfa separada. Leído como `rgb()` da un color casi negro y ratios inventados. `tests\color.js` lo maneja.
+
+0i. **`dataset.args` llega DECODIFICADO, `A(id)` no.** `A("datos")` devuelve el texto con entities (`[&quot;datos&quot;]`); el navegador lo convierte a `["datos"]` al leer el atributo. Comparar `t.dataset.args === A(id)` nunca da igual. Compará contra `JSON.stringify([id])` y parseá con `JSON.parse(...)` en vez de recortar con `slice`.
+
+0f. **Medir contraste sobre un `background` que es `gradient` no funciona.** `backgroundColor` queda transparente y el cálculo sube al ancestro: mide el texto contra el color de la página y da 1:1. Hay que leer las paradas de `backgroundImage`. `panel.contraste.js` toma la más oscura.
+
+0g. **Que el elemento sea visible no basta para medirlo.** Si un ancestro tiene `display:none`, el hijo sigue reportando `display:inline`. Medí markup del panel de login que seguía en el DOM después de entrar. Usar `el.checkVisibility({checkOpacity:true, checkVisibilityCSS:true})`.
+
+0h. **`Select-Object -Last N` sobre un proceso Node largo lo mata por SIGPIPE** y el `exit=1` que ves es del pipe cerrado, no del test. Para correr la suite en serio: `node tests\x.js *> $env:TEMP\x.txt` y después leer el archivo.
+
+1. **`src/main.js` y `src/styles.css` son UTF-8 SIN BOM.** El Read los muestra con mojibake, es solo la consola. Editá con los caracteres reales o con Node.
+
+2. **PowerShell mete BOM.** `Set-Content -Encoding UTF8` agrega BOM; si concatenás ese archivo a otro, el BOM queda pegado al primer selector y **toda esa regla CSS queda muerta en silencio** (el CSSOM muestra `\ufeff .clase`). Pasá los temporales por Node, o revisá con un grep de `\uFEFF`.
+
+3. **`.lb` tiene `overflow-x: clip`**: el desborde real no aparece como scroll, aparece como contenido cortado. Medí `getBoundingClientRect()` y `scrollWidth > clientWidth` del contenedor, nunca `overflowX` del documento.
+
+4. **`grid-template-columns: 1fr` es `minmax(auto, 1fr)`** y no baja del `min-content`. Con `aspect-ratio` las celdas se pasan de ancho. Usar `minmax(0, 1fr)`.
+
+5. **Los iconos de redes usan `<img>`, no `mask-image`.** Los `pngwing`/CorelDRAW son multicolor y una máscara usa el canal alfa: el cuadrado con degradado de Instagram se volvía un bloque sólido y el círculo verde de WhatsApp un disco.
+
+6. **`#thm` (tema de la app) vive en el header global, oculto sin sesión.** La landing tiene su propio toggle, `lbTema`. Los dos escriben en el mismo `localStorage.theme`.
+
+7. **El service worker cachea el shell.** Subiste la versión a `barberia-v7` en `sw.js`. Si tocás un archivo del shell sin bumpearla, los clientes siguen viendo la versión vieja. Sin bump hay un aviso de "Actualizar".
+
+8. **Los tests esperan `domcontentloaded`, nunca `networkidle`**: Firestore mantiene la conexión abierta y nunca idlea.
+
+9. **Cuidado con los dos `data-act="goLogin"`**: a 390 px los dos "Ingresar" están ocultos (uno en el header, otro en el panel móvil cerrado). Usá `:visible` o el hash `#login`.
+
+10. **Ojo con el uso de la palabra "wizard" y el acento de `main.js`** si editás templates anidados: los backticks anidados rompen los scripts de reemplazo. Para cambios grandes en templates, escribí el script con la herramienta de escritura, no con heredoc de PowerShell.
+
+10b. **Nunca uses un heredoc de PowerShell para escribir un archivo con acentos.** `Reseña` sale `Rese�a` y el script falla en runtime con un error de locator que no dice nada del mojibake. Es la trampa #1 pero aplicada a los **tests**: para cualquier `.js` con texto español, usar la herramienta de escritura, no `Set-Content`.
+
+10c. **Un test que verifica una UI que "no hace nada" puede estar mintiendo.** Las sondas de la reseña siguieron dando "sin diálogo" durante varias vueltas porque el asistente tiene 3 pasos y sólo se recorrían 2. **Antes de diagnosticar la app, comprobá que el test llega hasta el final del flujo** — y verificá contra la BASE (red, base de datos), no contra un elemento de UI que el código nunca muestra.
+
+10d. **`msg` es un aviso de un solo render**: `R()` lo borra al final de pintarlo. Si hacés `msg = …; R(); algoQueTambiénRenderiza();` el mensaje **no llega a verse nunca** (los dos renders caen en el mismo tick y el navegador sólo pinta el último). Hay que poner el mensaje y hacer **un solo** `R()`, como hace el resto de los handlers.
+
+10e. **`hidden` no le gana a una regla de `display`.** `#web` y `#lo` tienen `display:inline-flex` en `styles.css`, así que ponerles `.hidden = true` desde JS **no los oculta**: siguen visibles y en el orden de tabulación. Para esconderlos de verdad hay que pegarle con CSS (`body:not(.adm) #web { display:none !important }`).
+
+10f. **Cuidado con el orden en `styles.css` a igual especificidad.** Una regla nueva definida arriba la pisa cualquier regla vieja más abajo del archivo. `.card` está declarado en la línea ~435 y por eso la tarjeta dorada del Inicio salía oscura: ganaba `.card`, no `.ini-acc--pri`. Para ganarle hay que subir la especificidad (`.card.ini-acc--pri`), no confiar en el orden.
+
+10g. **Un ítem de grilla con `display:inline-block` se blockifica.** Los títulos con subrayado dorado (`.ini-hola`, `.rev-tit`) se estiran al ancho de la columna y el texto queda centrado: hay que ponerles `justify-self: start`.
+
+10h. **`styles.css` (el panel) se carga en la landing y filtra estilos genéricos.** El que más daño hizo: `button:hover:not(:disabled){background:#2a3849}`, un azul oscuro **clavado** que se le aplicaba a las tarjetas del asistente de la landing, dejándolas con texto casi negro encima (2.8:1). En móvil `:hover` se queda pegado después de tocar. Cuando algo se vea raro en la landing, listá **las reglas del CSSOM que matchean el elemento**; no asumas por el nombre de la clase, porque la regla que gana puede venir del otro CSS.
+
+10i. **Un `opacity` sobre un texto nunca se recupera para cumplir AA.** El "apagado" de `.wz-turno.off` bajaba a 2.8:1 con `opacity:.45`, y a `.85` seguía en 3.93:1: bajar la transparencia compone el texto con el fondo, así que no hay valor que llegue a 4.5:1 sin que el elemento deje de leerse como apagado. Marcalo con **color y tachado**, no con transparencia.
+
+---
+
+## Decisiones que ya están tomadas, no las abras
+
+- **Nombre de marca: "Codigo Barber"**, en `NOMBRE` (`src/config.js`). `index.html` y `manifest.json` son estáticos y hay que cambiarlos a mano si cambia.
+- **Un solo CTA en la landing**: "Reservar ahora".
+- **No inventar** testimonios, dirección, horarios ni datos de barberos. Si falta algo, va con marcador visible + `TODO` en el código.
+- **Servicios, barberos, galería y horarios SIEMPRE desde Firestore**, nunca hardcodeados.
+- **Días con disponibilidad en verde, sin disponibilidad en rojo, cerrado en gris.**
+- **Horarios ocupados se muestran apagados y tachados**, no se esconden.
+- **La navegación del panel del cliente tiene un solo origen**: la constante `SEC_CLI` alimenta la barra del header (escritorio) y la de abajo (celular). Si alguna vez se edita una, editá `SEC_CLI`, no el HTML de una.
+- **Ajustes del cliente ≠ Ajustes del dueño**: `#/mi-cuenta` (`ajus`) contra `#/ajustes` (`cfg`).
+
+## Cosas que necesitan una decisión tuya
+
+- **Segundo WhatsApp**: están `WA_ROMAN` (`5493757699335`) y `WA_YAN` (`5493757644751`) en `config.js`, con nombre en el contacto y en el pie. Falta decidir si el aviso de lista de espera va a uno o a los dos, y si el número debería ser por barbero.
+- **Login con Google y Facebook**: el código está hecho y los dos proveedores se activan en la consola según **`ACTIVAR_GOOGLE_FACEBOOK.md`**. Los dos botones (Google y Facebook) están **en las dos pantallas**: se puede entrar con correo, con Google o con Facebook.
+- **Cuentas de prueba que hay que borrar** de Firebase Authentication: `aguscolegio203+qa@gmail.com`, `aguscolegio203+qa+qa-79h0n@gmail.com`, `aguscolegio203+qa-o1fc0@gmail.com`.
+- El servicio `as` (23 min, $1.222) es basura de prueba; el dueño dijo que lo borra él.
+- **Texto de las políticas**: lo compuse yo desde el mockup de baja resolución. Las secciones **"Tus derechos"** y **"Con quién los compartimos"** las tenés que revisar antes de publicar: son las que más conviene que mires si algo está mal.
+- **Contraste del asistente en modo claro** (ver 5c): hay que abrir el asistente en claro y sacar la cadena real de colores. No lo arregles a ciega.

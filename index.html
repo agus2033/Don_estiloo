@@ -64,12 +64,21 @@
       <div class="hd">
         <div class="bw"><img id="lg" class="lg" alt="" width="38" height="38" /><span class="logo" id="brand"></span></div>
         <nav id="nav"></nav>
-        <button id="hamb" data-act="toggleNav" aria-label="Menú" aria-expanded="false">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
-        </button>
-        <div id="mebadge" hidden>
-          <span id="mefn"></span>
-          <span class="med" id="med"></span>
+        <!-- La foto ES el botón del menú: no hay un hamburguesa al lado.
+             Antes el admin tenía su propio #hamb y el cliente un #perfil
+             aparte; ahora los dos menús salen de acá. Para el cliente abre
+             #pmenu, para el admin el #nmenu de siempre.
+             El #pmenu va dentro de este wrapper y no del <button>: un
+             <div> dentro de un <button> es HTML inválido. El wrapper es
+             el que lleva position:relative, así el menú se ancla a la
+             foto en vez de flotar pegado a una esquina de la ventana. -->
+        <div class="mewrap">
+          <button id="mebadge" data-act="toggleMebadge" aria-label="Menú de tu perfil" aria-expanded="false" aria-controls="pmenu" hidden>
+            <span id="mefn"></span>
+            <span class="med" id="med"></span>
+          </button>
+          <div id="pmenu" hidden></div>
+          <div id="nmenu" hidden></div>
         </div>
         <button id="thm" aria-label="Cambiar tema claro oscuro">☀︎</button>
         <button id="web" hidden data-act="verWebOn" aria-label="Ver la página de la barbería">
@@ -103,7 +112,6 @@
       </div>
     </header>
     <div id="app"></div>
-    <div id="nmenu" hidden></div>
     <div id="wzm" hidden></div>
     <footer id="ft"></footer>
     <div id="mo" hidden></div>

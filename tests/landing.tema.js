@@ -22,17 +22,33 @@ const check = (ok, txt, extra) => {
   console.log((ok ? "  OK   " : "  FALLA") + " " + txt + (extra ? "  -> " + extra : ""));
 };
 
-/* rgb() o color(srgb ...) -> [r,g,b] */
+/* rgb() o color(srgb ...) -> [r,g,b,a]
+   Devuelve el ALFA también: un fondo translúcido (la píldora dorada de la
+   sección activa es brass al 18%) no se puede comparar contra un texto sin
+   componerlo primero sobre lo que hay debajo. Sin el alfa, brass al 18%
+   daba el mismo color que el texto brass y el ratio salía 1.00. */
 const parse = (s) => {
   const t = String(s || "");
-  const c = t.match(/color\(\s*srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/i);
-  if (c) return [+c[1] * 255, +c[2] * 255, +c[3] * 255];
-  const n = (t.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
-  return n;
+  const c = t.match(/color\(\s*srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\s*\)/i);
+  if (c) return [+c[1] * 255, +c[2] * 255, +c[3] * 255, c[4] === undefined ? 1 : +c[4]];
+  const n = (t.match(/[\d.]+/g) || []).map(Number);
+  /* "rgba(201, 162, 75, 0.18)": el cuarto número es el alfa, no un canal. */
+  if (/rgba?\(/.test(t) && n.length >= 4) return [n[0], n[1], n[2], n[3]];
+  return [n[0] || 0, n[1] || 0, n[2] || 0, n.length > 3 ? n[3] : 1];
 };
+/* Compone un color con alfa sobre un fondo opaco. */
+const sobre = (c, fondo) => [
+  c[0] * c[3] + fondo[0] * (1 - c[3]),
+  c[1] * c[3] + fondo[1] * (1 - c[3]),
+  c[2] * c[3] + fondo[2] * (1 - c[3]),
+];
 const lum = ([r, g, b]) => {
   const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
   return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+};
+const ratio = (a, b) => {
+  const [x, y] = [lum(a), lum(b)];
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 };
 
 (async () => {
@@ -114,17 +130,26 @@ const lum = ([r, g, b]) => {
       check(r >= 4.5, "las tarjetas mantienen contraste AA",
         "ratio " + r.toFixed(2) + " sobre " + claro.cardBgReal);
     }
-    /* el nav activo no puede quedar tinta oscura sobre tinte claro */
+    /* el nav activo no puede quedar tinta oscuro sobre tinte claro */
     const navOn = await p.evaluate(() => {
       const el = document.querySelector("#nav button.on") || document.querySelector("#nmenu button.on");
       if (!el) return null;
-      const cs = getComputedStyle(el);
-      return { bg: cs.backgroundColor, fg: cs.color };
+      /* Hay que subir por los ancestros hasta el primer fondo opaco: en
+         escritorio la barra no tiene fondo propio (nav { background: none })
+         y el color real es el del encabezado. Quedarse en el padre
+         devolvía rgba(0,0,0,0) y la composición daba un número sin sentido. */
+      let fondo = null;
+      for (let a = el.parentElement; a; a = a.parentElement) {
+        const c = getComputedStyle(a).backgroundColor;
+        const m = c.match(/[\d.]+/g);
+        if (m && (m.length < 4 || +m[3] > 0)) { fondo = c; break; }
+      }
+      return { bg: getComputedStyle(el).backgroundColor, padre: fondo, fg: getComputedStyle(el).color };
     });
     if (navOn) {
-      const r = (Math.max(lum(parse(navOn.bg)), lum(parse(navOn.fg))) + 0.05) /
-                (Math.min(lum(parse(navOn.bg)), lum(parse(navOn.fg))) + 0.05);
-      check(r >= 4.5, "el botón activo del nav es legible", "ratio " + r.toFixed(2));
+      const fondo = parse(navOn.padre);
+      const r = ratio(sobre(parse(navOn.bg), fondo), parse(navOn.fg));
+      check(r >= 4.5, "el botón activo del nav es legible", "ratio " + r.toFixed(2) + " sobre " + navOn.padre);
     }
     check(!claro.nombreVisible, "el header no muestra el nombre del usuario");
     check(claro.avatar, "el header conserva la foto de perfil");

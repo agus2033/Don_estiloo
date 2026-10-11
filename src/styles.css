@@ -5,9 +5,21 @@
   --mut: #9aa7b4;
   --line: #334257;
   --navy: #141c26;
+  /* El dorado va en DOS tokens porque se usa de dos formas opuestas:
+     --brass para texto y bordes (tiene que LEERSE contra el fondo) y
+     --brassFill para superficies (tiene que dejar LEERSE el texto que va
+     encima). Con un solo valor no se puede cumplir ambos: en modo claro un
+     dorado legible sobre marfil queda a 4.31:1 como texto, y si se
+     oscurece para eso, el texto oscuro encima del botón se va a ~2.9:1.
+     Medido con tests/tokens.claro.js. */
   --brass: #c9a24b;
+  --brassFill: #c9a24b;
   --brassD: #c9a24b; /* dorado principal */
-  --red: #b3382c;
+  /* El rojo, igual: --red es tinta (el "✎" del botón .x va a 2.43:1 sobre
+     la tarjeta con #b3382c) y --redFill es superficie, donde va texto
+     blanco y hace falta un rojo SATURADO para que ese blanco se lea. */
+  --red: #e0705c;
+  --redFill: #b3382c;
   --blue: #8fa3b8;
   --green: #3e8e5a;
   --warn: #d9902f;
@@ -27,9 +39,14 @@ body[data-theme="light"] {
   --mut: #55637a;
   --line: #dcd4c2;
   --navy: #141c26;
-  --brass: #8a6d1f;
-  --brassD: #8a6d1f;
+  /* Texto/bordes: 5.09:1 sobre el marfil y 5.78:1 sobre la tarjeta.
+     Antes era #8a6d1f, que sobre el marfil daba 4.31:1 y no pasaba AA. */
+  --brass: #7d621b;
+  /* Superficie: el texto #141c26 encima queda en 7.76:1. */
+  --brassFill: #d4a84b;
+  --brassD: #7d621b;
   --red: #a82f24;
+  --redFill: #a82f24;
   --blue: #55637a;
   --green: #2e7047;
   --warn: #a96a18;
@@ -67,6 +84,513 @@ header {
   z-index: 5;
   border-bottom: 1px solid var(--line);
 }
+/* ---------- El asistente dentro del panel ----------
+   El modal de la landing acota el ancho con `.wz-sheet { max-width: 520px }`.
+   Ese contenedor NO existe cuando el mismo asistente se dibuja en el panel
+   (`resH()` devuelve `wizH()` directo dentro de #app), así que el cuerpo
+   ocupaba los ~1040px del panel. La rejilla del calendario es
+   `repeat(7, minmax(0,1fr))` con `aspect-ratio: 1/1` en cada celda: al
+   estirarse, cada celda quedaba de ~140x140 y el mes entero ocupaba casi
+   toda la pantalla, con las celdas dispersadas y el número perdido.
+   Acotando el ancho, las celdas vuelven a su tamaño de lectura. */
+#wiz {
+  max-width: 560px;
+  margin-inline: auto;
+}
+
+/* ---------- Menú del perfil del cliente ----------
+   debajo de ella. Es un dropdown propio (#pmenu), separado del #nmenu del
+   admin: el cliente no tiene secciones de configuración para listar, sólo
+   Ajustes / Ver la web / Cerrar sesión.
+
+   Para el cliente los dos botones sueltos del header ("Ver la web" y
+   "Cerrar sesión") se ocultan: pasaron al menú de la foto. El JS también
+   les pone [hidden], pero #web y #lo tienen display:inline-flex y eso le
+   gana al [hidden] del navegador; esta regla lo cierra del todo. */
+body:not(.adm) #web,
+body:not(.adm) #lo {
+  display: none !important;
+}
+/* ---------- INICIO DEL CLIENTE ----------
+   Rejilla del mockup: saludo, dos tarjetas (puntos / próximo turno), tres
+   accesos y una franja con la reseña. Abajo siguen los premios: no se
+   sacaron, se corren. */
+.ini-hola {
+  font-size: clamp(34px, 6vw, 54px);
+  line-height: 1.05;
+  margin: 4px 0 0;
+  /* El subrayado dorado del mockup. Va con border-bottom y no con un
+     <hr> para que no ocupe una línea del flujo. */
+  border-bottom: 4px solid var(--brass);
+  display: inline-block;
+  padding-bottom: 8px;
+  /* Mismo motivo que .rev-tit: sin esto, dentro de una grilla el
+     inline-block se estira y la raya dorada se va de ancho. */
+  justify-self: start;
+}
+/* Puntos + próximo turno lado a lado en escritorio. */
+.ini-par {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 1fr;
+  align-items: stretch;
+}
+@media (min-width: 760px) {
+  .ini-par {
+    grid-template-columns: minmax(240px, 0.85fr) minmax(0, 1.6fr);
+  }
+}
+.ini-etq {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mut);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ini-badge {
+  margin-left: auto;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brass) 22%, transparent);
+  color: var(--brass);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+.ini-num {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.ini-num b {
+  font-size: clamp(48px, 9vw, 76px);
+  line-height: 1;
+  color: var(--brass);
+}
+.ini-num span {
+  color: var(--mut);
+}
+.ini-serv {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.ini-serv-ico {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--brass);
+}
+.ini-serv-ico svg {
+  width: 24px;
+  height: 24px;
+}
+.ini-serv small {
+  display: block;
+  color: var(--mut);
+}
+/* Día/hora y barbero, en dos columnas dentro de la tarjeta. */
+.ini-cuadro {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--bg);
+}
+.ini-cuadro small {
+  display: block;
+  color: var(--mut);
+  font-size: 12px;
+  margin-bottom: 3px;
+}
+/* Los tres accesos. */
+.ini-tri {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 1fr;
+  margin: 14px 0;
+}
+@media (min-width: 700px) {
+  .ini-tri {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.ini-acc {
+  display: block;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: var(--ink);
+}
+.ini-acc b {
+  display: block;
+  font-size: 20px;
+  margin: 10px 0 4px;
+}
+.ini-acc small {
+  display: block;
+  color: var(--mut);
+  line-height: 1.4;
+}
+.ini-acc-ico {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--brass) 14%, transparent);
+  color: var(--brass);
+}
+.ini-acc-ico svg {
+  width: 22px;
+  height: 22px;
+}
+/* El primero va dorado, como en el mockup. El texto tiene que quedar
+   oscuro encima: es la única tarjeta de la fila con fondo claro.
+   Selector con DOS clases a propósito: `.card` está declarado más abajo en
+   el archivo (misma especificidad) y con un solo ".ini-acc--pri" perdía,
+   dejando la tarjeta oscura con texto oscuro, ilegible. */
+.card.ini-acc--pri {
+  background: var(--brassFill);
+  border-color: var(--brassFill);
+  color: #141c26;
+}
+.card.ini-acc--pri b,
+.card.ini-acc--pri small {
+  color: #141c26;
+}
+.ini-acc--pri .ini-acc-ico {
+  background: #141c2614;
+  color: #141c26;
+}
+.card.ini-acc--pri:hover {
+  filter: brightness(1.04);
+}
+/* La franja de la reseña. */
+.ini-franja {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.ini-franja b {
+  display: block;
+  font-size: 20px;
+  margin-bottom: 6px;
+}
+.ini-est {
+  color: var(--brass);
+  letter-spacing: 3px;
+  font-size: 22px;
+}
+/* ---------- RESEÑA ----------
+   Dos columnas en escritorio (la tarjeta del paso a la izquierda, el
+   indicador de pasos y la vista previa a la derecha) y una sola columna en
+   celular, con el indicador arriba, como en el mockup. */
+.rev-todo {
+  display: grid;
+  gap: 22px;
+  grid-template-columns: 1fr;
+  align-items: start;
+  /* Orden de lectura en celular: título, indicador, panel, previa. */
+  grid-template-areas: "tit" "pasos" "panel" "prev";
+}
+.rev-tit {
+  grid-area: tit;
+  /* Los títulos con subrayado usan display:inline-block para que la raya
+     mida lo que el texto. Como ítem de grilla se blockifica y el
+     justify-self por defecto (stretch) lo estiraba a todo el ancho:
+     el subrayado quedaba largo y el texto centrado. */
+  justify-self: start;
+}
+.rev-pasos {
+  grid-area: pasos;
+}
+.rev-panel {
+  grid-area: panel;
+}
+.rev-prev {
+  grid-area: prev;
+}
+@media (min-width: 860px) {
+  .rev-todo {
+    grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr);
+    grid-template-areas:
+      "tit pasos"
+      "panel prev";
+    gap: 20px 32px;
+  }
+}
+.rev-tit {
+  font-size: clamp(34px, 6vw, 52px);
+  line-height: 1.05;
+  margin: 0 0 18px;
+  border-bottom: 4px solid var(--brass);
+  display: inline-block;
+  padding-bottom: 8px;
+}
+.rev-panel {
+  padding: 24px;
+}
+/* Las estrellas van en cajas, una por puntaje. */
+.rev-estrellas {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.rev-estrella {
+  width: 58px;
+  height: 58px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  /* La estrella vacía va en --mut, no en --line: sobre --bg en modo oscuro
+     daba 1.3:1 y era prácticamente invisible. El botón igual lleva
+     aria-label, así que el texto no es la única vía. */
+  color: var(--mut);
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: transform 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.rev-estrella:hover {
+  border-color: var(--brass);
+  transform: translateY(-2px);
+}
+.rev-estrella.on {
+  color: var(--brass);
+  border-color: color-mix(in srgb, var(--brass) 55%, var(--line));
+}
+.rev-estrella:focus-visible {
+  outline: 3px solid var(--brass);
+  outline-offset: 2px;
+}
+.rev-hint {
+  margin: 16px 0 0;
+  font:
+    700 1.3rem/1.2 "Barlow Condensed",
+    sans-serif;
+  color: var(--brass);
+  letter-spacing: 0.02em;
+}
+.rev-hint--vacio {
+  color: var(--mut);
+  font-size: 1rem;
+  font-weight: 500;
+}
+/* Indicador de pasos. */
+.rev-pasos {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 22px;
+  padding: 0;
+  flex-wrap: wrap;
+}
+.rev-paso {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--mut);
+  font-weight: 500;
+}
+.rev-paso-n {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  font-size: 14px;
+  font-weight: 700;
+}
+.rev-paso.on {
+  color: var(--ink);
+  font-weight: 700;
+}
+.rev-paso.on .rev-paso-n {
+  background: var(--brass);
+  border-color: var(--brass);
+  color: #141c26;
+}
+.rev-paso.hecho .rev-paso-n {
+  border-color: var(--brass);
+  color: var(--brass);
+}
+.rev-guion {
+  flex: 0 1 26px;
+  min-width: 12px;
+  height: 1px;
+  background: var(--line);
+  list-style: none;
+}
+/* En pantallas angostas los tres pasos entran en una sola línea (como en el
+   mockup de celular). A 390 px con los tamañosbase el tercer paso se caía a
+   una segunda línea y el indicador parecía un bloque partido. */
+@media (max-width: 430px) {
+  .rev-pasos {
+    gap: 5px;
+    flex-wrap: nowrap;
+  }
+  .rev-paso {
+    gap: 6px;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  .rev-paso-n {
+    width: 26px;
+    height: 26px;
+    font-size: 13px;
+  }
+  .rev-guion {
+    flex: 0 1 14px;
+    min-width: 8px;
+  }
+}
+/* La vista previa. */
+.rev-h3 {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mut);
+}
+.rev-ficha {
+  display: block;
+  padding: 16px;
+}
+/* Foto + nombre + estrellas en una fila; el texto de la reseña debajo,
+   que es como se publica en el carrusel de la landing. */
+.rev-ficha-cab {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.rev-ficha-txt {
+  margin: 14px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 0.98rem;
+  line-height: 1.5;
+  color: var(--ink);
+}
+/* Lo que se ve antes de escribir: hueco con la misma forma que el texto,
+   para que la caja no cambie de alto al empezar a escribir. */
+.rev-ficha-vacia {
+  color: var(--mut);
+  font-style: italic;
+}
+/* El pie del paso 1. Antes ocupaba ese lugar un botón "Siguiente" que no
+   servía: al tocar una estrella revStars() ya avanza al paso 2. */
+.rev-pie {
+  margin: 22px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.rev-pie small {
+  color: var(--mut);
+}
+.rev-est {
+  display: block;
+  color: var(--brass);
+  letter-spacing: 2px;
+  font-size: 17px;
+}
+/* ---------- Menú del perfil del cliente ----------
+   La foto del encabezado (#mebadge) es el botón, así que acá ya no hay
+   ningún control: el dropdown se ancla con position:absolute al contenedor
+   relativo que envuelve a la foto.
+
+   Antes #pmenu era position:fixed con top:68px y right:20px. Eso lo
+   dejaba pegado a una esquina de la ventana en vez de pegado a la foto:
+   con la página scrolleada el menú flotaba en el medio, a metros de lo
+   que lo abrió. Anclado, se abre siempre debajo de la foto. */
+#mebadge {
+  position: relative;
+}
+/* El contenedor que ancla el menú a la foto. Va en el HTML alrededor del
+   botón, porque un <div> dentro de un <button> no es HTML válido. */
+.mewrap {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+#pmenu {
+  position: absolute;
+  /* 22px y no 10: el alto del wrapper es el de la foto (40px), así que
+     con 10 el menú todavía caía dentro del header, que es más alto. */
+  top: calc(100% + 22px);
+  right: 0;
+  z-index: 40;
+  min-width: 210px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 18px 44px #00000073;
+  animation: pmenuIn 0.14s ease-out;
+}
+#pmenu[hidden] {
+  display: none;
+}
+@keyframes pmenuIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+#pmenu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+#pmenu button:hover {
+  background: color-mix(in srgb, var(--brass) 14%, transparent);
+  color: var(--brass);
+}
+#pmenu button:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: -2px;
+}
+/* Separador antes de "Cerrar sesión": es la acción que corta el acceso. */
+#pmenu .salir {
+  margin-top: 6px;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 10px 10px;
+  color: var(--red);
+}
+#pmenu .salir:hover {
+  background: color-mix(in srgb, var(--red) 14%, transparent);
+  color: var(--red);
+}
 .hd {
   max-width: 1040px;
   margin: 0 auto;
@@ -101,8 +625,8 @@ header {
   display: none;
 }
 #lo:hover:not(:disabled) {
-  background: var(--red);
-  border-color: var(--red);
+  background: var(--redFill);
+  border-color: var(--redFill);
   color: #fff;
 }
 #lo svg {
@@ -228,7 +752,7 @@ h2:not(:first-child) {
 .bar i {
   display: block;
   height: 100%;
-  background: var(--brass);
+  background: var(--brassFill);
 }
 .pts p {
   margin: 12px 0 0;
@@ -246,6 +770,15 @@ button {
   color: var(--ink);
   transition: background 0.15s;
 }
+/* OJO: esta regla es GLOBAL y su especificidad es (0,2,1). Cualquier
+   botón dorado con texto oscuro la pierde, salvo que tenga un :hover propio
+   de clase (0,3,0 o más). Ya pasó dos veces: con las tarjetas del asistente
+   de la landing y con el "Aceptar y continuar" del modal de políticas, que
+   quedaba en 1.44:1 al pasar el mouse.
+
+   NO acotarla a #app para zafar: el login también vive dentro de #app, así
+   que #app button:hover sube la especificidad a (1,0,3,1) y ahí no gana
+   ninguna regla de clase. Si agregás un botón dorado, ponele su :hover. */
 button:hover:not(:disabled) {
   background: #2a3849;
 }
@@ -271,17 +804,17 @@ select:focus-visible {
   grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
 }
 .chip.on {
-  background: var(--brass);
+  background: var(--brassFill);
   border-color: var(--brass);
   color: #141c26;
 }
 .chip.on:hover:not(:disabled) {
-  background: var(--brass);
+  background: var(--brassFill);
 }
 .main {
   width: 100%;
   margin-top: 16px;
-  background: var(--brass);
+  background: var(--brassFill);
   border-color: var(--brass);
   color: #141c26;
   font-size: 17px;
@@ -290,8 +823,8 @@ select:focus-visible {
   background: #dcb75e;
 }
 .main.danger {
-  background: var(--red);
-  border-color: var(--red);
+  background: var(--redFill);
+  border-color: var(--redFill);
   color: #fff;
 }
 .main.danger:hover:not(:disabled) {
@@ -331,7 +864,7 @@ input {
   flex: 1;
 }
 .tabs .on {
-  background: var(--brass);
+  background: var(--brassFill);
   border-color: var(--brass);
   color: #141c26;
 }
@@ -340,15 +873,51 @@ input {
   display: grid;
   gap: 24px;
 }
+/* El panel del hero (la mitad izquierda del login) es OSCURO en los dos
+   temas: es la marca, no un bloque que cambie con el modo claro.
+
+   Por eso se le pisan los tokens ACÁ, y no con una tanda de overrides
+   sueltos más abajo. La razón de fondo: `.hero` pintaba `color: #fff`
+   (fijo) pero su fondo es `var(--navy)`, y en tema claro --navy sigue siendo
+   oscuro. Todo lo de adentro tomaba los tokens del tema para los FONDOS y el
+   color fijo heredado para el TEXTO, así que en claro se mezclaban:
+   `.pricing` sacaba `--card` (blanco) y los nombres de los servicios seguían
+   en blanco sobre blanco (1:1, invisibles). Pinar los tokens acá hace que
+   todo lo que está dentro se comporte como panel oscuro en los dos temas. */
 .hero {
+  --ink: #f5f0e6;
+  --mut: #a9b4c4;
+  --line: #2b3644;
+  --card: #1f2a38;
+  /* El --brass del tema claro es un dorado oscuro: va bien escrito sobre el
+     header claro, pero no sobre el panel oscuro (2.97:1). Acá va el dorado
+     de marca, que es el del tema oscuro. */
+  --brass: #c9a24b;
   background: var(--navy);
-  color: #fff;
+  color: var(--ink);
   border-radius: var(--rad);
   overflow: hidden;
-  padding: 0 24px 24px;
+  padding: 0 24px clamp(16px, 3vh, 24px);
 }
 .hero .pole {
   margin: 0 -24px 22px;
+}
+/* La foto del servicio en la lista del login. El dueño la subió pero
+   en el login no se veía: la lista de precios no la pintaba, como pasó
+   antes con la grilla de la landing. */
+.pricing .line .mini {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  align-self: center;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  background: var(--bg);
+}
+.pricing .line > span:first-of-type {
+  flex: 1;
+  min-width: 0;
 }
 .hero p {
   color: #d6dde5;
@@ -402,6 +971,60 @@ nav button:hover:not(:disabled) {
 nav .on {
   color: var(--brass);
   box-shadow: inset 0 -3px var(--brass);
+}
+
+/* La barra inferior (#nav) vive DENTRO del <header>, y hay una regla
+   "body[data-theme=light] header button { color: var(--ink) }" pensada para
+   los botones del encabezado. Como el selector de la barra es mucho mas
+   corto ("nav button"), en tema CLARO esa regla le ganaba y los botones
+   quedaban con --ink (#141c26) sobre el fondo --navy (#141c26): texto
+   invisible. Es la misma fuga que documenta la trampa 10h, una regla
+   "header button" que alcanza a un elemento que no es del encabezado.
+
+   El mismo #nav se usa en los dos tamanos, y no se parece en nada:
+   - en celular es la barra FIJA del fondo, que es oscura en los dos temas;
+   - en escritorio va sobre el header, que SI cambia con el tema.
+   Por eso los colores van por tamano: un solo color no le sirve a los dos. */
+body[data-theme="light"] header #nav button {
+  background: transparent;
+}
+
+/* Celular: la barra es oscura en los dos temas, asi que el texto va claro
+   y la seccion activa en dorado. */
+@media (max-width: 859px) {
+  body[data-theme="light"] header #nav,
+  body[data-theme="light"] header #nav button {
+    color: #aab4c0;
+  }
+  body[data-theme="light"] header #nav button:hover:not(:disabled) {
+    background: #1d2733;
+  }
+  body[data-theme="light"] header #nav button.on {
+    /* El dorado va clavado, no con var(--brass): en claro ese token es un
+       dorado OSCURO (sirve para escribir sobre el header claro), y como la
+       barra de celular es oscura en los dos temas, el activo quedaba en
+       2.55:1, ilegible. Con el dorado claro sobre su propio tinte al 18%
+       quedan 5.21:1, igual que en tema oscuro. */
+    color: #c9a24b;
+    background: color-mix(in srgb, #c9a24b 18%, transparent);
+    box-shadow: inset 0 -3px #c9a24b;
+  }
+}
+
+/* Escritorio: el nav va sobre el header claro. En claro el --brass es un
+   dorado OSCURO (va bien como texto, mal como fondo), asi que la seccion
+   activa es texto dorado sobre un tinte clarito: 5.08:1, con margen sobre
+   el piso de AA. La alternativa "pildora dorada con la tinta encima" daba
+   solo 2.97:1. */
+@media (min-width: 860px) {
+  body[data-theme="light"] header #nav button {
+    color: var(--ink);
+  }
+  body[data-theme="light"] header #nav button.on {
+    color: var(--brass);
+    background: color-mix(in srgb, var(--brass) 10%, transparent);
+    box-shadow: inset 0 -3px var(--brass);
+  }
 }
 @media (min-width: 860px) {
   .grid {
@@ -610,7 +1233,7 @@ nav .on {
   right: -5px;
   height: 12px;
   border-radius: 4px;
-  background: var(--brass);
+  background: var(--brassFill);
 }
 .bp::before {
   top: 0;
@@ -708,11 +1331,11 @@ nav .on {
   color: #fff;
 }
 .mi.w {
-  background: var(--brass);
+  background: var(--brassFill);
   color: var(--navy);
 }
 .mi.x {
-  background: var(--red);
+  background: var(--redFill);
 }
 .mi.q {
   background: var(--blue);
@@ -784,7 +1407,7 @@ nav .on {
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: var(--brass);
+  background: var(--brassFill);
   color: #141c26;
   border: 0;
   display: grid;
@@ -909,12 +1532,34 @@ header {
 .bw .logo {
   margin-right: 0;
   line-height: 1;
+  /* El nombre de la marca NUNCA parte en dos líneas. Con el cliente (que
+     no tiene el botón "ver la web") entraba entero en 390 px, pero barbero y
+     dueño tienen un botón más y el espacio se achicaba hasta partirlo:
+     "CODIGO / BARBER", que además descuadraba el alto del header (69 px contra
+     77 de los otros dos). Los tres headers tienen que verse igual, así que
+     el nombre se mantiene en una línea y si no entra baja de cuerpo. */
+  white-space: nowrap;
+}
+/* Si aun así no entra (nombre de marca más largo), se reduce antes que
+   partirlo. */
+@media (max-width: 520px) {
+  .bw .logo {
+    font-size: clamp(17px, 5.2vw, 22px);
+  }
+  .bw {
+    gap: 9px;
+    min-width: 0;
+  }
 }
 /* El logo de marca es un emblema circular. Además el PNG no tiene
    transparencia, así que el borde redondeado es lo que evita que se vea
    como un cuadrado negro sobre el header oscuro. */
+/* El logo del panel. Mismo criterio que en la landing: el PNG ya es
+   transparente, lo que se veía era el badge claro del emblema sin marco.
+   Cuadrado redondeado con anillo dorado, igual que el header y el pie de
+   la landing, para que el logo se lea igual en toda la app. */
 .lg {
-  border-radius: 50%;
+  border-radius: 14px;
   box-shadow: 0 0 0 2px var(--brass);
   background: #0b0f16;
   object-fit: cover;
@@ -952,7 +1597,7 @@ h1::after {
   width: 56px;
   height: 4px;
   border-radius: 2px;
-  background: var(--brass);
+  background: var(--brassFill);
 }
 .kpi b {
   color: var(--brass);
@@ -976,7 +1621,7 @@ h1::after {
   padding: 8px 16px;
 }
 .chip.on {
-  background: var(--brass);
+  background: var(--brassFill);
   border-color: var(--brass);
   color: #141c26;
   box-shadow: none;
@@ -1013,7 +1658,7 @@ h1::after {
   border-radius: 8px;
 }
 .scr::-webkit-scrollbar-thumb {
-  background: var(--brass);
+  background: var(--brassFill);
   border-radius: 8px;
 }
 .scr .row:last-child {
@@ -1098,14 +1743,30 @@ h1::after {
   font-weight: 600;
   text-underline-offset: 3px;
 }
+/* Las redes del pie: en el celular se ocultan (lo pidió el dueño). En la
+   landing ya están en la sección de Contacto, que es donde se las busca,
+   y en el panel del cliente el pie se convierte en la barra de abajo: ahí
+   los enlaces estorbaban y empujaban el contenido. */
+@media (max-width: 859px) {
+  .ft-soc {
+    display: none;
+  }
+  .ft-cont h4 {
+    margin-bottom: 0;
+  }
+}
 .fb {
   display: flex;
   align-items: center;
   gap: 14px;
 }
 .fb img {
-  border-radius: 12px;
+  /* Igual que el del header: 14px para que el logo se vea consistente
+     en toda la app. */
+  border-radius: 14px;
   box-shadow: 0 0 0 2px var(--brass);
+  background: #0b0f16;
+  object-fit: cover;
 }
 .fb b {
   display: block;
@@ -1147,16 +1808,25 @@ h1::after {
 }
 
 @media (max-width: 859px) {
-  /* En el celular el menú principal es el hamburguesa (admin) o la barra inferior (cliente) */
+  /* En el celular el menú del cliente es la barra de abajo; el del admin
+     sale de la foto. Ya no queda ningún hamburguesa en el header. */
   body.adm nav {
     display: none;
-  }
-  body:not(.adm) #hamb {
-    display: none !important;
   }
   body:not(.adm) nav {
     display: flex;
     position: fixed;
+  }
+  /* La sección activa de la barra de abajo es una píldora dorada, no la
+     raya de 3 px que usa el nav del admin. Va dentro de este bloque a
+     propósito: el `nav .on` global también aplica al encabezado de
+     escritorio, que ya tiene su propia regla en min-width: 860px. */
+  body:not(.adm) nav .on {
+    box-shadow: none;
+    background: color-mix(in srgb, var(--brass) 18%, transparent);
+    border-radius: 14px;
+    margin: 6px 8px;
+    min-height: 48px;
   }
   #nmenu:empty {
     display: none;
@@ -1165,18 +1835,26 @@ h1::after {
     padding-bottom: 48px;
   }
 }
+/* Menú del admin. Va anclado a la foto igual que #pmenu (los dos viven
+   dentro de .mewrap): antes era un panel fijo a lo ancho de la ventana
+   pegado abajo del header, y al scrollear la página quedaba despegado. */
 #nmenu {
-  position: fixed;
-  top: 60px;
-  left: 0;
+  position: absolute;
+  /* 22px y no 10: el alto del wrapper es el de la foto (40px), así que
+     con 10 el menú todavía caía dentro del header, que es más alto. */
+  top: calc(100% + 22px);
   right: 0;
-  z-index: 9;
+  z-index: 40;
+  min-width: 210px;
   background: var(--navy);
+  border: 1px solid var(--line);
   border-top: 3px solid var(--brass);
   display: flex;
   flex-direction: column;
   padding: 8px;
-  box-shadow: 0 12px 30px #0007;
+  border-radius: 14px;
+  box-shadow: 0 18px 44px #00000073;
+  animation: pmenuIn 0.14s ease-out;
 }
 #nmenu[hidden] {
   display: none;
@@ -1187,8 +1865,8 @@ h1::after {
   color: #cbd3dc;
   text-align: left;
   border-radius: 8px;
-  min-height: 48px;
-  padding: 10px 14px;
+  min-height: 44px;
+  padding: 10px 12px;
 }
 #nmenu button.on {
   background: color-mix(in srgb, var(--brass) 16%, var(--bg));
@@ -1203,28 +1881,9 @@ h1::after {
     display: none !important;
   }
 }
-#hamb {
-  display: none;
-  align-items: center;
-  padding: 8px 10px;
-  background: transparent;
-  color: #e6ebf0;
-  border: 1px solid #55657a;
-  border-radius: 6px;
-  min-height: 40px;
-}
-#hamb[hidden] {
-  display: none !important;
-}
-#hamb svg {
-  width: 20px;
-  height: 20px;
-}
-@media (max-width: 859px) {
-  #hamb {
-    display: inline-flex;
-  }
-}
+/* El #hamb se fue: la foto del encabezado (#mebadge) abre el menú, tanto
+   para el cliente como para el admin. Si volviera a aparecer un control
+   con hamburguesa, sería un duplicado de ese. */
 
 /* ===== Componentes plantilla ===== */
 .pill {
@@ -1273,13 +1932,47 @@ h1::after {
 .svcbar .tr i {
   display: block;
   height: 100%;
-  background: var(--brass);
+  background: var(--brassFill);
   border-radius: 4px;
 }
 .cols3 {
   display: grid;
   gap: 14px;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+/* Dos columnas que se apilan solas en pantalla angosta. La usa el editor
+   de "Mi perfil en la web" (Agenda). */
+.cols2 {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+/* El <details> del perfil: sin esto el summary queda como texto plano sin
+   marcador de que se abre. */
+.perfil > summary {
+  list-style: revert;
+}
+.perfil > summary:focus-visible {
+  outline: 3px solid var(--brass);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+/* La etiqueta de cada campo del perfil. .campo etiqueta con flex sólo a
+   los <label> que son hijos directos; acá el texto va en un <span>. */
+.campo > .etq {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-weight: 500;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+.campo textarea.entrada {
+  min-height: 92px;
+  padding: 14px 16px;
+  line-height: 1.5;
+  font-family: inherit;
+  resize: vertical;
 }
 .bcol {
   background: var(--card);
@@ -1397,7 +2090,7 @@ h1::after {
   background: #334257;
 }
 .steps i.on {
-  background: var(--brass);
+  background: var(--brassFill);
 }
 .stepline {
   display: flex;
@@ -1482,7 +2175,7 @@ h1::after {
   flex: none;
 }
 .daychip.on {
-  background: var(--brass);
+  background: var(--brassFill);
   color: #141c26;
   border-color: var(--brass);
 }
@@ -1503,7 +2196,7 @@ h1::after {
   font: 600 17px Barlow, sans-serif;
 }
 .time.on {
-  background: var(--brass);
+  background: var(--brassFill);
   color: #141c26;
   border-color: var(--brass);
 }
@@ -1531,7 +2224,7 @@ h1::after {
   min-height: 4px;
 }
 .vchart .col.hoy i {
-  background: var(--brass);
+  background: var(--brassFill);
 }
 .vchart small {
   color: var(--mut);
@@ -1597,12 +2290,32 @@ h1::after {
 body::after {
   content: "";
 }
+/* La foto es ahora un <button>: es el único control de menú del header,
+   así que tiene que verse y sentirse pulsable. Sin el reset de fondo y
+   borde, el navegador le pinta el botón gris por defecto. */
 #mebadge {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  color: #e6ebf0;
+  /* SIN color propio a propósito: lo hereda del header, que ya cambia con
+     el tema. Con #e6ebf0 fijo (el color del header oscuro) el nombre al
+     lado de la foto quedaba en 1.06:1 sobre el header claro, invisible.
+     tokens.claro lo detectó al contar un botón más. */
   font-size: 14px;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+  border-radius: 999px;
+}
+#mebadge:hover .med {
+  border-color: var(--brass-h);
+  transform: scale(1.04);
+}
+#mebadge:focus-visible {
+  outline: 3px solid var(--brass);
+  outline-offset: 3px;
 }
 #mebadge .med {
   width: 40px;
@@ -1614,6 +2327,7 @@ body::after {
   place-items: center;
   font: 700 16px "Barlow Condensed", sans-serif;
   overflow: hidden;
+  transition: transform 0.15s ease, border-color 0.15s ease;
 }
 #mebadge .med img {
   width: 100%;
@@ -1625,6 +2339,12 @@ body::after {
 #ft {
   background: #10161f;
 }
+/* El login tiene que entrar ENTERO al 100% de zoom, con aire de sobra.
+   Medido: con el contenido justo en 945 px sobre una ventana de 945 (la
+   altura real de un monitor de 1080 con la barra del navegador) no había
+   margen: 20 px menos de ventana y ya había scroll. Los recortes de abajo
+   son todos de la tarjeta de ingreso y van con `body.login` para no tocar
+   los formularios de los paneles, que sí tienen sitio de sobra. */
 body.login {
   min-height: 100svh;
   background:
@@ -1632,27 +2352,28 @@ body.login {
     radial-gradient(800px 600px at 100% 100%, rgba(95, 127, 168, 0.1), transparent 60%),
     var(--bg);
 }
+/* La franja de barbería del login (rojo/blanco/azul) se eliminó: el dueño
+   la pidió fuera en dos Opportunity. Queda el hueco del que ocupaba la
+   caja, pero sin el degradado: si algún día vuelve, no reciclar estas
+   reglas. */
+/* La franja de barbería del login (rojo/blanco/azul) se eliminó: el dueño
+   la pidió fuera. Con lo que queda de la caja no se dibuja nada. */
 .franja {
-  position: fixed;
-  inset: 0 0 auto 0;
-  height: 8px;
-  z-index: 10;
-  background: repeating-linear-gradient(
-    -45deg,
-    var(--red) 0 8px,
-    #eef1f5 8px 16px,
-    #5f7fa8 16px 24px,
-    #eef1f5 24px 32px
-  );
+  display: none;
 }
+/* El dueño pidió que el login entre entero al 100% de zoom en una PC
+   grande. Antes el padding de arriba (64 px) y la separación entre las dos
+   columnas (72 px) eran fijos, y en una pantalla de 768 px de alto el login
+   ya se iba de scroll. Con clamp() todo el armazón se achica con la
+   altura disponible en vez de comer el espacio. */
 .shell {
   max-width: 1200px;
   margin: 0 auto;
   min-height: 100svh;
-  padding: 64px 40px 40px;
+  padding: clamp(16px, 4vh, 52px) 40px clamp(16px, 3.4vh, 40px);
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
-  gap: 72px;
+  gap: clamp(24px, 4.4vh, 72px);
   align-items: center;
 }
 .hero {
@@ -1661,10 +2382,12 @@ body.login {
   align-items: center;
   gap: 56px;
 }
+/* El poste es lo que más alto empuja el panel: con 340 px fijos, en una
+   pantalla de 768 el login no entraba. Con 40vh se achica solo. */
 .poste {
   position: relative;
-  width: 104px;
-  height: 340px;
+  width: clamp(70px, 7.5vw, 104px);
+  height: clamp(170px, 33vh, 340px);
   flex: 0 0 auto;
   filter: drop-shadow(0 30px 40px rgba(0, 0, 0, 0.55));
 }
@@ -1733,6 +2456,11 @@ body.login {
   padding: 10px 0;
   border-bottom: 1px solid var(--line);
 }
+/* "Corte (Incluye cejas)30 min" partía el "min" solo en la línea de
+   abajo. Con la duración en una sola unidad no queda huérfana. */
+.pricing .line > span > small {
+  white-space: nowrap;
+}
 .pricing .line:last-child {
   border-bottom: 0;
 }
@@ -1744,12 +2472,14 @@ body.login {
   max-width: 400px;
 }
 .hero__texto h2 {
-  font-size: clamp(44px, 5vw, 64px);
+  /* El titular es lo que más alto empuja el bloque. Se limita con la altura
+     de la ventana además del ancho. */
+  font-size: clamp(32px, 4.4vw, clamp(34px, 6.2vh, 64px));
 }
 .hero__texto p {
   color: #a9b4c4;
-  font-size: 20px;
-  margin: 16px 0 24px;
+  font-size: clamp(15px, 2.4vh, 20px);
+  margin: 14px 0 clamp(14px, 3vh, 24px);
   max-width: 34ch;
 }
 .ventajas {
@@ -1757,7 +2487,7 @@ body.login {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 12px;
+  gap: clamp(8px, 1.6vh, 12px);
 }
 .ventajas li {
   display: flex;
@@ -1780,7 +2510,7 @@ body.login {
   align-items: center;
   justify-content: center;
   gap: 14px;
-  margin-bottom: 24px;
+  margin-bottom: clamp(10px, 1.8vh, 18px);
 }
 .sello {
   width: 48px;
@@ -1818,8 +2548,10 @@ body.login {
   white-space: nowrap;
 }
 .marca .volver:hover {
-  color: var(--brass);
-  border-color: var(--brass);
+  background: #b08c3c;
+  border-color: #b08c3c;
+  color: #141c26;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brass) 28%, transparent);
 }
 .marca .volver:focus-visible {
   outline: 2px solid var(--brass);
@@ -1836,7 +2568,7 @@ body.login {
   }
 }
 .marca b {
-  font: 700 26px/1 "Barlow Condensed", sans-serif;
+  font: 700 24px/1 "Barlow Condensed", sans-serif;
   letter-spacing: 2px;
   text-transform: uppercase;
   color: var(--brass);
@@ -1846,25 +2578,13 @@ body.login {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 16px;
-  padding: 40px 32px 28px;
+  /* El relleno también se achica con la altura: con 40 px fijos la tarjeta
+     sola empujaba el login fuera de pantalla en monitores de 768 px. */
+  padding: clamp(20px, 3.4vh, 36px) 30px clamp(16px, 2.6vh, 26px);
   box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.7);
 }
-.tarjeta::before {
-  content: "";
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  top: 8px;
-  height: 6px;
-  border-radius: 3px;
-  background: repeating-linear-gradient(
-    -45deg,
-    #b3382c 0 6px,
-    #eef1f5 6px 12px,
-    #5f7fa8 12px 18px,
-    #eef1f5 18px 24px
-  );
-}
+/* La franja de barbería que iba arriba de la tarjeta de ingreso también se
+   fue (el dueño la pidió quitar): era el ::before con el degradado. */
 .vista {
   animation: entra 0.22s ease both;
 }
@@ -1882,18 +2602,84 @@ body.login {
   }
 }
 .vista h1 {
-  font-size: 40px;
+  font-size: 36px;
   text-align: center;
 }
+/* Cuando la pantalla es baja (notebooks de 768 px) el login se iba de
+   scroll: con todo lo de arriba compacto todavía faltaban ~50 px. Acá se
+   aprieta el ritmo vertical de la tarjeta, que es lo que más alto es.
+   Por altura y no por ancho, porque el problema es vertical. */
+@media (max-height: 830px) {
+  .campo {
+    margin-bottom: 12px;
+  }
+  /* La foto del servicio es lo que engorda cada fila de la lista de
+     precios: 42 px de alto más 20 de relleno dan 63 px por fila, y con
+     tres servicios son casi 200 px sólo de fotos. */
+  .pricing .line {
+    padding: 7px 0;
+  }
+  .pricing .line .mini {
+    width: 34px;
+    height: 34px;
+  }
+  .hero__texto h2 {
+    font-size: 38px;
+  }
+  .hero__texto p {
+    margin: 10px 0 12px;
+  }
+  .o {
+    margin: 12px 0;
+  }
+  .vista h1 {
+    font-size: 32px;
+  }
+  .vista .sub {
+    margin: 6px 0 16px;
+  }
+  .marca {
+    margin-bottom: 12px;
+  }
+  /* Campos y botón a 52 px clavados: son lo que más alto empuja la tarjeta
+     de ingreso. Con 46 px siguen siendo táctiles (el mínimo cómodo es 44). */
+  .entrada,
+  .boton {
+    min-height: 46px;
+  }
+  .shell {
+    padding-top: 20px;
+    padding-bottom: 12px;
+  }
+  .sello {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+  }
+}
+
+/* El gris estaba clavado (#a9b4c4 es el apagado del tema oscuro). En
+   claro la tarjeta es blanca y ese texto quedaba en 2.10:1, ilegible.
+   Con var(--mut) el subtítulo sigue siendo apagado en oscuro y baja a
+   6.4:1 en claro. */
 .vista .sub {
-  color: #a9b4c4;
+  color: var(--mut);
   text-align: center;
-  margin: 8px 0 24px;
+  margin: 6px 0 18px;
   font-size: 16px;
 }
 .campo {
   margin-bottom: 18px;
   text-align: left;
+}
+/* Sólo en el login: 52 px de campo por campo y botón empujaba la tarjeta
+   fuera de pantalla. 48 px sigue siendo cómodo para escribir y tocar. */
+body.login .entrada,
+body.login .boton {
+  min-height: 48px;
+}
+body.login .campo {
+  margin-bottom: 14px;
 }
 .campo label,
 .campo .etq {
@@ -1985,7 +2771,11 @@ body.login {
 }
 .boton.primario {
   border: 0;
-  color: var(--bg);
+  /* Texto SIEMPRE oscuro, no var(--bg): el fondo es el dorado de marca en
+     los dos temas, pero --bg es navy en oscuro y marfil en claro. Con
+     var(--bg) el botón quedaba en 2.11:1 en modo claro, ilegible.
+     Medido en tests/panel.contraste.js. */
+  color: #141c26;
   background: linear-gradient(180deg, #d6b15e, #c9a24b);
   box-shadow: 0 10px 22px -10px rgba(201, 162, 75, 0.7);
 }
@@ -2004,13 +2794,15 @@ body.login {
 .boton.secundario:hover {
   background: rgba(201, 162, 75, 0.1);
 }
+/* Mismo gris clavado que en .vista .sub: "o continuá con" quedaba
+   ilegible en tema claro. */
 .o {
   display: flex;
   align-items: center;
   gap: 12px;
-  color: #a9b4c4;
+  color: var(--mut);
   font-size: 14px;
-  margin: 20px 0;
+  margin: 16px 0;
 }
 .o::before,
 .o::after {
@@ -2026,7 +2818,10 @@ body.login {
   min-height: 44px;
   border: 0;
   background: none;
-  color: #a9b4c4;
+  /* El mismo gris clavado de antes (#a9b4c4 es el apagado del tema
+     oscuro): en claro daba 1.85:1 sobre el marfil. Con var(--mut) queda
+     5.36:1 sin perder el tono de texto secundario. */
+  color: var(--mut);
   font: 500 15px Barlow, system-ui, sans-serif;
   cursor: pointer;
   text-decoration: underline;
@@ -2100,7 +2895,12 @@ body.login {
 }
 .kpis .card.kpi {
   border-top: 4px solid var(--brass);
-  background: linear-gradient(180deg, #1f2a38, #1a2431);
+  /* El degradado iba clavado en los azules oscuros (#1f2a38 → #1a2431)
+     y no seguía el tema: en modo claro la tarjeta quedaba oscura con
+     --ink (marfil) y --mut encima, a 1.01:1 y 2.57:1 — ilegible.
+     Se deriva de los tokens con color-mix para que en claro suba el tono
+     y el texto conserve su contraste. */
+  background: linear-gradient(180deg, color-mix(in srgb, var(--card) 100%, transparent), color-mix(in srgb, var(--card) 88%, var(--bg)));
   padding: 18px 20px;
 }
 .kpis .card.kpi small {
@@ -2123,197 +2923,510 @@ body.login {
   font-size: 20px;
 }
 
-/* ====== Landing ====== */
-html{scroll-behavior:smooth}
-body.login .lnd{min-height:100svh;background:#141C26;color:#F5F0E6;overflow-x:hidden}
-body.no-scroll{overflow:hidden}
-.lnd-hd{position:sticky;top:0;z-index:30;height:88px;display:flex;align-items:center;gap:24px;padding:0 24px;background:#141C26;border-bottom:1px solid #2E3C4E}
-.lnd-br{display:flex;align-items:center;gap:10px;text-decoration:none;color:#F5F0E6}
-.lnd-br img{width:54px;height:54px;flex:0 0 auto}
-.lnd-br b{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:1.65rem;letter-spacing:.14em;color:#D4A84B;white-space:nowrap}
-.lnd-nv{display:flex;align-items:center;gap:22px;margin-left:auto}
-.lnd-nv a{color:#F5F0E6;text-decoration:none;white-space:nowrap;font-size:1.2rem;font-weight:500}
-.lnd-nv a:hover{text-decoration:underline;text-decoration-color:#D4A84B;text-underline-offset:6px}
-.lnd-nav-cta{background:#D4A84B;color:#141C26;height:54px;padding:0 30px;display:inline-flex;align-items:center;justify-content:center;border-radius:12px;font-weight:700;font-size:1.1rem;text-decoration:none;white-space:nowrap}
-.lnd-hamb{display:none;background:#1F2A38;border:1px solid #2E3C4E;border-radius:14px;width:52px;height:52px;flex-direction:column;align-items:center;justify-content:center;gap:5px;cursor:pointer}
-.lnd-hamb span{display:block;width:22px;height:2px;background:#F5F0E6;border-radius:2px;transition:transform .2s, opacity .2s}
-.lnd-hamb.open span:nth-child(1){transform:translateY(7px) rotate(45deg)}
-.lnd-hamb.open span:nth-child(2){opacity:0}
-.lnd-hamb.open span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
-.lnd-nv-cta{display:none}
-@media(max-width:900px){
-  .lnd-hd{height:76px;padding:0 16px}
-  .lnd-br img{width:46px;height:46px}
-  .lnd-nv{display:flex;position:fixed;inset:76px 0 0 0;flex-direction:column;align-items:stretch;gap:0;width:100dvw;height:calc(100dvh - 76px);background:#141C26;padding:12px 16px 24px;border-top:1px solid #2E3C4E;z-index:25;transform:translateY(-120%);transition:transform .3s ease;overflow-y:auto}
-  .lnd-nv.open{transform:translateY(0)}
-  .lnd-nv a{display:block;padding:18px 0;border-bottom:1px solid #2E3C4E;font-family:'Barlow Condensed',sans-serif;font-size:1.9rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
-  .lnd-nav-cta{display:none}
-  .lnd-nv-cta{display:flex;width:100%;height:62px;margin-top:auto;font-size:1.15rem}
-  .lnd-hamb{display:flex}
-}
-@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important;animation:none!important} .reveal{opacity:1!important;transform:none!important}}
-.lnd-hero{max-width:1360px;margin:0 auto;padding:40px 24px 32px;display:grid;grid-template-columns:1.1fr .9fr;gap:28px;align-items:center}
-.lnd-hero small.sc-label{display:block;color:#D4A84B;letter-spacing:.16em;margin-bottom:8px}
-.lnd-hero h1{font-family:'Barlow Condensed',sans-serif;font-size:clamp(2.6rem,6vw,4.4rem);line-height:.98;margin:0 0 12px;color:#F5F0E6}
-.lnd-hero p{color:#9AA6B4;max-width:460px}
-.lnd-ctas{display:flex;gap:12px;margin:18px 0}
-.lnd-cta{display:inline-flex;align-items:center;justify-content:center;background:#D4A84B;color:#141C26;height:54px;padding:0 30px;border-radius:12px;font-weight:700;font-size:1.1rem;text-decoration:none}
-.lnd-cta.big{font-size:1.1rem}
-.lnd-note{color:#9AA6B4}
-.lnd-note b{color:#D4A84B}
-.lnd-hero-img{background:#1F2A38;border:1px solid #2E3C4E;border-radius:14px;padding:18px;position:relative;max-width:380px}
-.lnd-hero-img::before{content:"";position:absolute;inset:0 0 auto 0;height:10px;border-radius:14px 14px 0 0;background:repeating-linear-gradient(-45deg,#B3382C 0 8px,#eef1f5 8px 16px,#2F5C9E 16px 24px,#eef1f5 24px 32px)}
-.lnd-hero-img{ margin-top:10px; padding-top:26px}
-.lnd-pole{display:grid;place-items:center}
-.lnd-hero-img small{display:block;color:#9AA6B4;margin-top:12px}
-.lnd-sec{max-width:1360px;margin:0 auto;padding:36px 24px}
-.lnd-sec>small{display:block;color:#D4A84B;text-transform:uppercase;letter-spacing:.16em;margin-bottom:6px}
-.lnd-sec h2{font-family:'Barlow Condensed',sans-serif;font-size:clamp(1.9rem,4vw,2.5rem);margin:0 0 18px;color:#F5F0E6}
-.lnd-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-.lnd-step{background:#1F2A38;border:1px solid #2E3C4E;border-radius:14px;padding:18px}
-.lnd-step b{display:block;color:#D4A84B;font-family:'Barlow Condensed',sans-serif;font-size:2rem;line-height:1}
-.lnd-step h3{margin:8px 0 6px;color:#F5F0E6}
-.lnd-step p{color:#9AA6B4;margin:0}
-.lnd-cols{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
-.lnd-cols>p{color:#9AA6B4;margin:0}
-.lnd-about-cards{display:grid;grid-template-columns:1fr;gap:12px}
-.lnd-mini{display:flex;gap:12px;background:#1F2A38;border:1px solid #2E3C4E;border-radius:14px;padding:14px}
-.lnd-mini i{font-style:normal;font-size:22px}
-.lnd-mini b{color:#F5F0E6}
-.lnd-mini p{color:#9AA6B4;margin:4px 0 0}
-.lnd-note-right{color:#9AA6B4;margin:-10px 0 14px}
-.lnd-svs{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-.lnd-sv{background:#1F2A38;border:1px solid #2E3C4E;border-radius:14px;padding:16px;min-height:220px;display:flex;flex-direction:column}
-.lnd-svc-ico{width:36px;height:36px;border:1px solid #2E3C4E;border-radius:8px;display:grid;place-items:center;color:#9AA6B4;margin-bottom:10px}
-.lnd-svc-ico img{width:36px;height:36px;border-radius:8px;object-fit:cover}
-.lnd-sv b{color:#F5F0E6;font-size:1.15rem}
-.lnd-sv small{color:#9AA6B4}
-.lnd-tag{display:inline-block;background:#2F5C9E;color:#F5F0E6;border-radius:999px;padding:2px 10px;font-style:normal;font-size:.75rem;align-self:flex-end;margin-bottom:8px}
-.lnd-sv-ft{margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:10px}
-.lnd-price{font-family:'Barlow Condensed',sans-serif;color:#D4A84B;font-size:1.8rem}
-.lnd-rtt{background:#D4A84B;color:#141C26;border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer}
-.lnd-cta-card{background:#1F2A38;border:1px solid #2E3C4E;border-radius:16px;padding:24px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:space-between;gap:18px}
-.lnd-cta-card::before{content:"";position:absolute;inset:0 0 auto 0;height:10px;background:repeating-linear-gradient(-45deg,#B3382C 0 8px,#eef1f5 8px 16px,#2F5C9E 16px 24px,#eef1f5 24px 32px)}
-.lnd-cta-card h2{font-family:'Barlow Condensed',sans-serif;margin:0;font-size:clamp(1.6rem,4vw,2.4rem);color:#F5F0E6}
-.lnd-cta-card p{color:#9AA6B4;margin:8px 0 0}
-.lnd-gal{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-.lnd-gal img{width:100%;height:auto;max-height:300px;object-fit:contain;border:1px solid #2E3C4E;border-radius:14px;background:#10171F}
-.lnd-ph{background:#1F2A38;border:1px solid #2E3C4E;border-radius:14px;min-height:190px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#9AA6B4;gap:8px}
-.lnd-ph figcaption{font-size:.9rem;letter-spacing:.12em}
-.soc-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:transparent;border:0;padding:0}
-.soc{position:relative;display:inline-flex;align-items:center;gap:8px;background:#141C26;border:1px solid #2E3C4E;color:#F5F0E6;border-radius:10px;padding:8px 12px}
-.soc img{width:24px;height:24px}
-.soc-t{display:inline-block;max-width:0;overflow:hidden;white-space:nowrap;vertical-align:middle;opacity:0;transform:translateX(6px);transition:max-width .3s ease,opacity .3s ease,transform .3s ease;color:#F5F0E6}
-.soc:hover .soc-t,.soc:focus-within .soc-t{max-width:180px;opacity:1;transform:translateX(0)}
-@media(hover:none),(pointer:coarse){.soc-t{max-width:180px;opacity:1;transform:none}}
-.lnd-cont-card h3, .lnd-cont-card > small{display:block;margin-bottom:6px}
-.lnd-cont-card .soc-row{align-items:flex-start}
-.lnd-cont-card p{color:#9AA6B4;margin:6px 0 0}
-.lnd-cont-card b{color:#F5F0E6}
-.lnd-map{background:#1F2A38;border:1px solid #2E3C4E;border-radius:14px;overflow:hidden;min-height:320px}
-.lnd-map iframe{width:100%;height:100%;min-height:320px;border:0}
-.lnd-alter{background:#10171F}
-.lnd-contacto-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}
-.lnd-contacto-grid h2{font-family:'Barlow Condensed',sans-serif;font-size:clamp(1.8rem,4vw,2.5rem);margin:0 0 12px}
-.lnd-contacto-grid h3{display:flex;align-items:center;gap:6px;margin:16px 0 6px;color:#F5F0E6;font-size:1rem}
-.lnd-contacto-grid input,.lnd-contacto-grid textarea{width:100%;height:56px;border-radius:12px;border:1px solid #2E3C4E;background:#141C26;color:#F5F0E6;padding:0 16px;box-sizing:border-box}
-.lnd-contacto-grid textarea{height:150px;padding:14px 16px;resize:vertical}
-.lnd-contacto-grid input:focus,.lnd-contacto-grid textarea:focus{outline:none;border-color:#D4A84B;box-shadow:0 0 0 3px rgba(212,168,75,.25)}
-.lnd-contacto-grid .red{color:#B3382C;margin-left:4px;font-weight:700}
-.lnd-send{width:100%;height:60px;text-transform:uppercase;margin-top:16px}
-#cf-status{min-height:24px;color:#9AA6B4;margin-top:10px}
-.lnd-ft{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:22px 24px;border-top:1px solid #2E3C4E;color:#9AA6B4}
-.lnd-ft a{color:#F5F0E6;text-decoration:none;margin-left:14px}
-.lnd-ft p{margin:0}
-@media(max-width:1000px){
-  .lnd-hero{grid-template-columns:1fr}
-  .lnd-cols{grid-template-columns:1fr}
-  .lnd-contacto-grid{grid-template-columns:1fr}
-  .lnd-steps{grid-template-columns:1fr}
-  .lnd-svs{grid-template-columns:1fr}
-  .lnd-gal{grid-template-columns:repeat(2,1fr)}
-}
-@media(max-width:640px){
-  .lnd-sec{padding:24px 16px}
-  .lnd-nav-cta{display:none}
-  .lnd-cta, .lnd-cta.big, .lnd-send{width:100%}
-  .lnd-sv{min-height:auto}
-  .lnd-cta-card{flex-direction:column;align-items:flex-start}
-  .lnd-ft{flex-direction:column;align-items:flex-start}
-  .lnd-hero h1{font-size:clamp(2.1rem,10vw,3rem)}
+/* Bloqueo del scroll del body mientras hay un overlay abierto (#po, #wzm).
+   Estaba perdido con el borrado del bloque .lnd-* y nadie lo notó porque
+   los tests miraban la CLASE (body.classList.contains) y no el overflow
+   real. Comprobado con tests/politicas.js. */
+body.no-scroll,
+body.wz-abierto {
+  overflow: hidden;
 }
 
-.reveal{opacity:0;transform:translateY(14px);transition:opacity .55s ease,transform .55s cubic-bezier(0.23,1,0.32,1)}
-.reveal.visible{opacity:1;transform:none}
-.lnd-step,.lnd-mini,.lnd-sv,.lnd-cont-card,.lnd-map{transition:transform .24s ease,border-color .24s ease}
-.lnd-step:hover,.lnd-mini:hover,.lnd-sv:hover,.lnd-cont-card:hover,.lnd-map:hover{transform:translateY(-4px);border-color:#D4A84B}
-.lnd-cta,.lnd-nav-cta,.lnd-rtt,.lnd-send{transition:transform .16s cubic-bezier(0.23,1,0.32,1),background .16s ease}
-.lnd-cta:hover,.lnd-nav-cta:hover,.lnd-rtt:hover,.lnd-send:hover{transform:translateY(-1px)}
-.lnd-cta:active,.lnd-nav-cta:active,.lnd-rtt:active,.lnd-send:active{transform:scale(.97)}
+/* ====== POLÍTICAS Y PRIVACIDAD ======
+   Dos formas del mismo componente:
+   - celular (default): hoja desde abajo, con tirador, encabezado y pie
+     FIJOS y sólo el cuerpo scrollea. El botón de cerrar nunca queda fuera
+     de pantalla, que era el requisito.
+   - escritorio (>= 861px): hoja a pantalla casi completa con navegación por
+     secciones arriba, para leer el documento entero de una tirada.
 
-.lnd-split{max-width:1400px;margin:0 auto;padding:0 24px;display:grid;grid-template-columns:1fr 360px;gap:24px;align-items:start}
-.lnd-main{background:#10171F;border:1px solid #2E3C4E;border-radius:16px;padding:24px}
-.lnd-side{position:static;margin-top:0}
-.lnd-biz-card{background:linear-gradient(180deg,#192431,#10171F);border:1px solid #2E3C4E;border-radius:16px;padding:26px;text-align:center;box-shadow:0 24px 38px rgba(0,0,0,.35);display:flex;flex-direction:column;gap:12px}
-.lnd-biz-ico{border-radius:18px;margin:0 auto}
-.lnd-biz-addr{display:flex;gap:10px;align-items:center;justify-content:center;margin-top:auto;color:#9AA6B4;font-size:.9rem;border-top:1px solid #2E3C4E;padding-top:12px}
-.lnd-biz-addr small{display:block;font-size:.78rem;text-transform:uppercase;letter-spacing:.14em;color:#5B6B7F}
-.lnd-biz-addr b{color:#F5F0E6}
-.lnd-biz-addr-ic{font-size:18px}
-.lnd-map-cap{display:flex;align-items:center;gap:8px;justify-content:center;padding:12px 14px;color:#F5F0E6;border-top:1px solid #2E3C4E;margin:0;font:600 14px 'Barlow Condensed',sans-serif;letter-spacing:.03em}
-#contacto .lnd-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:0 4px 18px rgba(0,0,0,0.22)}
-#contacto .lnd-map{border-radius:20px;min-height:420px}
-#contacto .lnd-map iframe{min-height:420px}
-#contacto .lnd-map-cap{margin:12px 0 0;padding:14px 0 0;border-top:1px solid var(--line);font-size:1rem;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-#contacto .lnd-map-cap span{display:flex;align-items:center;gap:8px}
-.btn-contact{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:10px 16px;background:var(--bg);color:#F5F0E6;font-weight:600;text-decoration:none;min-height:44px;white-space:nowrap}
-.btn-contact:hover{border-color:var(--brass)}
-.contact-cta{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
-#contacto .lnd-contacto-grid h3{font-weight:600}
-#contacto .lnd-contacto-grid p{color:var(--mut)}
-#contacto .lnd-cont-card{background:var(--card)}
-#contacto .lnd-cols{gap:24px}
-.lnd-biz-m{display:none;margin:0 0 18px}
-@media(max-width:1000px){
-  .lnd-split{grid-template-columns:1fr;padding:0 16px}
-  .lnd-side{display:none}
-  .lnd-biz-m{display:block}
+   Antes de esto no había NINGUNA regla .polbox: el modal salía con
+   position:static y empujaba la página de 844 a 2818 px, quedando debajo
+   del pliegue. Es el mismo patrón de "clase del markup sin CSS" que
+   documenta CONTINUAR.md. */
+#po {
+  position: fixed;
+  inset: 0;
+  z-index: 95; /* sobre #mo (90): las políticas se abren desde el login */
+  background: color-mix(in srgb, #05090f 62%, transparent);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  display: grid;
+  align-items: end; /* pegado abajo: hoja */
 }
-@media(max-width:640px){
-  .contact-cta{grid-template-columns:repeat(3,1fr)}
-  .btn-contact{padding:8px 10px;font-size:.92rem;justify-content:center}
-  #contacto .lnd-map{min-height:260px}
-  #contacto .lnd-map iframe{min-height:260px}
+#po[hidden] {
+  display: none;
 }
-@media(min-width:1001px){.lnd-biz-m{display:none}}
+.polbox {
+  display: flex;
+  flex-direction: column;
+  max-height: 92svh;
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -18px 50px #00000073;
+  overflow: hidden; /* el scroll es de .pol-body, no de la caja */
+  animation: polSube 0.22s ease-out;
+}
+@keyframes polSube {
+  from {
+    transform: translateY(14px);
+    opacity: 0;
+  }
+}
+/* Tirador: sólo decorativo, el modal se cierra con la ✕. */
+.pol-grab {
+  width: 44px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--line);
+  margin: 10px auto 0;
+  flex: 0 0 auto;
+}
+.pol-hd {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px 12px;
+  flex: 0 0 auto;
+}
+.pol-ico {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  border: 1px solid var(--brass);
+  border-radius: 10px;
+  color: var(--brass);
+}
+.pol-hd-tx {
+  flex: 1;
+  min-width: 0;
+}
+.pol-hd h2 {
+  margin: 0;
+  font:
+    700 1.5rem/1.1 "Barlow Condensed",
+    sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.pol-hd small {
+  display: block;
+  color: var(--mut);
+  font-size: 0.8rem;
+  margin-top: 3px;
+}
+.pol-x {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  font-size: 1.1rem;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.pol-x:hover {
+  border-color: var(--brass);
+  color: var(--brass);
+}
+
+/* Solapas: fila que scrollea en horizontal. Se oculta la barra: son
+   botones, no contenido. */
+.pol-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 0 16px 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--line);
+}
+.pol-tabs::-webkit-scrollbar {
+  display: none;
+}
+.pol-tab {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--mut);
+  font: 600 0.95rem/1 "Barlow Condensed", sans-serif;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pol-tab:hover {
+  border-color: var(--brass);
+  color: var(--brass);
+}
+.pol-tab.on {
+  border-color: var(--brass);
+  color: var(--brass);
+  background: color-mix(in srgb, var(--brass) 12%, transparent);
+}
+
+/* Cuerpo: la única parte que scrollea. overscroll-behavior evita que al
+   llegar al final siga scrolleando la página de detrás. */
+.pol-body {
+  flex: 1 1 auto;
+  min-height: 0; /* sin esto flex no lo deja encoger y el footer se va */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 18px 16px 8px;
+}
+.pol-panel:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+
+.pol-h3 {
+  margin: 4px 0 14px;
+  color: var(--brass);
+  font:
+    700 0.86rem/1.2 "Barlow Condensed",
+    sans-serif;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.pol-panel + .pol-panel {
+  margin-top: 4px;
+}
+/* Cada bloque del documento se separa con una línea, como en el mockup. */
+.pol-num {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 22px 0 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.pol-panel .pol-num:first-of-type {
+  margin-top: 8px;
+  padding-top: 0;
+  border-top: 0;
+}
+.pol-num-n {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--brass);
+  color: #141c26;
+  font:
+    700 0.95rem/1 "Barlow Condensed",
+    sans-serif;
+}
+.pol-num h4 {
+  margin: 0;
+  font:
+    700 1.15rem/1.2 "Barlow Condensed",
+    sans-serif;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.pol-body p {
+  margin: 0 0 10px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+.pol-body a {
+  color: var(--brass);
+}
+.pol-body code {
+  background: color-mix(in srgb, var(--brass) 14%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-size: 0.9em;
+}
+.pol-ul,
+.pol-datos-resp {
+  margin: 0 0 10px;
+  padding-left: 20px;
+  line-height: 1.55;
+}
+.pol-ul li,
+.pol-datos-resp li {
+  margin-bottom: 6px;
+}
+
+/* Tarjetas de "en resumen" y de derechos. */
+.pol-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr;
+}
+.pol-card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px;
+  background: color-mix(in srgb, var(--bg) 55%, var(--card));
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.pol-card > svg {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  padding: 6px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--brass) 14%, transparent);
+  color: var(--brass);
+}
+.pol-card h4 {
+  margin: 0 0 3px;
+  font:
+    700 1.02rem/1.25 "Barlow Condensed",
+    sans-serif;
+}
+.pol-card p {
+  margin: 0;
+  color: var(--mut);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+/* Plazo del derecho: lo primero que se mira al ejercerlo. */
+.pol-dias {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brass) 18%, transparent);
+  border: 1px solid var(--brass);
+  color: var(--brass);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* Etiqueta de dato que el dueño todavía no cargó. Se ve el hueco en vez
+   de inventar el dato. */
+.pol-pend {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px dashed var(--warn);
+  border-radius: 6px;
+  color: var(--warn);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+/* Ficha del responsable: etiqueta a la izquierda, valor a la derecha. El
+   valor va en un .pol-val propio porque el li es flex con gap: si el texto
+   quedara suelto se vuelve un ítem anónimo y la coma del domicilio se
+   separa ("DIRECCIÓN , Argentina"). */
+.pol-datos-resp {
+  list-style: none;
+  padding-left: 0;
+}
+.pol-datos-resp li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+}
+.pol-datos-resp li > span:first-child {
+  flex: 0 0 auto;
+  color: var(--mut);
+  font-size: 0.88rem;
+}
+.pol-val {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Tabla de datos. En celular pasa a dos columnas: three columnas a 390 px
+   son ilegibles. */
+.pol-tbl-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.pol-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  margin-bottom: 12px;
+}
+.pol-tbl th,
+.pol-tbl td {
+  text-align: left;
+  vertical-align: top;
+  padding: 10px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.pol-tbl thead th {
+  color: var(--brass);
+  font:
+    700 0.74rem/1.2 "Barlow Condensed",
+    sans-serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.pol-tbl tbody th {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pol-tbl td {
+  color: var(--mut);
+  line-height: 1.45;
+}
+/* "Sí" en dorado: es el dato que hay que mirar primero. */
+.pol-tbl .pol-si {
+  color: var(--brass);
+  font-weight: 700;
+}
+
+/* Pie: siempre visible, con el checkbox y los dos botones. */
+.pol-ft {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 12px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  background: var(--card);
+}
+.pol-acepto {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  line-height: 1.35;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.pol-acepto input {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  accent-color: var(--brass);
+}
+.pol-ft-btns {
+  display: flex;
+  gap: 10px;
+}
+.pol-b {
+  flex: 1;
+  min-height: 48px;
+  padding: 12px 18px;
+  border-radius: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid var(--brass);
+  background: transparent;
+  color: var(--brass);
+}
+.pol-b--pri {
+  flex: 1.4;
+  background: var(--brassFill);
+  border-color: var(--brassFill);
+  color: #141c26;
+}
+.pol-b:hover {
+  filter: brightness(1.06);
+}
+/* El secundario es transparente con borde dorado: sin hover propio queda
+   plano al pasar el mouse. El primario mantiene su dorado (si se le
+   cambiara el fondo, el #141c26 de arriba se vuelve ilegible). */
+.pol-b:not(.pol-b--pri):hover {
+  background: color-mix(in srgb, var(--brass) 16%, transparent);
+}
+/* Doble clase a propósito: `.pol-b--pri:hover` solo es (0,2,0) y
+   `button:hover:not(:disabled)` es (0,2,1) — le gana por la columna de
+   elementos, no por la de clases. Con `.pol-b.pol-b--pri:hover` queda
+   (0,3,0) y sí le gana. */
+.pol-b.pol-b--pri:hover {
+  background: var(--brassFill);
+  filter: brightness(1.06);
+}
+
+/* ---------- escritorio: documento a pantalla casi completa ---------- */
+@media (min-width: 861px) {
+  #po {
+    align-items: center;
+    justify-items: center;
+    padding: 24px;
+  }
+  .polbox {
+    width: min(1040px, 100%);
+    max-height: 94svh;
+    border-bottom: 1px solid var(--line);
+    border-radius: 18px;
+    box-shadow: 0 24px 70px #000000a6;
+  }
+  .pol-grab {
+    display: none; /* el tirador es de la hoja móvil */
+  }
+  .pol-hd {
+    padding: 20px 28px 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .pol-hd h2 {
+    font-size: 1.9rem;
+  }
+  /* "En resumen" y "Datos" ya están activas al abrir: no hace falta que la
+     solapa activa quede fuera de vista. Se centran en su lugar. */
+  .pol-tabs {
+    padding: 12px 28px;
+    justify-content: center;
+  }
+  .pol-body {
+    padding: 22px 28px 14px;
+  }
+  .pol-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .pol-grid--4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .pol-ft {
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    padding: 14px 28px;
+  }
+  .pol-ft-btns {
+    width: 380px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .polbox {
+    animation: none;
+  }
+}
+
+/* ====== Restos de la landing vieja (.lnd-*) ======
+   Se borró casi todo el bloque: la landing actual se estiliza con
+   landing.css (.lb-*) y el modal de políticas con .pol-*. De sus 44 clases
+   sólo quedaba en uso .lnd-gal (la tira de fotos de la vista Galería del
+   panel). El resto no matchea nada, y el bloque final de
+   body[data-theme="light"] redefinía --mut/--line/--brass/--blue DESPUÉS
+   del bloque canónico de la cabecera: al tener la misma especificidad
+   ganaba el último, y el dorado claro quedaba en 1.95:1 sobre el marfil.
+   Comprobado con tests/tokens.claro.js y tests/css.muerto.js. */
+.lnd-gal{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.lnd-gal img{width:100%;height:auto;max-height:220px;object-fit:cover;border:1px solid var(--line);border-radius:12px;background:var(--bg)}
 
 #thm{display:inline-flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:18px;cursor:pointer;transition:transform .16s ease}
 #thm:hover{transform:translateY(-1px)}
 #thm:active{transform:scale(.97)}
 body[data-theme="light"]{background:var(--bg)}
-body[data-theme="light"] .lnd{background:var(--bg);color:var(--ink)}
-body[data-theme="light"] .lnd-hd{background:var(--bg);border-bottom:1px solid var(--line)}
-body[data-theme="light"] .lnd-nv a{color:var(--ink)}
-body[data-theme="light"] .lnd-nv a:hover{text-decoration-color:var(--brass)}
-body[data-theme="light"] .lnd-hamb{background:var(--card)}
-body[data-theme="light"] .lnd-main{background:var(--card);border:1px solid var(--line);color:var(--ink)}
-body[data-theme="light"] .lnd-step, body[data-theme="light"] .lnd-mini, body[data-theme="light"] .lnd-sv, body[data-theme="light"] .lnd-cont-card, body[data-theme="light"] .lnd-map, body[data-theme="light"] .lnd-biz-card{background:var(--card);border:1px solid var(--line);color:var(--ink)}
-body[data-theme="light"] .lnd-step h3, body[data-theme="light"] .lnd-mini b, body[data-theme="light"] .lnd-sv b, body[data-theme="light"] .lnd-cont-card b, body[data-theme="light"] .lnd-cont-card h2{color:var(--ink)}
-body[data-theme="light"] .lnd-step p, body[data-theme="light"] .lnd-mini p, body[data-theme="light"] .lnd-sv small, body[data-theme="light"] .lnd-cont-card p, body[data-theme="light"] .lnd-hero p{color:var(--mut)}
-body[data-theme="light"] .lnd-hero h1{color:var(--ink)}
-body[data-theme="light"] .lnd-svc-ico{border-color:var(--line);color:var(--mut)}
-body[data-theme="light"] .lnd-cta-card{background:var(--card);border:1px solid var(--line);color:var(--ink)}
-body[data-theme="light"] .lnd-cta-card p{color:var(--mut)}
-body[data-theme="light"] .lnd-biz-card h3{color:var(--ink)}
-body[data-theme="light"] .lnd-biz-addr b{color:var(--ink)}
-body[data-theme="light"] .lnd-biz-addr small{color:var(--mut)}
-body[data-theme="light"] .soc{background:var(--bg);border:1px solid var(--line);color:var(--ink)}
-body[data-theme="light"] .lnd-map-cap{background:var(--bg);border-top:1px solid var(--line);color:var(--ink)}
-body[data-theme="light"] .lnd-contacto-grid input, body[data-theme="light"] .lnd-contacto-grid textarea{background:#ffffff;border:1px solid var(--line);color:var(--ink)}
-body[data-theme="light"] .lnd-contacto-grid h3{color:var(--ink)}
-body[data-theme="light"] .lnd-tag{background:var(--blue);color:var(--ink)}
-body[data-theme="light"] .lnd-ft{border-top:1px solid var(--line);color:var(--mut)}
-body[data-theme="light"]{--bg:#F5F0E6;--card:#ffffff;--ink:#141C26;--mut:#5B6B7F;--line:#D8DEE8;--brass:#D4A84B;--red:#B3382C;--blue:#2F5C9E;}
-
 img[src*="assets/logo.png"]{border-radius:18px}
-.lnd-br img,.lnd-biz-ico{border-radius:18px}

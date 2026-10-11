@@ -60,7 +60,7 @@ const { chromium } = require("../.opencode/skills/playwright-skill/node_modules/
       await p.waitForTimeout(6500); // > LB_CAR_MS (5500)
       out.carrusel.tras65s = await leer();
       // control manual
-      await p.click('.lb-car-btn[aria-label="Reseña siguiente"]');
+      await p.click('.lb-car-btn[aria-label="Reseñas siguientes"]');
       await p.waitForTimeout(400);
       out.carrusel.trasClick = await leer();
     }

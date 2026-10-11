@@ -215,6 +215,24 @@ body[data-theme="light"] {
   flex: 0 1 auto;
   min-width: 0;
 }
+/* ---------- El logo, siempre igual ----------
+   El PNG (logo-256.png) YA tiene el fondo transparente: los bordes están en
+   alfa 0. Lo que se veía como "un cuadrado blanco" es el badge claro del
+   propio emblema, que sin marco parecía una caja blanca pegada en el
+   panel. La solución no es borrar el blanco (la tipografía del logo es
+   blanca y desaparecería con él), sino enmarcarlo para que el badge se lea
+   como una decisión y no como un error.
+
+   Cuadrado redondeado y no círculo: el emblema es una insignia cuadrada con
+   un círculo adentro; un círculo recortaría las esquinas de la insignia. */
+.lb-logo-marco,
+.lb-brand img,
+.wz-logo {
+  border-radius: 14px;
+  background: #0b0f16;
+  object-fit: cover;
+  box-shadow: 0 0 0 2px var(--lb-brass);
+}
 .lb-brand img {
   width: 42px;
   height: 42px;
@@ -463,91 +481,34 @@ body[data-theme="light"] .lb-btn--pri:hover {
   display: none;
 }
 
-/* ---------- 5c. ÍCONOS DE REDES ----------
-   Los SVG usan fill="currentColor", pero dentro de un <img> eso resuelve
-   a negro y el ícono desaparece en el header oscuro. Con mask el color
-   viene del CSS (background-color: currentColor) y el glifo se ve igual
-   en claro y en oscuro. Reemplazan a los PNG de 388 KB y 30 KB. */
+/* ---------- 5c. ICONOS DE REDES ----------
+   Los iconos son los PNG del dueño (assets/whatsapp.png e
+   instagram.png), reescalados a 96 px en whatsapp-96.png /
+   instagram-96.png. Los originales pesan 223 KB y 702 KB: esos tamaños
+   son para imprenta, y pintar un icono de 20 px con eso es tirar 925 KB
+   de datos en cada visita. 96 px es 4x el tamaño real en pantalla, de
+   sobra para un monitor retina, y pesa 21 KB entre los dos.
+
+   Antes eran SVG con fill="currentColor"; dentro de un <img> eso resuelve
+   a negro y el ícono desaparecía en el header oscuro. Con <img> y color
+   propio no hay ese problema en ningún tema. */
 .ic-ig,
 .ic-wa {
   display: inline-block;
   flex: 0 0 auto;
   width: 20px;
   height: 20px;
-  background-color: currentColor;
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
-  -webkit-mask-position: center;
-  mask-position: center;
-  -webkit-mask-size: contain;
-  mask-size: contain;
-}
-/* Rutas relativas al CSS (que vive en src/): "../assets/..." y no
-   "assets/...", que resolvería a /src/assets/... y daría 404. */
-/* Los SVG llegan desde un viewBox enorme (70000 x 70000 en unidades de
-   CorelDRAW): sin object-fit y un alto fijo el logo se ve cortado. */
-.ic-ig,
-.ic-wa {
+  /* object-fit porque los PNG vienen cuadrados: con un alto fijo y sin
+     esto el gráfico se deformaría. */
   object-fit: contain;
 }
 
-/* ---------- 5b. REDES Y ACCIONES DEL HEADER ---------- */
-.lb-soc {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-.lb-soc-lnk {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 44px;
-  padding: 0 12px;
-  border: 1px solid var(--lb-line);
-  border-radius: var(--lb-r-sm);
-  color: var(--lb-ink);
-  font-size: 0.95rem;
-  font-weight: 500;
-  text-decoration: none;
-  white-space: nowrap;
-  transition: border-color var(--lb-t-fast) var(--lb-ease),
-    color var(--lb-t-fast) var(--lb-ease);
-}
-.lb-soc-lnk img {
-  width: 20px;
-  height: 20px;
-  flex: 0 0 auto;
-}
-/* Sin border-radius: el WhatsApp trae fill:#fff en el contorno y con el
-   redondeo se veía un cuadrado blanco tapando la tarjeta. */
-.lb-soc-lnk .ic-ig,
-.lb-soc-lnk .ic-wa {
-  object-fit: contain;
-}
-.lb-soc-lnk:hover {
-  border-color: var(--lb-brass);
-  color: var(--lb-brass);
-}
-/* "lb-soc-ico" se aplica al LINK, no a un contenedor: el selector tiene
-   que apuntar al mismo elemento, si no la variante no hace nada y los
-   links salen con texto y padding (250 px en vez de 96). */
-.lb-soc-lnk.lb-soc-ico {
-  width: 44px;
-  padding: 0;
-  justify-content: center;
-}
-.lb-soc-ico .lb-soc-tx {
-  display: none;
-}
-.lb-hd-soc {
-  gap: 8px;
-}
-/* en mobile las redes del header no van: están en el panel, en Contacto y
-   en el footer. Sin esto se comen el ancho y aplastan la marca. */
-.lb .lb-hd-soc {
-  display: none;
-}
-.lb .lb-hd-cta {
+/* ---------- 5b. REDES ---------- */
+/* Los links con borde (.lb-soc-lnk) se fueron junto con lbSoc() y el pie
+   compacto: las redes de la landing viven en Contacto como .lb-pill. Si
+   vuelven, no reciclar estas reglas a ciegas. */
+
+.lb-hd-cta {
   display: none;
 }
 .lb-hd-cta .lb-btn {
@@ -574,15 +535,6 @@ body[data-theme="light"] .lb-btn--pri:hover {
 .lb-panel-res {
   margin: 10px var(--lb-pad) 0;
   width: calc(100% - var(--lb-pad) * 2);
-}
-.lb-panel-soc {
-  display: flex;
-  gap: 10px;
-  padding: 14px var(--lb-pad) 0;
-}
-.lb-panel-soc .lb-soc-lnk {
-  flex: 1;
-  justify-content: center;
 }
 
 /* ---------- 7. HERO ---------- */
@@ -826,10 +778,58 @@ body[data-theme="light"] .lb-btn--pri:hover {
   border: 1px solid var(--lb-ivory-line);
   border-top: 4px solid var(--lb-brass-solid);
   border-radius: 0 0 var(--lb-r-md) var(--lb-r-md);
+  /* El padding vive en .lb-sv-bd y no acá: si stayed en la tarjeta, la
+     foto quedaría inset dentro del borde en vez de sangrar de lado a
+     lado como pide la grilla. */
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow: hidden;
+}
+.lb-sv-bd {
   padding: 20px 18px 18px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex: 1;
+}
+/* Foto de preview del servicio: la carga el dueño desde Servicios y
+   premios. Antes el dato venía en `img` pero ninguna tarjeta lo pintaba,
+   así que las fotos que se subían no se veían en ningún lado.
+
+   El marco es 4/5 y no una tira de altura fija. Con `height: 190px` sobre
+   fotos verticales de ~1200x1350 se veía el 41-49% del alto: una franja con
+   los ojos y la nariz, sin pelo ni mentón, donde no se reconocía el corte.
+   En 4/5 entra el 100% del alto y se recorta como máximo el 17% del ancho,
+   así que la foto se lee entera. */
+.lb-sv-img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  object-fit: cover;
+  object-position: center;
+}
+/* En la lista angosta (celular) la foto va al costado, chica. */
+.lb-sv-mini {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  object-fit: cover;
+  border: 1px solid var(--lb-line);
+}
+/* La tarjeta del asistente con foto. */
+.wz-item--svc {
+  align-items: center;
+}
+.wz-item-img {
+  width: 72px;
+  height: 72px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  object-fit: cover;
+  border: 1px solid var(--lb-line);
 }
 .lb-sv h3 {
   overflow-wrap: anywhere;
@@ -1051,36 +1051,369 @@ body[data-theme="light"] .lb-btn--pri:hover {
 .lb-team {
   display: grid;
   gap: 14px;
+  /* Cada foto define su alto (para no recortarla), así que dos barberos
+     con fotos de distinta proporción dan tarjetas de distinta altura. Sin
+     esto la grilla las estira y al más corto le queda un hueco vacío
+     abajo, entre el botón y el borde. */
+  align-items: start;
 }
+/* ---------- 12. EQUIPO: la tarjeta que se da vuelta ----------
+   La tarjeta tiene dos caras superpuestas dentro de .lb-barber-int. Al
+   tocarla, .lb-barber--abierta la rota 180° y muestra el dorso con la
+   ficha. Sólo puede haber una abierta (lo resuelve lbFlip en main.js).
+
+   Piezas del 3D, que son las que hay que respetar juntas:
+   - `perspective` va en el CONTENEDOR (la tarjeta), no en la que rota;
+   - `transform-style: preserve-3d` en la que rota, sin él los hijos se
+     aplanan y no hay giro;
+   - `backface-visibility: hidden` en las dos caras: la que queda atrás es
+     invisible en vez de leerse al revés;
+   - la cara de atrás lleva su propio rotateY(180deg), para que al girar
+     el contenedor quede mirando al frente. */
+/* ---------- EQUIPO (mockup del dueño) ----------
+   La tarjeta se partió en dos: `.lb-barber-giro` (foto + nombre, es lo que
+   gira) y `.lb-barber-pie` (los dos botones, fijo abajo). Antes era un
+   solo elemento con role="button" que giraba entero.
+
+   La `perspective` va en `.lb-barber-giro` y NO en `.lb-barber`: el pie no
+   gira, y dejarlo en la misma pila 3D lo inclinaba con el dorso. */
 .lb-barber {
   display: flex;
-  align-items: center;
-  gap: 14px;
+  flex-direction: column;
   background: var(--lb-card);
   border: 1px solid var(--lb-line);
   border-radius: var(--lb-r-md);
-  padding: 14px;
-}
-.lb-barber-ph {
-  width: 84px;
-  height: 84px;
-  flex: 0 0 auto;
-  border-radius: var(--lb-r-sm);
   overflow: hidden;
-  background: var(--lb-bg-alt);
-  border: 1px solid var(--lb-line);
-  display: grid;
-  place-content: center;
-  color: var(--lb-mut);
+  /* La altura la anima main.js (lbAbre) porque el dorso es más alto que
+     el frente. Sin transición acá el alto salta de golpe. */
+  transition: height 0.42s var(--lb-ease);
+}
+.lb-barber-giro {
+  display: block;
+  cursor: pointer;
+  perspective: 1400px;
+  padding: 0;
+  min-height: 0;
+}
+.lb-barber-giro:focus-visible {
+  outline: 3px solid var(--lb-brass);
+  outline-offset: -3px;
+}
+.lb-barber-int {
+  position: relative;
+  width: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.5s var(--lb-ease);
+}
+.lb-barber--abierta .lb-barber-int {
+  transform: rotateY(180deg);
+}
+.lb-barber-cara {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+}
+/* La de atrás está superpuesta y pre-rotada: al girar el contenedor queda
+   mirando al frente. */
+.lb-barber-atras {
+  position: absolute;
+  inset: 0;
+  transform: rotateY(180deg);
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 2px 0;
+  overflow-y: auto;
+  max-height: 100%;
+}
+.lb-bd-nom {
+  display: block;
   font-family: "Barlow Condensed", sans-serif;
-  font-size: 2rem;
+  font-size: 1.2rem;
   font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+/* En el dorso el botón de reservar manda: va al pie, con aire arriba. */
+.lb-barber-atras .lb-btn--full {
+  margin-top: auto;
+}
+
+/* "Ver información": vive arriba de la foto, como velo. */
+.lb-barber-ph {
+  position: relative;
+}
+.lb-barber-cta {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 22px 10px 10px;
+  text-align: center;
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #fff8e6;
+  background: linear-gradient(to top, rgba(6, 10, 15, 0.92), rgba(6, 10, 15, 0));
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.18s var(--lb-ease), transform 0.18s var(--lb-ease);
+}
+.lb-barber:hover .lb-barber-cta,
+.lb-barber:focus-visible .lb-barber-cta {
+  opacity: 1;
+  transform: none;
+}
+/* En el dorso no hay foto, así que el cartelito va abajo plano y siempre
+   visible: es el "Volver" del giro. */
+.lb-barber-cta--atras {
+  position: static;
+  inset: auto;
+  padding: 4px 0 0;
+  background: none;
+  color: var(--lb-mut);
+  font-size: 0.78rem;
+  opacity: 1;
+  transform: none;
+}
+.lb-barber-cta--atras:hover {
+  color: var(--lb-brass);
+}
+/* Sin hover (celular) el cartelito no se puede ver al pasar el mouse: se
+   muestra siempre, más chico. */
+@media (hover: none) {
+  .lb-barber-cta {
+    opacity: 1;
+    transform: none;
+    font-size: 0.82rem;
+    padding: 16px 8px 8px;
+  }
+}
+/* prefers-reduced-motion: sin giro. Las caras se cambian por opacidad, que
+   es movimiento que el usuario pidió eliminar; el efecto sigue siendo
+   claro porque el dorso tiene otro contenido. */
+@media (prefers-reduced-motion: reduce) {
+  .lb-barber,
+  .lb-barber-int,
+  .lb-barber-cta {
+    transition: none;
+  }
+  .lb-barber--abierta .lb-barber-int {
+    transform: none;
+  }
+  .lb-barber--abierta .lb-barber-frente {
+    display: none;
+  }
+  .lb-barber--abierta .lb-barber-atras {
+    position: static;
+    transform: none;
+  }
+}
+
+/* Dorso de la ficha. */
+.lb-bd-esp {
+  margin: 0 0 8px;
+  color: var(--lb-brass);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.82rem;
+}
+/* Cuando el barbero no cargó nada: se dice, en vez de mostrar un dorso
+   con un hueco raro. */
+.lb-bd-vacio {
+  margin: 0;
+  color: var(--lb-mut);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.lb-bd-desc {
+  margin: 0 0 14px;
+  line-height: 1.5;
+}
+.lb-bd-redes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.lb-bd-red {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 12px;
+  border: 1px solid var(--lb-line);
+  border-radius: 999px;
+  color: var(--lb-ink);
+  text-decoration: none;
+  font-size: 0.9rem;
+  min-height: 44px;
+}
+.lb-bd-red:hover {
+  border-color: var(--lb-brass);
+  color: var(--lb-brass);
+}
+.lb-bd-red img {
+  border-radius: 4px;
+}
+.lb-btn--full {
+  width: 100%;
+  margin-top: 4px;
+}
+
+/* La foto del barbero.
+   Decisión del dueño (2026-10-10): marco fijo 4/5 con `contain`. La foto
+   va COMPLETA, sin recortar y sin deformar; lo que sobra a los costados
+   se ve como franja del color de la tarjeta.
+
+   Descartado lo otro: sin marco (`height:auto`) la tarjeta de una foto
+   vertical mide ~1000 px y al abrirla no entra en la ventana; con `cover`
+   se le cortaba el 17% de abajo. Las franjas son el precio de no cortar.
+
+   El fondo va en --lb-card, el mismo de la tarjeta, para que la franja se
+   lea como un letterbox y no como una caja mal puesta. */
+.lb-barber-ph {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  background: var(--lb-card);
+  position: relative;
+}
+/* En pantallas de poca altura la tarjeta abierta no entra debajo del
+   header fijo: header 105 + banda de nombre + botones ≈ 260 px que no
+   son foto, y con 900 de ventana sólo quedan 640. El tope recorta la CAJA,
+   no la foto: como el alto se achica y el ancho sigue al 100%, la caja
+   queda más ancha que 4/5 y `contain` mete más franja a los lados en vez
+   de dejar que la tarjeta se vaya de la pantalla. Sólo en escritorio,
+   donde las tarjetas van en dos columnas y se ven bien altas; en celular
+   la 4/5 se respeta tal cual. */
+@media (min-width: 900px) {
+  .lb-barber-ph {
+    max-height: calc(100vh - 300px);
+    min-height: 260px;
+  }
 }
 .lb-barber-ph img {
+  /* Posicionada en absoluto y no con `height: 100%`. En cuanto el padre
+     lleva `max-height`, su alto deja de ser un valor definitivo y el
+     porcentaje del hijo no resuelve: cae a `auto`, la img toma su
+     proporción natural (571x857) y, como la caja mide 600 con
+     overflow:hidden, se le recortan 128 px de arriba y 128 de abajo —
+     justo la cabeza. Con inset:0 el ancho y el alto salen de la caja
+     siempre, se corte la caja o no. */
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center;
+}
+.lb-barber-falta {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  height: 100%;
+  color: var(--lb-brass);
+}
+.lb-barber-falta svg {
+  width: 44px;
+  height: 44px;
+  padding: 9px;
+  border: 2px dashed var(--lb-brass);
+  border-radius: 50%;
+}
+.lb-barber-falta small {
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  color: var(--lb-mut);
+}
+/* Nombre + pastilla de oficio. */
+.lb-barber-id {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--lb-bg);
+  border-top: 1px solid var(--lb-line-soft);
+}
+.lb-barber-id b {
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 1.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+.lb-barber-pill {
+  flex: 0 0 auto;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--lb-brass-solid);
+  color: #141c26;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+/* Los dos botones, siempre visibles: el de reservar no gira con la ficha. */
+.lb-barber-pie {
+  display: flex;
+  gap: 10px;
+  padding: 14px 16px 16px;
+  background: var(--lb-card);
+}
+.lb-barber-pie .lb-btn {
+  flex: 1;
+  margin-top: 0;
+}
+@media (max-width: 560px) {
+  /* En el celular, uno arriba del otro: en dos columnas los botones quedan
+     demasiado angostos para el texto. */
+  .lb-barber-pie {
+    flex-direction: column;
+  }
+}
+/* La tarjeta de llamado a reservar, debajo de la grilla del equipo. */
+.lb-elige {
+  margin-top: 22px;
+  padding: 26px 24px 24px;
+  border: 1px solid var(--lb-brass);
+  border-radius: var(--lb-r-md);
+  background: var(--lb-bg);
+}
+.lb-elige-ico {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 14px;
+  border-radius: 12px;
+  background: var(--lb-card);
+  border: 1px solid var(--lb-line);
+  color: var(--lb-brass);
+}
+.lb-elige-ico svg {
+  width: 24px;
+  height: 24px;
+}
+.lb-elige h3 {
+  margin: 0 0 6px;
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: clamp(28px, 4vw, 38px);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+}
+.lb-elige p {
+  margin: 0 0 18px;
+  color: var(--lb-mut);
 }
 
 /* ---------- 12b. CARRUSEL DE RESEÑAS ----------
@@ -1099,11 +1432,25 @@ body[data-theme="light"] .lb-btn--pri:hover {
   display: flex;
   /* ease-out suave: entra y frena, sin rebote ni elástico */
   transition: transform 460ms var(--lb-ease);
+  gap: 14px;
 }
+/* El ancho de cada tarjeta sale de --lb-car-por, que tiene que coincidir con
+   lbCarPorVista() en main.js. Con 3 y gap fijo hay que descontar los dos
+   gaps del ancho disponible, si no las 3 tarjetas no entran y la tercera
+   queda asomando a la derecha. */
 .lb-car-viz .lb-tst {
-  flex: 0 0 100%;
+  flex: 0 0
+    calc((100% - (var(--lb-car-por) - 1) * 14px) / var(--lb-car-por));
   min-width: 0;
   min-height: 190px;
+}
+:root {
+  --lb-car-por: 1;
+}
+@media (min-width: 861px) {
+  .lb {
+    --lb-car-por: 3;
+  }
 }
 .lb-car-ctl {
   display: flex;
@@ -1111,6 +1458,16 @@ body[data-theme="light"] .lb-btn--pri:hover {
   justify-content: center;
   gap: 14px;
   margin-top: 18px;
+}
+/* El contador reemplaza a los puntitos: con 12 reseñas eran 12 pastillas
+   iguales, todas indistinguibles y ninguna decía en cuál estabas. */
+.lb-car-n {
+  margin: 0;
+  min-width: 92px;
+  text-align: center;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--lb-mut);
 }
 .lb-car-btn {
   width: 44px;
@@ -1133,30 +1490,9 @@ body[data-theme="light"] .lb-btn--pri:hover {
   outline: 2px solid var(--lb-brass);
   outline-offset: 2px;
 }
-.lb-car-puntos {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.lb-car-punto {
-  width: 26px;
-  height: 4px;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  background: var(--lb-line);
-  cursor: pointer;
-  transition: background-color var(--lb-t) var(--lb-ease),
-    width var(--lb-t) var(--lb-ease);
-}
-.lb-car-punto.on {
-  background: var(--lb-brass-solid);
-  width: 40px;
-}
-.lb-car-punto:focus-visible {
-  outline: 2px solid var(--lb-brass);
-  outline-offset: 3px;
-}
+/* Los puntitos se fueron: los reemplazó el contador .lb-car-n. Con 12
+   reseñas eran 12 pastillas indistinguibles y ninguna decía en cuál
+   estabas. Si vuelven a aparecer, tienen que coincidir con lbCarPinta(). */
 .lb-barber b {
   display: block;
   font-family: "Barlow Condensed", sans-serif;
@@ -1171,18 +1507,26 @@ body[data-theme="light"] .lb-btn--pri:hover {
 }
 
 /* ---------- 13. TESTIMONIOS ---------- */
+/* Contenedor del carrusel de reseñas. minmax(0, 1fr) y no 1fr a secas:
+   un item de grilla tiene min-width:auto, así que adopta el min-content de
+   su contenido, y el track del carrusel son 12 tarjetas al 100% (1717 px).
+   Con 1fr la única columna se estiraba a ese ancho, el carrusel desbordaba
+   la pantalla y los botones de anterior/siguiente quedaban FUERA del
+   viewport: inalcanzables al tacto. Es la misma trampa que ya está
+   documentada en .wz-dows. */
 .lb-test {
   display: grid;
   gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
 }
 .lb-tst {
   background: var(--lb-card);
   border: 1px solid var(--lb-line);
   border-radius: var(--lb-r-md);
-  padding: 20px 18px;
+  padding: 22px 20px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 .lb-stars {
   display: flex;
@@ -1191,12 +1535,43 @@ body[data-theme="light"] .lb-btn--pri:hover {
 }
 .lb-tst blockquote {
   margin: 0;
-  font-size: 1.02rem;
+  /* El texto de la reseña es lo importante de la caja: con 3 tarjetas a la
+     vez tiene menos ancho, así que sube de cuerpo para que siga leyéndose
+     como cita y no como una línea perdida. */
+  font-size: 1.06rem;
+  line-height: 1.5;
   color: var(--lb-ink);
+}
+.lb-tst footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--lb-line);
+}
+/* Foto del que escribió la reseña, con la inicial de respaldo. */
+.lb-tst-av {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--lb-line);
+}
+.lb-tst-av--ini {
+  display: grid;
+  place-items: center;
+  background: var(--lb-bg);
+  color: var(--lb-brass);
+  font-family: "Barlow Condensed", sans-serif;
+  font-weight: 700;
+  font-size: 0.95rem;
 }
 .lb-tst cite {
   font-style: normal;
   font-size: 0.92rem;
+  font-weight: 600;
   color: var(--lb-mut);
 }
 /* marcador TODO: sin reseñas reales no se inventa ninguna */
@@ -1219,6 +1594,59 @@ body[data-theme="light"] .lb-btn--pri:hover {
 }
 
 /* ---------- 14. CONTACTO ---------- */
+/* Formulario de contacto: la clase .lb-field estaba en el markup pero
+   sólo tenía una regla de transición, sin layout. Como el <textarea>
+   es inline por defecto, se quedaba al lado de la etiqueta y se encogía
+   al ancho por defecto en vez de ocupar la columna. */
+.lb-field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.lb-field > label {
+  font-size: 0.86rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--lb-mut);
+}
+.lb-field input,
+.lb-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid var(--lb-line);
+  border-radius: var(--lb-r-sm);
+  background: var(--lb-bg);
+  color: var(--lb-ink);
+  font: inherit;
+  font-size: 1rem;
+}
+.lb-field textarea {
+  min-height: 130px;
+  resize: vertical;
+}
+.lb-field input:focus,
+.lb-field textarea:focus {
+  outline: 0;
+  border-color: var(--lb-brass);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lb-brass) 25%, transparent);
+}
+.lb-field input::placeholder,
+.lb-field textarea::placeholder {
+  color: var(--lb-mut);
+}
+.lb-err:empty {
+  display: none;
+}
+.lb-err {
+  font-size: 0.82rem;
+  color: var(--lb-bad-t);
+}
+.lb-status:empty {
+  display: none;
+}
+
 .lb-cont {
   display: grid;
   gap: 22px;
@@ -1333,44 +1761,10 @@ body[data-theme="light"] .lb-btn--pri:hover {
 }
 
 /* ---------- 16. FOOTER ---------- */
-.lb-ft {
-  border-top: 1px solid var(--lb-line);
-  padding: 26px 0 30px;
-  font-size: 0.92rem;
-  color: var(--lb-mut);
-}
-.lb-ft-in {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-.lb-ft a {
-  color: var(--lb-ink);
-  text-decoration: none;
-  border-bottom: 1px solid var(--lb-line);
-}
-.lb-ft a:hover {
-  color: var(--lb-brass);
-  border-bottom-color: var(--lb-brass);
-}
-.lb-soc {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-}
-.lb-soc a {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  border-bottom: 0;
-  font-weight: 500;
-}
-.lb-soc img {
-  width: 20px;
-  height: 20px;
-}
+/* Se eliminó: el pie compacto (.lb-ft) con "© Codigo Barber · Turnos y
+   puntos" y las redes repetía lo que ya está en Contacto, así que la
+   landing ahora cierra con la banda dorada de "Reservar ahora". Las reglas
+   de .lb-soc que quedaban acá nacieron para ese pie y tampoco aplican. */
 
 /* ---------- 17. REVEAL ---------- */
 .lb .reveal {
@@ -1389,8 +1783,7 @@ body[data-theme="light"] .lb-btn--pri:hover {
   .lb .lb-nav a:hover,
   .lb-btn:hover,
   .lb-chip:not([disabled]):hover,
-  .lb-wl:hover,
-  .lb-ft a:hover {
+  .lb-wl:hover {
     /* sin estado pegado en táctil: se revierte al valor base */
     color: inherit;
     border-bottom-color: transparent;
@@ -1458,13 +1851,6 @@ body.wz-abierto {
   width: 56px;
   height: 56px;
   flex: 0 0 auto;
-  border-radius: 50%;
-  border: 1px solid var(--lb-line);
-  background: #0b0f16;
-  object-fit: cover;
-  /* el PNG es un cuadrado negro: el círculo es lo que lo hace legible
-     sobre el fondo oscuro */
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lb-brass) 30%, transparent);
 }
 .wz-marca > span {
   min-width: 0;
@@ -1784,6 +2170,21 @@ body.wz-abierto {
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
+/* styles.css (el CSS del PANEL, que se carga en el mismo documento) tiene
+   `button:hover:not(:disabled) { background: #2a3849 }`: un azul oscuro
+   CLAVADO, pensado para los botones del panel. Como el asistente de la
+   landing vive en la misma página, esa regla le entraba a sus tarjetas:
+   al pasar el mouse la opción se ponía azul noche con el texto casi negro
+   encima, ilegible en modo claro. En el celular peor: :hover se queda
+   pegado después de tocar, así que la tarjeta quedaba oscura fija.
+   Se devuelve el fondo del componente; el hover de la landing se marca
+   con el borde, como ya se hacía. */
+.wz-item:hover:not(:disabled),
+.wz-turno:hover:not(:disabled),
+.wz-hora:hover:not(:disabled),
+.wz-cel:hover:not(:disabled) {
+  background: var(--lb-bg);
+}
 .wz-turno {
   display: grid;
   gap: 4px;
@@ -1821,13 +2222,26 @@ body.wz-abierto {
   border-color: var(--lb-brass);
   background: color-mix(in srgb, var(--lb-brass) 12%, var(--lb-bg));
 }
-/* sin disponibilidad: opaco, deshabilitado y con mensaje debajo */
+/* Sin disponibilidad: deshabilitado y con mensaje debajo.
+   SIN opacity a propósito. Con `opacity: .45` el texto del turno apagado
+   quedaba en 2.8:1 en modo claro (y 3.73:1 el contador): bajar la
+   transparencia compone el color del texto con el fondo y no hay forma de
+   llegar a 4.5:1 sin que la tarjeta deje de leerse como "apagada". Con
+   esta opacidad mínima tampoco: a .85 el <small> seguía en 3.93:1.
+   El estado se marca con el color del texto y el tachado, que es lo que
+   ya distingue el turno cerrado del disponible. */
 .wz-turno.off {
-  opacity: 0.45;
   cursor: not-allowed;
+}
+.wz-turno.off b,
+.wz-turno.off small {
+  color: var(--lb-mut);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
 }
 .wz-turno.off em {
   color: var(--lb-bad-t);
+  text-decoration: none;
 }
 .wz-turno:focus-visible {
   outline: 2px solid var(--lb-brass);
@@ -1885,6 +2299,10 @@ body.wz-abierto {
 }
 
 /* --- resumen y avisos --- */
+/* El resumen viejo (.wz-sum) era una tabla de 6 filas planas, sin icono y
+   sin forma de corregir un dato: para cambiar la hora había que acertar
+   con "Atrás" tres veces. Ahora es una tarjeta con cada fila apuntando a su
+   propio paso, y el precio aparte. */
 .wz-sum {
   border: 1px solid var(--lb-line);
   border-top: 2px solid var(--lb-brass);
@@ -1910,11 +2328,250 @@ body.wz-abierto {
   text-align: right;
   overflow-wrap: anywhere;
 }
-.wz-pol {
-  margin: 12px 0 16px;
-  font-size: 0.86rem;
+
+.wz-res-tit {
+  margin: 0 0 4px;
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 1.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.wz-res-sub {
+  margin: 0 0 16px;
+  font-size: 0.88rem;
   color: var(--lb-mut);
 }
+.wz-res-cols {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 1fr;
+  align-items: start;
+}
+@media (min-width: 640px) {
+  .wz-res-cols {
+    grid-template-columns: minmax(0, 1.25fr) minmax(220px, 0.85fr);
+    gap: 18px;
+  }
+}
+.wz-res-card {
+  border: 1px solid var(--lb-line);
+  border-radius: var(--lb-r-sm);
+  overflow: hidden;
+  /* Franja de barbero en el borde de arriba, como en el mockup. */
+  border-top: 3px solid var(--lb-brass-solid);
+}
+.wz-res-lado {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.wz-res-precio {
+  border: 1px solid var(--lb-brass);
+  border-radius: var(--lb-r-sm);
+  padding: 14px 16px;
+}
+.wz-res-precio span {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--lb-mut);
+}
+.wz-res-precio b {
+  display: block;
+  font-size: 2.2rem;
+  line-height: 1.1;
+  margin: 4px 0 2px;
+}
+.wz-res-precio small {
+  color: var(--lb-mut);
+}
+/* Una fila: icono, etiqueta + valor, y el "Cambiar" que lleva a ese paso. */
+.wz-rf {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--lb-line-soft);
+}
+.wz-rf:last-child {
+  border-bottom: 0;
+}
+.wz-rf-ico {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  background: var(--lb-bg);
+  border: 1px solid var(--lb-line-soft);
+  color: var(--lb-brass);
+}
+.wz-rf-ico svg {
+  width: 20px;
+  height: 20px;
+}
+/* Foto en el resumen: reemplaza al ícono cuando el servicio o el barbero
+   tienen una. Mismo ancho que el ícono (38px) para que las filas no se
+   descuadren entre sí. */
+.wz-rf-img {
+  display: block;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--lb-bg);
+  border: 1px solid var(--lb-line-soft);
+}
+.wz-rf-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+/* La del barbero, redonda: es una cara. */
+.wz-rf-img--red {
+  border-radius: 50%;
+}
+/* Casilla de términos y condiciones. Es OBLIGATORIA para confirmar, así que
+   el borde se pone dorado al marcarla: el cliente ve que la casilla quedó
+   marcada sin tener que volver a mirar el botón. */
+.wz-tyc {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 10px 0 0;
+  padding: 11px 13px;
+  border: 1px solid var(--lb-line);
+  border-radius: var(--lb-r-sm);
+  background: var(--lb-bg);
+  cursor: pointer;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: var(--lb-mut);
+  transition: border-color var(--lb-t-fast) var(--lb-ease),
+    background-color var(--lb-t-fast) var(--lb-ease);
+}
+.wz-tyc:hover {
+  border-color: var(--lb-brass);
+}
+.wz-tyc input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  margin: 1px 0 0;
+  accent-color: var(--lb-brass);
+  cursor: pointer;
+}
+.wz-tyc a {
+  color: var(--lb-brass);
+  font-weight: 700;
+  text-decoration: underline;
+}
+.wz-tyc.on {
+  border-color: var(--lb-brass);
+  background: color-mix(in srgb, var(--lb-brass) 8%, transparent);
+  color: var(--lb-ink);
+}
+.wz-tyc:focus-within {
+  outline: 2px solid var(--lb-brass);
+  outline-offset: 2px;
+}
+.wz-rf-t {
+  flex: 1;
+  min-width: 0;
+}
+.wz-rf-t > span {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--lb-mut);
+}
+.wz-rf-t b {
+  display: block;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.wz-rf-t small {
+  /* block y no inline: como el <small> va dentro del <b>, inline lo
+     pegaba al valor ("Corte (incluye cejas)30 min", "09:00hstermina 09:30"). */
+  display: block;
+  color: var(--lb-mut);
+  font-weight: 500;
+}
+.wz-rf-c {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 4px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--lb-brass);
+  border: 1px solid color-mix(in srgb, var(--lb-brass) 45%, transparent);
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+}
+.wz-rf-c:hover {
+  background: color-mix(in srgb, var(--lb-brass) 12%, transparent);
+}
+.wz-rf-c:focus-visible {
+  outline: 2px solid var(--lb-brass);
+  outline-offset: 2px;
+}
+.wz-pol {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0;
+  padding: 11px 13px;
+  border: 1px solid var(--lb-line);
+  border-left: 3px solid var(--lb-brass);
+  border-radius: var(--lb-r-sm);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--lb-mut);
+}
+/* Aviso de "estás reprogramando": sin él el cliente ve "Confirmar turno"
+   y no sabe si le queda el turno viejo además del nuevo. */
+.wz-aviso-rep {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--lb-brass);
+  border-left: 3px solid var(--lb-brass);
+  border-radius: var(--lb-r-sm);
+  background: color-mix(in srgb, var(--lb-brass) 8%, transparent);
+  font-size: 0.88rem;
+}
+.wz-aviso-rep b {
+  font-weight: 700;
+}
+.wz-aviso-rep span {
+  color: var(--lb-mut);
+}
+.wz-aviso-rep button {
+  justify-self: start;
+  margin-top: 6px;
+  padding: 5px 0;
+  min-height: 32px;
+  background: none;
+  border: 0;
+  color: var(--lb-brass);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.wz-aviso-rep button:hover {
+  color: var(--lb-brass-h);
+}
+
 .wz-vacio,
 .wz-aviso {
   padding: 14px;
@@ -2046,6 +2703,19 @@ body[data-theme="light"] .wz-btn--pri:hover {
 }
 .lb-wpasos .wz-paso {
   border-top-width: 2px;
+}
+/* La lista de pasos de la tarjeta "Reservá tu turno" es decorativa y en el
+   celular no se entendía: seis números sueltos que no dicen qué paso es
+   cuál. El asistente real ya muestra los pasos con nombre arriba, así que
+   acá alcanza con el botón.
+
+   Va DESPUÉS de `.lb-wpasos` a propósito: es el mismo selector y la misma
+   especificidad, así que si la regla queda antes la gana la de arriba y
+   `display:none` no hace nada. */
+@media (max-width: 640px) {
+  .lb-wpasos {
+    display: none;
+  }
 }
 .lb-wcard-note {
   margin: 0;
@@ -2188,8 +2858,8 @@ body[data-theme="light"] .wz-btn--pri:hover {
 /* 2. "Volver a la web" con mas presencia: dorado pleno con borde marcado.
    Antes era un boton fantasma gris sobre navy y no se leia. */
 .marca .volver {
-  background: var(--brass);
-  border-color: var(--brass);
+  background: var(--brassFill);
+  border-color: var(--brassFill);
   color: #141c26;
   font-weight: 700;
   min-height: 44px;
@@ -2205,16 +2875,21 @@ body[data-theme="light"] .wz-btn--pri:hover {
   outline: 3px solid var(--brass);
   outline-offset: 2px;
 }
-body[data-theme="light"] .marca .volver {
-  color: #fff8e6;
-}
+/* El dorado de superficie (--brassFill) es MAS CLARO en tema claro
+   (#d4a84b) que en oscuro (#c9a24b), asi que encima va tinta oscura en los
+   dos temas. Este override ponia marfil y dejaba el boton en 2.09:1,
+   ilegible. Se borra: la regla base de mas arriba ya dice #141c26, que
+   sobre el dorado claro da 7.76:1.
+
+   OJO: estas reglas viven en landing.css y pisan a las de styles.css con el
+   mismo selector. Otra fuga tipo 10h. */
 
 /* 3. El mapa se achica en pantallas anchas: antes ocupaba todo el ancho y
    empujaba el resto de la banda de contacto. */
 /* El mapa va en la tarjeta de contacto. Chiquito y con bordes
    redondeados, no un bloque que se come media banda. */
 .lb-map {
-  margin-top: 14px;
+  margin-top: 18px;
   border: 1px solid var(--lb-line);
   border-radius: var(--lb-r-sm);
   overflow: hidden;
@@ -2225,6 +2900,235 @@ body[data-theme="light"] .marca .volver {
   width: 100%;
   height: 180px;
   border: 0;
+}
+
+/* ---------- CONTACTO (mockup del dueño) ----------
+   Reorganiza la sección en dos columnas: a la izquierda mapa, dirección y
+   horarios; a la derecha el formulario y las redes. En el celular se
+   apila en ese mismo orden. */
+.lb-cont {
+  display: grid;
+  gap: 22px;
+}
+@media (min-width: 900px) {
+  .lb-cont {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 26px;
+    align-items: start;
+  }
+}
+.lb-cont-col {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+/* Etiqueta en versalitas dorada, como las del resto de la landing. */
+.lb-etq {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--lb-brass);
+  margin-bottom: 8px;
+}
+/* El mapa ahora encabeza la columna, con la etiqueta arriba y el botón
+   "Cómo llegar" sobre el mapa. */
+.lb-map--top {
+  position: relative;
+  margin-top: 0;
+  min-height: 230px;
+}
+.lb-map--top iframe {
+  height: 230px;
+}
+.lb-map-lbl {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--lb-card) 88%, transparent);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--lb-line);
+  pointer-events: none;
+}
+.lb-map-lbl b {
+  display: block;
+  font-weight: 700;
+}
+.lb-map-lbl small {
+  color: var(--lb-mut);
+}
+.lb-map-btn {
+  position: absolute;
+  z-index: 2;
+  left: 10px;
+  bottom: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--lb-card) 92%, transparent);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--lb-line);
+  color: var(--lb-ink);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.lb-map-btn:hover {
+  border-color: var(--lb-brass);
+  color: var(--lb-brass);
+}
+/* "Dónde estamos": ícono a la izquierda, dirección al lado. */
+.lb-donde-t {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.lb-donde-ico {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  background: var(--lb-bg);
+  border: 1px solid var(--lb-line-soft);
+  color: var(--lb-brass);
+}
+.lb-donde-ico svg {
+  width: 22px;
+  height: 22px;
+}
+/* Con el ícono de reloj, la etiqueta tiene que ir en línea al lado. */
+.lb-donde-ico.lb-etq {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: auto;
+  height: auto;
+  background: none;
+  border: 0;
+  margin-bottom: 12px;
+  padding: 0;
+}
+.lb-donde-t b,
+.lb-donde-t > div > span:not(.lb-etq) {
+  display: block;
+}
+.lb-donde-t > div > b {
+  font-weight: 600;
+  line-height: 1.4;
+}
+.lb-donde-t > div > span:not(.lb-etq) {
+  color: var(--lb-mut);
+  font-size: 0.94rem;
+  line-height: 1.4;
+}
+.lb-llegar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 10px 18px;
+  border-radius: 10px;
+  text-decoration: none;
+  font-weight: 700;
+  color: var(--lb-brass);
+}
+/* Como paso suelto de la columna (no dentro de la tarjeta de dirección),
+   se estira y deja de depender del texto que tenga al lado. */
+.lb-llegar--suelto {
+  justify-content: center;
+  width: 100%;
+  margin-top: 0;
+  padding: 14px 18px;
+  border: 1px solid var(--lb-brass);
+  background: var(--lb-bg);
+}
+/* Una fila de horario: días a la izquierda, horario (o "Cerrado") a la
+   derecha, con una línea de por medio entre grupos. */
+.lb-hr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 14px 0;
+  border-top: 1px solid var(--lb-line-soft);
+}
+.lb-hr:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.lb-hr b {
+  display: block;
+  font-weight: 700;
+}
+.lb-hr small {
+  color: var(--lb-mut);
+}
+.lb-hr strong {
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 1.5rem;
+  color: var(--lb-brass);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.lb-hr--cerrado b,
+.lb-hr--cerrado strong {
+  color: var(--lb-mut);
+}
+.lb-hr-cerrado {
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--lb-line);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--lb-mut);
+  white-space: nowrap;
+}
+.lb-card--form h3 {
+  font-size: 1.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.lb-card--form label abbr {
+  color: var(--lb-brass);
+  text-decoration: none;
+}
+/* "También podés escribirnos por": botones pastilla con el ícono. */
+.lb-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.lb-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border: 1px solid var(--lb-line);
+  border-radius: 12px;
+  background: var(--lb-bg);
+  color: var(--lb-ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+.lb-pill:hover {
+  border-color: var(--lb-brass);
+}
+.lb-pill img {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
 }
 @media (min-width: 900px) {
   .lb-map iframe {
@@ -2263,7 +3167,9 @@ body[data-theme="light"] header .lnd-nv a {
    sólido con tinta oscura. */
 body[data-theme="light"] header nav .on,
 body[data-theme="light"] #nmenu button.on {
-  background: var(--brass);
+  /* --brassFill (superficie), no --brass (tinta): con el dorado oscuro de
+     texto el #141c26 encima se iba a ~2.9:1. */
+  background: var(--brassFill);
   color: #141c26;
 }
 /* El boton de tema venia con fondo blanco fijo y en claro quedaba un
@@ -2457,9 +3363,6 @@ body[data-theme="light"] .ver:hover {
     gap: 10px;
     flex: 0 0 auto;
   }
-  .lb .lb-hd-soc {
-    display: flex;
-  }
   .lb-sticky {
     display: none;
   }
@@ -2520,24 +3423,20 @@ body[data-theme="light"] .ver:hover {
     aspect-ratio: 1 / 1;
   }
 
-  /* equipo: 3 columnas (la grilla se acomoda sola si hay más barberos) */
+  /* equipo: 2 columnas en escritorio, como el mockup */
   .lb-team {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
   }
-  .lb-barber {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-    padding: 18px;
-  }
-  .lb-barber-ph {
-    width: 100%;
-    height: 200px;
-  }
+  /* La caja de la foto ya trae aspect-ratio 4/5 y contain en la regla
+     base. Este `height:auto` de acá la pisaba y la volvía a la proporción
+     natural de la imagen, que es justo lo que ya no queremos. */
 
-  /* testimonios: 3 en desktop */
+  /* Las reseñas ya no son tarjetas sueltas en grilla: viven en un carrusel
+     que él solo se encarga de las 3 columnas. Esta regla era de cuando
+     cada .lb-tst era un item suelto del grid; ahora hay un solo hijo (el
+     carrusel) y con 3 columnas lo encogía al tercio. */
   .lb-test {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: minmax(0, 1fr);
   }
 
   /* contacto: 2 columnas */
@@ -2610,15 +3509,10 @@ body,
   padding-top: env(safe-area-inset-top);
 }
 
-/* ---------- 19b. REDES DEL HEADER ----------
-   Anchos medidos dentro del contenedor de 1240 px: marca 233 + nav 572 +
-   botones 259 + tema 48 = 1112, y ya entra justo. Las dos redes suman
-   otros 96, así que solo aparecen cuando el header se abre a 1480.
-   Mientras tanto están en Contacto, en el panel móvil y en el footer. */
+/* ---------- 19b. MARCA EN ANCHOS MEDIOS ----------
+   Marca 233 + nav 572 + botones 259 + tema 48 = 1112, y ya entra justo en
+   los 1240 px del header. Igual el nombre de la marca va primero. */
 @media (min-width: 1280px) and (max-width: 1639px) {
-  .lb .lb-hd-soc {
-    display: none;
-  }
   /* El nombre de la marca va primero: se le baja un punto la tipografía y
      se cierra el gap del nav para que "CODIGO BARBER" entre entero en los
      1240 px del header. Medido: sobran ~9 px de aire. */
@@ -2638,16 +3532,12 @@ body,
 }
 
 /* ---------- 19c. HEADER ANCHO ----------
-   El contenido mide 1240 px, y con las dos redes en el header la fila
-   necesita ~1405. Por eso acá el header se abre a 1560: en pantallas
-   anchas el header respira más que el cuerpo, que sigue en 1240. */
+   El contenido mide 1240 px y el header se abre a 1560 en pantallas
+   anchas: así el header respira más que el cuerpo, que sigue en 1240. */
 @media (min-width: 1640px) {
   .lb .lb-hd-in {
     max-width: 1560px;
     gap: 20px;
-  }
-  .lb .lb-hd-soc {
-    display: flex;
   }
   .lb .lb-nav {
     gap: 20px;
@@ -2681,9 +3571,6 @@ body,
   /* el carrusel no rota solo (eso lo corta el JS), pero el salto manual
      tampoco se desliza: cambia de una */
   .lb-car-viz {
-    transition: none !important;
-  }
-  .lb-car-punto {
     transition: none !important;
   }
 }

@@ -1,31 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
-<!-- Creator: CorelDRAW 2021 (64-Bit) -->
-<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" width="700mm" height="700mm" version="1.1" style="shape-rendering:geometricPrecision; text-rendering:geometricPrecision; image-rendering:optimizeQuality; fill-rule:evenodd; clip-rule:evenodd"
-viewBox="0 0 70000 70000"
- xmlns:xlink="http://www.w3.org/1999/xlink"
- xmlns:xodm="http://www.corel.com/coreldraw/odm/2003">
- <defs>
-  <style type="text/css">
-   <![CDATA[
-    .fil1 {fill:#FEFEFE;fill-rule:nonzero}
-    .fil0 {fill:url(#id0)}
-   ]]>
-  </style>
-  <linearGradient id="id0" gradientUnits="userSpaceOnUse" x1="17392.83" y1="65770.51" x2="50158.55" y2="8506.21">
-   <stop offset="0" style="stop-opacity:1; stop-color:#FFDC84"/>
-   <stop offset="0.301961" style="stop-opacity:1; stop-color:#EE7447"/>
-   <stop offset="0.701961" style="stop-opacity:1; stop-color:#D83E86"/>
-   <stop offset="1" style="stop-opacity:1; stop-color:#7260A8"/>
-  </linearGradient>
- </defs>
- <g id="Capa_x0020_1">
-  <metadata id="CorelCorpID_0Corel-Layer"/>
-  <g id="_1455205856560">
-   <path class="fil0" d="M48833.24 3873.85l-27668.88 0c-9536.05,0 -17292.83,7757.28 -17292.83,17292.83l0 27669.21c0,9535.04 7756.78,17292.66 17292.83,17292.66l27668.88 0c9534.37,0 17292.83,-7757.62 17292.83,-17292.66l0 -27669.21c0,-9535.55 -7758.46,-17292.83 -17292.83,-17292.83z"/>
-   <path class="fil1" d="M45089.51 53499.89l-20181.42 0c-4635.89,0 -8408.23,-3772.34 -8408.23,-8408.06l0 -20180.75c0,-4636.56 3772.34,-8408.74 8408.23,-8408.74l20181.42 0c4635.89,0 8408.23,3772.18 8408.23,8408.74l0 20180.75c0,4635.72 -3772.34,8408.06 -8408.23,8408.06zm0 -41201.66l-20181.42 0c-6953.83,0 -12613.18,5657.84 -12613.18,12612.85l0 20180.75c0,6954.17 5659.35,12612.34 12613.18,12612.34l20181.42 0c6953.83,0 12611.5,-5658.17 12611.5,-12612.34l0 -20180.75c0,-6955.01 -5657.67,-12612.85 -12611.5,-12612.85z"/>
-   <path class="fil1" d="M34999.64 42498.83c-4134.25,0 -7499.23,-3363.46 -7499.23,-7497.88 0,-4133.92 3364.98,-7497.21 7499.23,-7497.21 4132.57,0 7497.55,3363.29 7497.55,7497.21 0,4134.42 -3364.98,7497.88 -7497.55,7497.88zm0 -19199.54c-6453.88,0 -11702.5,5249.29 -11702.5,11701.66 0,6452.53 5248.62,11702.33 11702.5,11702.33 6452.2,0 11700.82,-5249.8 11700.82,-11702.33 0,-6452.37 -5248.62,-11701.66 -11700.82,-11701.66z"/>
-   <path class="fil1" d="M46771.16 20496.38c-1449.35,0 -2627.68,1178.66 -2627.68,2627.84 0,1448.51 1178.33,2627.51 2627.68,2627.51 1447.66,0 2627.67,-1179 2627.67,-2627.51 0,-1449.18 -1180.01,-2627.84 -2627.67,-2627.84z"/>
+<!--
+  Instagram. Mismo motivo que el de WhatsApp: el anterior venía de
+  CorelDRAW con un viewBox de 70000x70000 y coordenadas enormes, legible
+  sólo en tamaños grandes. Este usa coordenadas normales (24x24) y el
+  degradado va en un <defs>, así el archivo es chico y se ve nítido a los
+  18-20 px en que se usa.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="Instagram">
+  <defs>
+    <linearGradient id="igGrad" x1="0" y1="24" x2="24" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FEDA75"/>
+      <stop offset="0.28" stop-color="#FA7E1E"/>
+      <stop offset="0.62" stop-color="#D62976"/>
+      <stop offset="1" stop-color="#962FBF"/>
+    </linearGradient>
+  </defs>
+  <rect width="24" height="24" rx="6" fill="url(#igGrad)"/>
+  <g fill="none" stroke="#fff" stroke-width="1.9">
+    <rect x="6.9" y="6.9" width="10.2" height="10.2" rx="3"/>
+    <circle cx="12" cy="12" r="2.6"/>
   </g>
- </g>
+  <circle cx="15.4" cy="8.6" r="1.1" fill="#fff"/>
 </svg>

@@ -44,6 +44,51 @@ Turnos online + programa de puntos acumulativo en una barbería de barrio. La co
 - Solo el dueño (`OWNER_UID`) edita porcentajes de ganancia.
 - Ver `FIRESTORE_RULES.txt` para el modelo de permisos.
 
+### Fotos de servicio (agregado 2026-10-10)
+
+El dueño sube una **foto de preview por servicio** desde "Servicios y premios", y se guarda en el mismo documento del servicio (`img`). Se muestra en los tres lugares donde el cliente elige servicio: la grilla de la landing, la lista angosta de celular y el paso 1 del asistente de reserva.
+
+**La foto es opcional.** Un servicio sin foto se ve igual de bien que uno con foto: la tarjeta queda sin la banda de imagen y conserva el borde dorado de arriba. Nunca se pone una imagen de placeholder ni un marco vacío.
+
+**Las fotos de barbero nunca se recortan.** Es una regla del proyecto, no una preferencia estética: el dueño vio una versión que cortaba y la marcó como bug. El marco es 4/5 con `object-fit: contain`, así que lo que sobra a los costados se ve como franja del color de la tarjeta. En pantallas de poca altura la caja se achica (nunca la foto) y aparecen más franjas laterales antes que dejar la tarjeta fuera de pantalla. Ver `CONTINUAR.md` §8a y §8b.
+
+### Estructura de la landing (2026-10-10)
+
+La landing cierra con la banda dorada de "Reservar ahora" y el botón sticky. **No hay pie propio**: se eliminó la franja con "© Codigo Barber · Turnos y puntos" y las redes, porque repetía lo que ya está en la sección de Contacto. Los datos legales (políticas, privacidad) siguen accesibles desde el modal.
+
+### Confirmación de un turno (2026-10-10)
+
+Antes de confirmar, el cliente ve **la foto del servicio y la del barbero** en el resumen, no sólo un ícono. Si el servicio o el barbero no tienen foto cargada, la fila muestra el ícono de siempre: **nunca hay un cuadro vacío ni una imagen de relleno**.
+
+**Aceptar los términos es obligatorio para reservar.** El paso 6 tiene una casilla que dice "Leí los términos y condiciones, la política de privacidad y las condiciones del servicio", con un link a cada uno que abre el modal en la solapa que corresponde. Sin marcar, el botón "Confirmar turno" no deja confirmar y avisa qué falta. El estado se reinicia al cerrar sesión.
+
+### Google y Facebook: las dos formas de entrar
+
+En las dos pantallas (Ingreso y Crear cuenta) están los dos botones:
+
+| | Google | Facebook |
+|---|---|---|
+| Pantalla de **Ingresá** | Sí | Sí |
+| Pantalla de **Creá tu cuenta** | Sí | Sí |
+
+Un cliente puede entrar con su correo y contraseña, pero también puede entrar
+con su cuenta de Google o de Facebook, y esas cuentas quedan habilitadas para
+siempre.
+
+**Al registrarse con una red social se le pide igual una contraseña** (solo en
+esa pantalla; al ingresar no se pide nada). Es una red de seguridad: si después
+esa persona pierde el acceso a Google o a Facebook, entra con su correo y esa
+contraseña en lugar de perder sus puntos, su historial y sus turnos. Hay un
+botón para saltárselo, con el aviso de qué pasa si lo hace.
+### El barbero puede cargar turnos desde Agenda (2026-10-10)
+
+Cargar un turno a nombre de un cliente desde el panel es una operación **normal del negocio**, no una excepción: el barbero lo hace cuando alguien llega sin haber reservado. Por eso las reglas de Firestore tienen que permitirlo (punto 6 del comentario de `FIRESTORE_RULES.txt`). Si algún día el barbero vuelve a ver "no tenés permiso", lo primero que hay que revisar es que las reglas de la consola estén publicadas, no el código.
+
+### Identidad visual del panel (2026-10-10)
+
+- **Las franjas de barbería (rojo/blanco/azul) están eliminadas de todo el producto.** Quedaban tres: la de la foto de los barberos en la landing (ya fuera en el lote anterior), la fija arriba del login y la de la tarjeta de ingreso. La marca se apoya en el dorado y el carbón azul, no en las rayas.
+- **El header de celular es el mismo en los tres paneles** (cliente, barbero y dueño): misma altura, mismo logo, nombre de marca siempre en una línea. El barbero y el dueño tienen un botón extra ("ver la web") porque lo necesitan; eso es función, no una diferencia de diseño.
+
 ## Brand Commitments
 
 - Tono: cercano, canchero, voseo rioplatense. Sin clichés machistas ni textos genéricos.
@@ -61,16 +106,17 @@ Turnos online + programa de puntos acumulativo en una barbería de barrio. La co
 
 Contenido real y verificado en el código (fuente de verdad):
 
-- Servicios por defecto (`S` en `src/config.js`): Corte (Incluye cejas) 30 min $15.000 · Barba 30 min $8.000 · Corte + barba 60 min $20.000. Editables por el barbero desde la app.
-- Puntos: 20 de bienvenida, `PTS = 5` por corte completado.
+- Servicios por defecto (`S` en `src/config.js`): Corte (Incluye cejas) 30 min $15.000 · Barba 30 min $8.000 · Corte + barba 60 min $20.000. Editables por el barbero desde la app. **Los tres tienen foto de preview cargada** (Cloudinary), que es lo que se ve en la landing.
+- Puntos: 5 por corte completado (`PTS`), y **20 de bienvenida** en el registro. El valor de bienvenida **no está hardcodeado**: vive en `config/reglas.ptsRegistro` y se edita desde "Servicios y premios" (`PTSRv`).
 - Premios (`PR` en `src/config.js`): Descuento 20% a 25 pts · Descuento 50% a 50 pts · Corte gratis a 100 pts.
-- WhatsApp `5493757644751`, Instagram `codigobarber_1`, email `hola@codigobarber1.com`.
-- Fichas de barbero (`config/barberos`): nombre, foto, porcentaje. Se publican desde Finanzas.
+- WhatsApp `5493757644751`, Instagram `codigobarber_1`, email `hola@codigobarber1.com`. Hay un segundo WhatsApp (`WA_ROMAN` / `WA_YAN`) cuya asignación sigue sin definirse.
+- Fichas de barbero (`config/barberos`): nombre, foto, porcentaje, más oficio/descripción/redes. Se publican desde Finanzas y "Mi perfil en la web".
 - Galería: colección `galeria` en Firestore, subida por el barbero.
+- Barberos cargados: 2. `asda` **con** foto, `julian` **sin** foto (por eso su tarjeta muestra el placeholder). Ninguno de los dos tiene ficha cargada todavía, así que el dorso de la tarjeta muestra el aviso de "sin cargar".
 
 **Ausencias que el trabajo futuro NO debe inventar:**
 
-- **Testimonios**: no hay reseñas reales cargadas. La colección se lee (`TESTS`) pero está vacía en producción. La landing debe mostrar marcadores visibles con TODO, nunca textos de ejemplo presentados como opiniones de clientes.
+- **Testimonios**: hay reseñas en producción pero **ninguna es real**. De 13 documentos, 2 están escritas a mano y 10 son de pruebas automatizadas (`"Prueba automatica de reglas. Se borra."`). La landing nunca debe inventar una opinión; si hace falta contenido para maquetar, va con marcador visible + TODO.
 - **Fotos de galería**: sin imágenes reales publicadas.
 - **Dirección y horarios**: el código actual tiene un placeholder literal `[DIRECCIÓN]` y un mapa de ejemplo (`MAP_IFRAME` con coordenadas de muestra). Reemplazar con datos reales.
 - No hay carpeta `referencia/` con capturas del mockup; la descripción textual del prompt es la fuente de verdad visual.

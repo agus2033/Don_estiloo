@@ -13,7 +13,12 @@
 //      los uid del equipo).
 //   4. mensajes: se validan los campos del contacto en vez de "if true".
 //   5. resenas: sigue siendo pública para el carrusel de la landing.
-
+//   6. turnos: el create acepta también a barbero y dueño. Con la versión 2
+//      anterior el panel de Agenda del barbero no podía guardar ningún turno.
+//
+// OJO: rules_version SÓLO admite '1' y '2'. No hay una versión 3: si ponés 3, la
+// consola y los linters la rechazan ("Unsupported rules version 3"). El "número de
+// versión" de este archivo es el del comentario de arriba, no esta línea.
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -133,7 +138,20 @@ service cloud.firestore {
 
     match /turnos/{id} {
       allow read: if isSignedIn() && (resource.data.uid == request.auth.uid || isBarberoOrOwner());
-      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      // El "create" tiene que aceptar DOS casos distintos, y antes solo
+      // aceptaba el primero:
+      //
+      //   1. El cliente reserva para si mismo: uid == su propio auth.uid.
+      //   2. El barbero o el dueño cargan un turno desde el panel de Agenda
+      //      a nombre de un cliente (cobro en la barbería). Ahí el `uid` del
+      //      documento es el del CLIENTE, no el del barbero, así que la
+      //      condición de arriba no se cumplía y el write se denegaba con
+      //      "Missing or insufficient permissions": el barbero abría "+ Agendar
+      //      turno", completaba todo y no lo guardaba nunca.
+      //
+      // Es la única colección que se había quedado sin la rama de staff;
+      // /ocupados, /espera y /activos ya la tenían.
+      allow create: if isSignedIn() && (request.resource.data.uid == request.auth.uid || isBarberoOrOwner());
       allow update, delete: if isBarberoOrOwner() || (isSignedIn() && resource.data.uid == request.auth.uid);
     }
 

@@ -8,6 +8,7 @@ import {
   sendPasswordResetEmail,
   sendEmailVerification,
   signInWithPopup,
+  updatePassword,
   GoogleAuthProvider,
   FacebookAuthProvider,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
@@ -125,6 +126,20 @@ const $ = (s) => document.querySelector(s),
     );
 const A = (...a) => esc(JSON.stringify(a)); // argumentos de data-act (delegación de eventos)
 const $$ = (n) => "$" + n.toLocaleString("es-AR");
+
+/* Cómo se ve un cliente en las listas del panel.
+   esc() hace String(s), así que un usuario sin nombre o sin teléfono
+   aparecía literalmente como "undefined" en el <option> del selector de
+   clientes y en la lista de Clientes. No se inventa nada: si el dato no
+   está, se dice que no está. */
+const etqUsuario = (u) => {
+  const nm = String(u.nm || "").trim();
+  const ph = String(u.ph || "").trim();
+  if (nm && ph) return nm + " · " + ph;
+  if (nm) return nm + " · sin teléfono";
+  if (ph) return ph;
+  return "Cliente sin nombre ni teléfono";
+};
 // Tema claro/oscuro
 (function () {
   const cur = localStorage.getItem("theme");
@@ -188,6 +203,9 @@ const nsv = (x, i) => {
 let S = S0.map(nsv);
 let PRv = PR.map((p) => ({ ...p })),
   PTSv = PTS,
+  /* Puntos de bienvenida al crear la cuenta. Configurable desde Servicios y
+     Premios (el dueño lo pidió); antes eran 20 fijos en el código. */
+  PTSRv = 20,
   CHSv = CANCEL_HS;
 const MAX_MIN = 180; // duración máxima de un servicio (las reglas revisan hasta 6 bloques)
 const MAX_ACT = 2; // turnos activos por cliente (las reglas lo aplican con la colección "activos")
@@ -321,6 +339,16 @@ const pwLive = () => {
   const l = $("#pwl");
   if (l) l.innerHTML = pwHtml($("#pw").value, $("#em").value);
 };
+/* Los dos campos de la pantalla de contraseña social (#rpw y #rpw2) no
+   están dentro de un <form>, así que su valor hay que llevar al estado a
+   mano: sin esto el botón "Guardar y entrar" guardaría "" siempre. El
+   Delegado de eventos llama a esto con el valor del input. */
+const redPassIn = (k, el) => {
+  if (!redPass) return;
+  redPass[k] = el.value;
+  const l = $("#rpwl");
+  if (l) l.innerHTML = pwHtml(redPass.n || "", "");
+};
 // k: w = advertencia, x = error, q = pregunta, ok = éxito
 const M = (o) => {
   mf = o.fn || null;
@@ -354,9 +382,13 @@ let me = null,
   rtInit = 0,
   msg = "",
   tab = "in",
+  /* Datos de la pantalla "elegí una contraseña" que aparece después de
+     registrarse con Google o Facebook. Ver red(). */
+  redPass = null,
   cf = -1,
-  sel = { s: 0, d: "", t: "", b: "" },
+  sel = { s: 0, d: "", t: "", b: "", pol: 0 },
   navOpen = 0,
+  perfilOpen = 0, // menú del perfil del cliente (lo abre la foto del header)
   verWeb = 0, // 1 = viendo la landing con sesión (botón "ver la web")
   resStep = 1;
 const isAdm = () => me && (me.uid === ADMIN_UID || !!SB); // barbero: dueño o cuenta de barbero
@@ -380,9 +412,15 @@ let UA = [],
   cb = "", // barbero cuyo horario se edita en Ajustes ("" = general)
   agT = null, // formulario de turno agendado por el barbero
   ag = ymd(), // dashboard: cortes hechos, canjes usados, período
-  BARS = []; // barberos publicados para que el cliente elija (config/barberos)
+  BARS = [], // barberos publicados para que el cliente elija (config/barberos)
+  /* Copia de los últimos datos PÚBLICOS recibidos. Va en ESTA declaración
+     y no como una línea suelta: fuera de la cadena de `let` sería una
+     variable no declarada y en un módulo eso es ReferenceError al cargar
+     ("PUB is not defined"), con la landing entera en blanco. */
+  PUB = { servicios: null, barberos: null, horario: null };
 let CA = [],
   cx = null,
+  rep = 0, // id del turno que se está reprogramando (0 = ninguno)
   cr = "",
   cn = "",
   dn = null,
@@ -439,11 +477,27 @@ const ERR = {
   "auth/email-already-in-use": "Ese email ya tiene una cuenta.",
   "auth/weak-password": "La contraseña debe tener al menos 6 caracteres.",
   "auth/invalid-email": "El email no es válido.",
-  "permission-denied": "No tenés permiso para esa acción.",
+  "permission-denied":
+    "No tenés permiso para esa acción. Si sos barbero o dueño y estabas cargando un turno, revisá que las reglas de Firestore estén publicadas (FIRESTORE_RULES.txt, el punto 6 del comentario de arriba).",
   "auth/network-request-failed":
     "Sin conexión. Revisá tu internet e intentá de nuevo.",
   "auth/too-many-requests":
     "Demasiados intentos. Esperá unos minutos e intentá de nuevo.",
+  /* Errores de los botones de Google y Facebook. Con los proveedores sin
+     habilitar en la consola salía el "Ocurrió un error" genérico, que no
+     dice nada. Ver ACTIVAR_GOOGLE_FACEBOOK.md con el paso a paso. */
+  "auth/operation-not-allowed":
+    "Ese botón todavía no está habilitado. Hay que activar el proveedor en Firebase Console > Authentication > Sign-in method.",
+  "auth/unauthorized-domain":
+    "Este dominio no está autorizado. Agregalo en Firebase Console > Authentication > Settings > Authorized domains.",
+  "auth/popup-blocked":
+    "El navegador bloqueó la ventana de inicio de sesión. Habilitá los popups para este sitio e intentá de nuevo.",
+  "auth/popup-closed-by-user":
+    "Cerraste la ventana de Google o Facebook sin terminar.",
+  "auth/account-exists-with-different-credential":
+    "Ese correo ya tiene una cuenta hecha con contraseña. Entrá con contraseña, o usá el mismo botón con el que te registraste.",
+  "auth/cancelled-popup-request":
+    "Se abrió una ventana antes de terminar la anterior. Esperá un segundo e intentá de nuevo.",
   unavailable: "Sin conexión con el servidor. Intentá de nuevo en un momento.",
 };
 const err = (e) => {
@@ -469,11 +523,15 @@ function unsub() {
   CA = [];
   cx = null;
   dn = null;
+  rep = 0;
   T = [];
   C = [];
   OC = {};
   UA = [];
-  sel = { s: 0, d: "", t: "", b: "" };
+  /* El tilde de "pol" también se limpia al salir de sesión: si alguien
+     aceptó una vez, no tiene que volver a aceptar en el próximo turno, pero
+     tampoco debe quedar marcado de antes. */
+  sel = { s: 0, d: "", t: "", b: "", pol: 0 };
   cd = null;
   VT = [];
   sd = null;
@@ -491,6 +549,13 @@ function unsub() {
   CU = [];
   CA = [];
   BARS = [];
+  /* Se reaplican los datos públicos: sus onSnapshot están sobre un doc() y
+     no vuelven a dispararse solos porque el documento no cambió, sólo
+     cambió la sesión. Sin esto la landing queda sin servicios, sin equipo
+     y sin horarios apenas cerrás sesión. */
+  if (PUB.servicios) S = PUB.servicios;
+  if (PUB.barberos) BARS = PUB.barberos;
+  if (PUB.horario) CF = PUB.horario;
   navOpen = 0;
 }
 function occ() {
@@ -591,7 +656,8 @@ function setup(a) {
     U = x.exists() ? x.data() : null;
     // DB limpia/cuenta nueva: creá el perfil básico si no existe
     if (!x.exists() && me && !isAdm())
-      setDoc(doc(db, "users", id), { nm: me.displayName || "Nuevo cliente", ph: "", pt: 20 }).catch(() => {});
+      /* Los puntos de bienvenida salen de la configuración (Servicios y
+           premios), no de un 20 clavado. */ setDoc(doc(db, "users", id), { nm: me.displayName || "Nuevo cliente", ph: "", pt: PTSRv }).catch(() => {});
   });
   ls(
     query(
@@ -645,6 +711,11 @@ function setup(a) {
     (x) => {
       const d = x.exists() ? x.data() : {};
       if (+d.pts > 0) PTSv = +d.pts;
+      /* Puntos de bienvenida. Antes eran 20 clavados en dos lugares (el alta
+         de cuenta y el texto del formulario de registro); ahora salen de
+         acá, para que el dueño los cambie desde Servicios/Premios y se
+         reflejen en todos los paneles. */
+      if (d.ptsRegistro !== undefined && +d.ptsRegistro >= 0) PTSRv = +d.ptsRegistro;
       if (+d.cancelHs >= 0 && d.cancelHs !== undefined) CHSv = +d.cancelHs;
       if (Array.isArray(d.premios) && d.premios.length)
         PRv = d.premios.map((p) => ({ n: p.n, p: +p.p || 0 }));
@@ -652,6 +723,7 @@ function setup(a) {
         const r = {
           costs: PRv.map((p) => p.p),
           pts: PTSv,
+          ptsRegistro: PTSRv,
           cancelHs: CHSv,
           grid: GRID,
           premios: PRv.map((p) => ({ n: p.n, p: p.p })),
@@ -659,6 +731,7 @@ function setup(a) {
         if (
           JSON.stringify(d.costs) !== JSON.stringify(r.costs) ||
           d.pts !== r.pts ||
+          d.ptsRegistro !== r.ptsRegistro ||
           d.cancelHs !== r.cancelHs ||
           d.grid !== r.grid ||
           JSON.stringify(d.premios) !== JSON.stringify(r.premios)
@@ -698,11 +771,20 @@ function setup(a) {
           };
           if (!FN.bs.some((b) => b.id === dbi)) dbi = FN.bs.length ? FN.bs[0].id : '';
           // Publicá la lista de barberos para que los clientes puedan elegir
-          const pub = FN.bs.map((b) => ({
-            id: b.id,
-            n: b.n,
-            foto: (BARS.find((x) => x.id === b.id) || {}).foto || (b.uid === me.uid && SB && SB.foto) || "",
-          }));
+          /* OJO: se reparte sobre la ficha existente (spread), no se arma un
+             objeto nuevo con id/n/foto. Antes sí se armaba así, y como esto
+             corre cada vez que el dueño entra, cada entrada a Finanzas
+             borraba deconfig la ficha que el barbero cargó en "Mi perfil en
+             la web" (oficio, descripción, WhatsApp, Instagram, redes). */
+          const pub = FN.bs.map((b) => {
+            const prev = BARS.find((x) => x.id === b.id) || {};
+            return {
+              ...prev,
+              id: b.id,
+              n: b.n,
+              foto: prev.foto || (b.uid === me.uid && SB && SB.foto) || "",
+            };
+          });
           setDoc(doc(db, "config", "barberos"), { l: pub }).catch(() => {});
         },
         () => {},
@@ -716,21 +798,34 @@ function setup(a) {
   occ();
 }
 /* Datos públicos para la landing (sin login): servicios, barberos, horarios y galería */
+/* Datos públicos para la landing (sin login): servicios, barberos, horarios y galería
+
+   OJO con por qué se guarda una copia aparte. Estos onSnapshot están sobre
+   un `doc()`, así que sólo se disparan cuando el documento CAMBIA. Al
+   cerrar sesión se limpian las variables de panel (BARS, entre otras) y,
+   como en Firestore el documento no había cambiado, ningún callback vuelve
+   a correr: la landing se quedaba con "Equipo sin cargar" para siempre.
+   Guardando lo último recibido, al salir se reaplica y la landing se
+   completa sola. (La declaración de PUB está arriba, con el resto del
+   estado, porque la función de cierre de sesión la necesita.) */
 onSnapshot(doc(db, "config", "servicios"), (x) => {
+  PUB.servicios = x.exists() && x.data().l && x.data().l.length ? x.data().l.map(nsv) : S0.map(nsv);
   if (!me) {
-    S = x.exists() && x.data().l && x.data().l.length ? x.data().l.map(nsv) : S0.map(nsv);
+    S = PUB.servicios;
     R();
   }
 });
 onSnapshot(doc(db, "config", "barberos"), (x) => {
+  PUB.barberos = x.exists() && x.data().l ? x.data().l : [];
   if (!me) {
-    BARS = x.exists() && x.data().l ? x.data().l : [];
+    BARS = PUB.barberos;
     R();
   }
 });
 onSnapshot(doc(db, "config", "horario"), (x) => {
+  PUB.horario = x.exists() ? { ...CFD, ...x.data() } : { ...CFD };
   if (!me) {
-    CF = x.exists() ? { ...CFD, ...x.data() } : { ...CFD };
+    CF = PUB.horario;
     R();
   }
 });
@@ -792,6 +887,10 @@ const RT = {
   bars: "barberos",
   dash: "dashboard",
   fin: "finanzas",
+  /* "ajus" es el Ajustes DEL CLIENTE. El dueño ya tenía "cfg" (#/ajustes),
+     así que el cliente no puede usar la misma palabra: si compartieran el
+     hash, el cliente caería en la vista de reglas y premios. */
+  ajus: "mi-cuenta",
   cfg: "ajustes",
   priv: "privacidad",
   gal: "galeria",
@@ -804,7 +903,7 @@ const rtOk = (v) =>
     ? isOwner()
       ? ["bar", "cli", "bars", "dash", "fin", "cfg", "priv", "gal"]
       : ["bar", "cli", "fin", "priv", "gal"]
-    : ["home", "res", "tur", "priv", "rev"]
+    : ["home", "res", "tur", "rev", "ajus", "priv"]
   ).includes(v);
 const rtView = () => Object.keys(RT).find((k) => "#/" + RT[k] === location.hash);
 const rtPush = (v, rep) => {
@@ -816,6 +915,9 @@ function prep(v) {
   view = v;
   mas = 0;
   navOpen = 0;
+  /* El menú del perfil se cierra al navegar. Sin esto, entrar a Ajustes
+     desde la foto dejaba el dropdown abierto encima de la vista nueva. */
+  perfilOpen = 0;
   if (v === "res") {
     resStep = 1;
     /* Si venía del modal con el turno ya elegido, entrar no lo borra:
@@ -895,6 +997,9 @@ const W = {
   rgPts(el) {
     PTSv = +String(el.value).replace(/\D/g, "") || 0;
   },
+  rgPtsRegistro(el) {
+    PTSRv = +String(el.value).replace(/\D/g, "") || 0;
+  },
   rgCan(el) {
     CHSv = +String(el.value).replace(/\D/g, "") || 0;
   },
@@ -908,6 +1013,7 @@ const W = {
     const r = {
       costs: PRv.map((p) => p.p),
       pts: PTSv,
+      ptsRegistro: PTSRv,
       cancelHs: CHSv,
       grid: GRID,
       premios: PRv.map((p) => ({ n: p.n, p: p.p })),
@@ -1123,6 +1229,57 @@ const W = {
     mas = 0;
     R();
   },
+  /* "Canjear puntos" del inicio: los premios están más abajo en la misma
+     vista, así que en vez de navegar a otro lado sólo baja hasta ellos. Con
+     foco movido, porque si no el scroll lo hace a ciegas y el teclado se
+     queda en el botón de arriba. */
+  verPremios() {
+    const el = document.getElementById("premios");
+    if (!el) return;
+    el.scrollIntoView({ block: "start", behavior: "smooth" });
+    const t = document.querySelector('[data-act="redeem"]:not([disabled])') || document.querySelector('[data-act="redeem"]');
+    if (t) {
+      t.setAttribute("tabindex", "-1");
+      t.focus({ preventScroll: true });
+    }
+  },
+  /* Menú del perfil del cliente: lo abre la foto del encabezado. Es un
+     dropdown, no el #nmenu del admin, porque el cliente no tiene
+     secciones de configuración para listar. */
+  /* La foto del encabezado abre el menú. Un único disparador para los dos
+     roles, pero cada uno abre lo suyo: el cliente su #pmenu (Ajustes, Ver
+     la web, Cerrar sesión) y el admin el #nmenu de secciones. Antes eran
+     dos botones distintos —#hamb para el admin y #perfil para el cliente—
+     y el dueño pidió que la foto sea el menú. */
+  toggleMebadge() {
+    if (isAdm()) {
+      navOpen = navOpen ? 0 : 1;
+      perfilOpen = 0;
+      R();
+      const b = $("#nmenu button");
+      if (b) b.focus();
+      return;
+    }
+    perfilOpen = perfilOpen ? 0 : 1;
+    navOpen = 0;
+    R();
+    /* El foco entra al primer ítem al abrir: si no, el teclado se queda
+       en la foto y el menú es inalcanzable sin tabular a ciegas. */
+    if (perfilOpen) {
+      const b = $("#pmenu button");
+      if (b) b.focus();
+    }
+  },
+  /* Se mantiene el nombre viejo porque hay tests y textos que lo usan, pero
+     ahora hace lo mismo que tocar la foto. */
+  togglePerfil() {
+    this.toggleMebadge();
+  },
+  cerrarPerfil() {
+    if (!perfilOpen) return;
+    perfilOpen = 0;
+    R();
+  },
   setTab(t) {
     tab = t;
     R();
@@ -1156,13 +1313,46 @@ const W = {
     document.body.classList.remove("ver-web");
     R();
   },
+  /* Abre las políticas. Guarda el elemento que las abrió para devolvérsele
+     el foco al cerrar: si no, el usuario queda perdido en el cuerpo de la
+     página y tiene que volver a recorrerla con el teclado para seguir. */
   openPol() {
     const x = $("#po");
+    polRetorno = document.activeElement;
     x.innerHTML = polH();
     x.hidden = false;
+    document.body.classList.add("no-scroll");
+    const c = x.querySelector(".pol-x");
+    if (c) c.focus();
+  },
+  /* Abre el modal de políticas en una sección puntual. El resumen del turno
+     necesita llevar al cliente directo a "Datos" (la parte de privacidad) y
+     a "Condiciones" (las del servicio), no a la primera solapa. */
+  openPolSec(id) {
+    ACT.openPol();
+    polIrTab(id, false);
+  },
+  /* Cambia de sección. Las solapas son tabs de verdad (role="tab" +
+     aria-selected + aria-controls), así que el foco tiene que poder moverse
+     con las flechas, no sólo con el click. */
+  polTab(id) {
+    polIrTab(id, false);
   },
   cerrarPol() {
-    $("#po").hidden = true;
+    const x = $("#po");
+    x.hidden = true;
+    x.innerHTML = "";
+    document.body.classList.remove("no-scroll");
+    /* Devolver el foco al link que abrió el diálogo, con preventScroll para
+       no saltar de nuevo al principio de la página. */
+    if (polRetorno && polRetorno.focus) {
+      try {
+        polRetorno.focus({ preventScroll: true });
+      } catch (e) {
+        polRetorno.focus();
+      }
+    }
+    polRetorno = null;
   },
   pickFoto(cb) {
     const i = document.createElement("input");
@@ -1268,15 +1458,26 @@ const W = {
         nm: U && U.nm ? U.nm : "Cliente",
         foto: U && U.foto ? U.foto : "",
         estrellas: revS || 5,
-        texto: revText || "Muy conforme con la atención.",
+        /* Sin texto no se inventa una frase: si no escribió nada, se publica
+       vacío. Poner "Muy conforme..." inventía una reseña que el cliente
+     nunca escribió. */
+    texto: revText,
         fecha: serverTimestamp(),
       });
-      msg = "¡Gracias! Ya registramos tu reseña.";
+      /* El aviso se pone DESPUÉS de navegar y se pinta una sola vez.
+         Antes era msg=...; R(); goNow("home") — y goNow vuelve a llamar a
+         R(), que borra `msg` al final de pintarlo. Los dos renders pasan en
+         el mismo tick, así que el navegador nunca llegan a mostrar el
+         "<p class=msg>": el cliente guardaba la reseña y no veía ninguna
+         confirmación. Ahora se replica el patrón del resto de la app:
+         preparar, poner el mensaje, y un solo R(). */
       revStep = 1;
       revS = 0;
       revText = "";
+      prep("home");
+      rtPush("home");
+      msg = "¡Gracias! Ya registramos tu reseña.";
       R();
-      W.goNow("home");
     } catch (e) {
       err(e);
     }
@@ -1335,23 +1536,74 @@ const W = {
       R();
     }
   },
-  async red(p) {
+  /* `registro` dice desde qué pantalla se apretó el botón. Es lo único
+     que separa "crear la cuenta" de "entrar": el pop-up es el mismo.
+     Ver el comentario de redPassOk() para por qué hace falta. */
+  async red(p, registro) {
     try {
       const prov =
         p === "google"
           ? new GoogleAuthProvider()
           : new FacebookAuthProvider();
       const r = await signInWithPopup(auth, prov);
+      /* Si la cuenta quedó sin contraseña, hay que pedir una. Es el
+         problema de dejar Facebook sólo en el registro: quien se anotó
+         con Facebook no tiene contraseña, así que si el botón no está en
+         el ingreso esa persona no vuelve a entrar nunca y pierde sus
+         puntos y su historial. */
       const s = await getDoc(doc(db, "users", r.user.uid));
       if (!s.exists())
         await setDoc(doc(db, "users", r.user.uid), {
           nm: r.user.displayName || "Nuevo cliente",
           ph: "",
-          pt: 20,
+          /* Los puntos de bienvenida salen de la configuración, no de un 20
+             clavado. */
+          pt: PTSRv,
         });
+      /* El documento se crea ANTES de pedir la contraseña: si la persona
+         cierra la pantalla a mitad de camino igual tiene que quedar con
+         perfil, puntos e historial. La contraseña es lo último que se
+         resuelve, y hay un botón de "ahora no" justamente para eso. */
+      if (registro && !r.user.providerData.some((x) => x.providerId === "password")) {
+        redPass = { n: "", c: "", red: p };
+        tab = "redpass";
+        R();
+      }
     } catch (e) {
       err(e);
     }
+  },
+  /* Guarda la contraseña de una cuenta creada con Google o Facebook.
+     Sin esto esa persona quedaría sin forma de volver a entrar: el pop-up
+     social es el único acceso que tiene y el botón no va a estar en el
+     ingreso. Ver la nota del dueño en PRODUCT.md. */
+  async redPassOk() {
+    if (!redPass) return;
+    const n = (redPass.n || "").trim();
+    const c2 = (redPass.c || "").trim();
+    if (n.length < 6)
+      return M({
+        k: "w",
+        h: "Contraseña muy corta",
+        b: "La contraseña tiene que tener al menos 6 caracteres.",
+      });
+    if (n !== c2)
+      return M({ k: "w", h: "No coinciden", b: "Las dos contraseñas no son iguales." });
+    busy(1, "Guardando…");
+    try {
+      await updatePassword(auth.currentUser, n);
+      redPass = null;
+      msg = "Listo. Ya podés entrar con tu correo y esa contraseña.";
+    } catch (e) {
+      err(e);
+    }
+    busy(0);
+    R();
+  },
+  redPassNo() {
+    redPass = null;
+    msg = "Cerrá sesión: si no, no vas a poder volver a entrar.";
+    R();
   },
   async registro() {
     if (!$("#spol") || !$("#spol").checked)
@@ -1392,7 +1644,9 @@ const W = {
       await setDoc(doc(db, "users", c.user.uid), {
         nm: nm,
         ph: ph,
-        pt: 20,
+        /* Los puntos de bienvenida salen de la configuración, no de un 20
+           clavado. */
+        pt: PTSRv,
       });
       sendEmailVerification(c.user).catch(() => {});
       M({
@@ -1477,6 +1731,15 @@ const W = {
     R();
   },
   async askBook() {
+    /* La casilla de términos va PRIMERO, antes de la verificación de email:
+       si falta marcarlo, el cliente tiene que enterarse de eso y no de un
+       email sin verificar. El aviso dice exactamente qué marcar. */
+    if (!sel.pol)
+      return M({
+        k: "w",
+        h: "Falta aceptar los términos",
+        b: "Marcá la casilla de términos y condiciones antes de confirmar el turno.",
+      });
     if (!isAdm() && !me.emailVerified) {
       busy(1, "Verificando…", 1);
       try {
@@ -1526,6 +1789,51 @@ const W = {
         b: "Alguien reservó ese horario recién. Elegí otro.",
       });
     }
+    /* ---- reprogramar: se actualiza el turno que ya existe ----
+       Va ANTES del conteo de turnos activos, a propósito: si fuera después,
+       un cliente que ya tiene los 2 cupos no podría reprogramar ninguno,
+       que es justo cuando más lo necesita. Tampoco pasa por la rama de
+       "activos": reprogramar no crea un turno nuevo, reescribe el mismo,
+       y si no el cliente quedaría con el cupo duplicado. */
+    if (rep) {
+      const t0 = T.find((x) => x.id === rep);
+      if (!t0 || t0.st !== "pend") {
+        rep = 0;
+        return M({ k: "w", h: "No se puede reprogramar", b: "Ese turno ya no está pendiente." });
+      }
+      const b = writeBatch(db);
+      /* Los cupos viejos se borran por clave ("barbero_fecha_hora"). Se
+         usan los del propio turno, así funciona aunque el listado `ocupados`
+         se haya desincronizado. */
+      (t0.bl || []).forEach((x) => b.delete(doc(db, "ocupados", x)));
+      const ids2 = bl.map((t) => sel.b + "_" + sel.d + "_" + t.replace(":", ""));
+      ids2.forEach((x, i) =>
+        b.set(doc(db, "ocupados", x), { uid: t0.uid, d: sel.d, t: bl[i], tu: t0.id, g: GRID, bid: sel.b }),
+      );
+      b.set(doc(db, "turnos", t0.id), {
+        s: sel.s,
+        sid: S[sel.s].id,
+        d: sel.d,
+        t: sel.t,
+        bid: sel.b,
+        bl: ids2,
+        sn: S[sel.s].n,
+        sp: S[sel.s].p,
+        sm: S[sel.s].tx,
+      });
+      try {
+        await b.commit();
+        rep = 0;
+        sel.t = "";
+        W.goNow("tur");
+        msg = "Listo, cambiamos la fecha de tu turno.";
+        R();
+      } catch (e) {
+        err(e);
+      }
+      return;
+    }
+
     const act = T.filter((x) => x.uid === me.uid && x.st === "pend"),
       usados = new Set(act.map((x) => x.sl).filter(Boolean)),
       sl = [1, 2].find((n) => !usados.has(n));
@@ -1593,6 +1901,65 @@ const W = {
       }
       err(e);
     }
+  },
+  /* ---------- reprogramar ----------
+     Reusa el asistente de 6 pasos en modo edición: se precarga el turno
+     con su servicio, barbero y mes, y al confirmar se ACTUALIZA el turno en
+     vez de crear uno nuevo. Es la misma validación de cupos que usa book(),
+     así que no hay dos caminos para elegir horario.
+
+     Respeta la MISMA política que cancelar (CHSv horas): si ya no dá
+     tiempo, se manda a escribir a la barbería en vez de dejarlo tocar. */
+  reprogramar(id) {
+    const t0 = T.find((x) => x.id === id);
+    if (!t0 || !me) return;
+    if (t0.st !== "pend") return;
+    if (t0.uid !== me.uid && !isAdm())
+      return M({ k: "w", h: "Ese turno no es tuyo", b: "Sólo podés reprogramar tus propios turnos." });
+    if (!isAdm() && new Date(t0.d + "T" + t0.t + ":00-03:00") - now() < CHSv * 36e5) {
+      const wa =
+        WHATSAPP &&
+        "https://wa.me/" +
+          WHATSAPP +
+          "?text=" +
+          encodeURIComponent(
+            `Hola, soy ${t0.nm || U.nm}. Necesito cambiar la fecha de mi turno del ${fd(t0.d)} a las ${t0.t}.`,
+          );
+      return M({
+        k: "w",
+        h: "Ya no podés reprogramar online",
+        b: `Faltan menos de ${CHSv} horas para tu turno. Escribile a la barbería para avisar.`,
+        ok: wa ? 'Escribir por WhatsApp' : "Entendido",
+        no: wa ? "Cerrar" : "",
+        fn: wa ? () => open(wa, "_blank", "noopener") : null,
+      });
+    }
+    /* Precarga: el servicio se busca por id (el índice sel.s es frágil si
+       el dueño edita el listado de servicios entremedido). */
+    const iS = t0.sid ? S.findIndex((x) => x.id === t0.sid) : t0.s;
+    sel.s = iS >= 0 ? iS : 0;
+    sel.b = t0.bid;
+    sel.d = t0.d;
+    sel.t = "";
+    rep = t0.id;
+    WZ.mes = t0.d.slice(0, 7);
+    WZ.turno = "";
+    prep("res");
+    /* Arranca en el día: lo que casi siempre se quiere cambiar, y el
+       servicio y el barbero quedan los que ya eran. */
+    WZ.paso = 3;
+    if (!WZ.unsub) wzOcc();
+    rtPush("res");
+    WZ.pintar();
+    msg = "Elegí el nuevo día y horario.";
+    R();
+  },
+  /* Sale del modo edición sin tocar nada: se vuelve a reservar normal. */
+  repSalir() {
+    rep = 0;
+    prep("tur");
+    rtPush("tur");
+    R();
   },
   askCancel(id) {
     const t0 = T.find((x) => x.id === id);
@@ -2277,29 +2644,46 @@ Object.assign(W, {
       err(e);
     }
   },
+  /* Quitar un barbero. Hay dos caminos porque hay dos tipos:
+       - CON cuenta (tiene uid): deja de ser barbero, vuelve a cliente y
+         se le borra el documento de staff.
+       - SIN cuenta (agregado a mano desde "+ Agregar barbero"): no hay
+         cuenta que revertir, así que se saca de la lista de equipo. Antes
+         estos no tenían botón de quitar y quedaban registrados para
+         siempre: no se podían sacar de la web. */
   askQuitBar(uid) {
-    const b = FN.bs.find((x) => x.uid === uid);
+    const b = FN.bs.find((x) => (uid ? x.uid === uid : x.id === uid));
     if (!b) return;
+    const conCuenta = !!b.uid;
     M({
       k: "q",
       h: "¿Quitar a " + esc(b.n) + " como barbero?",
-      b: "Vuelve a ser un cliente común y pierde el acceso de barbero. Sus cobros anteriores se conservan.",
+      b: conCuenta
+        ? "Vuelve a ser un cliente común y pierde el acceso de barbero. Sus cobros anteriores se conservan."
+        : "Se lo saca del equipo y deja de aparecer en la web. No tiene cuenta de barbero, así que no hay nada más que revertir.",
       ok: "Quitar",
       no: "Volver",
-      fn: () => W.quitBar(uid),
+      fn: () => W.quitBar(b.uid || b.id),
     });
   },
-  async quitBar(uid) {
+  async quitBar(id) {
+    const b = FN.bs.find((x) => x.uid === id || x.id === id);
+    if (!b) return;
     const bt = writeBatch(db);
     bt.set(doc(db, "config", "finanzas"), {
       pd: FN.pd,
-      bs: FN.bs.filter((b) => b.uid !== uid),
+      bs: FN.bs.filter((x) => (b.uid ? x.uid !== id : x.id !== id)),
     });
-    bt.delete(doc(db, "staff", uid));
-    bt.update(doc(db, "users", uid), { rol: "" });
+    /* Sólo se toca staff y el rol del usuario si hay cuenta: en el
+       barbero manual no existen esos documentos y escribirlos crearía
+       basura. */
+    if (b.uid) {
+      bt.delete(doc(db, "staff", b.uid));
+      bt.update(doc(db, "users", b.uid), { rol: "" });
+    }
     try {
       await bt.commit();
-      msg = "Listo, volvió a la lista de clientes.";
+      msg = b.uid ? "Listo, volvió a la lista de clientes." : "Listo, se lo sacó del equipo.";
       R();
     } catch (e) {
       err(e);
@@ -2368,6 +2752,32 @@ Object.assign(W, {
   },
   quitarE(id) {
     deleteDoc(doc(db, "espera", id)).catch(err);
+  },
+  /* Guarda nombre y teléfono desde Ajustes del cliente. Usa las MISMAS
+     validaciones que el alta (registro): 2 a 40 letras de nombre y 8 a 15
+     dígitos de teléfono. Las reglas de /users dejan al cliente editar sólo
+     nm y ph, así que es exactamente lo que se puede guardar. */
+  async guardarPerfilCli() {
+    if (!me || !U) return;
+    const nm = (($("#ajusNm") || {}).value || "").trim();
+    const ph = (($("#ajusPh") || {}).value || "").replace(/\D/g, "");
+    if (nm.length < 2 || nm.length > 40)
+      return M({ k: "w", h: "Revisá tu nombre", b: "El nombre tiene que tener entre 2 y 40 letras." });
+    if (ph.length < 8 || ph.length > 15)
+      return M({ k: "w", h: "Revisá tu teléfono", b: "El teléfono tiene que tener entre 8 y 15 dígitos, solo números." });
+    try {
+      busy(1, "Guardando…", 1);
+      await setDoc(doc(db, "users", me.uid), { nm: nm, ph: ph }, { merge: true });
+      /* Se actualiza en memoria para que el encabezado y los saludos no
+         sigan mostrando el dato viejo hasta el próximo snapshot. */
+      U = { ...U, nm: nm, ph: ph };
+      busy(0);
+      msg = "Tus datos quedaron guardados.";
+      R();
+    } catch (e) {
+      busy(0);
+      err(e);
+    }
   },
   borrarAsk() {
     M({
@@ -2476,6 +2886,7 @@ const ACT = Object.assign({}, W, {
   Mok,
   Mx,
   pwLive,
+  redPassIn,
   selS(i) {
     sel.s = i;
     sel.t = "";
@@ -2486,9 +2897,12 @@ const ACT = Object.assign({}, W, {
     R();
   },
 });
+/* "@ck" es el estado marcado de un checkbox. Hace falta porque "@v" devuelve
+   el `value`, y el de una casilla es siempre "on" esté marcada o no: con
+   "@v" la casilla de términos llegaba siempre como "aceptada". */
 const dArgs = (el) =>
   JSON.parse(el.dataset.args || "[]").map((a) =>
-    a === "@el" ? el : a === "@v" ? el.value : a === "@o" ? el.open : a,
+    a === "@el" ? el : a === "@v" ? el.value : a === "@o" ? el.open : a === "@ck" ? el.checked : a,
   );
 const dRun = (el, k) => {
   const f = ACT[el.dataset[k]];
@@ -2496,16 +2910,25 @@ const dRun = (el, k) => {
 };
 document.addEventListener("click", (e) => {
   const el = e.target.closest("[data-act]");
-  if (e.target.closest("#med,#mebadge")) {
-    navOpen = navOpen ? 0 : 1;
+  /* Antes la foto (#mebadge) tenía aquí un caso propio que hacía `return`,
+     y por eso nunca llegaba a dRun. Ahora la foto es un <button> con
+     data-act="toggleMebadge" como cualquier otro: si el caso especial
+     siguiera, abriría y cerraría en el mismo clic. */
+  /* Un clic fuera del equipo cierra la ficha abierta. Sin esto, tocar en
+     cualquier lado deja un dorso dado vuelta en pantalla sin forma
+     obvio de cerrarlo. */
+  if (!e.target.closest(".lb-barber") && document.querySelector(".lb-barber--abierta")) lbCierraTodos();
+  /* Menú del perfil: se cierra al tocar fuera. La foto ES el disparador,
+     así que sin esta guarda el clic se comería a sí mismo. */
+  if (perfilOpen && !e.target.closest("#mebadge,#pmenu")) {
+    perfilOpen = 0;
     R();
-    return;
   }
   if (mas && !e.target.closest('[data-act="toggleMas"],.masm')) {
     mas = 0;
     if (!el) R();
   }
-  if (navOpen && !e.target.closest('[data-act="toggleNav"],#nmenu,#mebadge')) {
+  if (navOpen && !e.target.closest('#nmenu,#mebadge,[data-act="toggleMebadge"]')) {
     navOpen = 0;
     if (!el) R();
   }
@@ -2534,6 +2957,133 @@ document.addEventListener(
   },
   true,
 );
+/* --- Políticas: solapas, foco y teclado -------------------------------
+   El modal (#po) vive fuera de #app, así que R() no lo borra: su estado se
+   maneja aparte. polRetorno es el elemento que lo abrió, para devolverle el
+   foco al cerrar. */
+let polRetorno = null;
+
+/* Muestra una sección y deja su solapa activa. `mover` además mueve el foco
+   a la solapa (lo usan las flechas del teclado). */
+function polIrTab(id, mover) {
+  const po = $("#po");
+  if (!po || po.hidden) return;
+  if (!POL_SECC.some(([s]) => s === id)) return;
+  po.querySelectorAll("[data-panel]").forEach((p) => {
+    p.hidden = p.dataset.panel !== id;
+  });
+  po.querySelectorAll(".pol-tab").forEach((t) => {
+    /* Se compara contra JSON.stringify, NO contra A(id): el atributo llega
+       a dataset ya decodificado (`["datos"]`), mientras A() devuelve el texto
+       con entities (`[&quot;datos&quot;]`). Comparar los dos nunca da igual y
+       las solapas no cambiaban de sección. */
+    const on = t.dataset.args === JSON.stringify([id]);
+    t.classList.toggle("on", on);
+    t.setAttribute("aria-selected", on ? "true" : "false");
+    t.tabIndex = on ? 0 : -1;
+    if (on) {
+      if (mover) t.focus();
+      /* Al cambiar de solapa el scroll arranca arriba: si no, queda
+         mostrando la parte de abajo de la sección anterior. */
+      const b = po.querySelector(".pol-body");
+      if (b) b.scrollTop = 0;
+      /* La fila de solapas scrollea en horizontal. Con las flechas se puede
+         llegar a una que quedó fuera de la vista y el usuario no ve cuál
+         está activa: se trae al centro. block:"nearest" para no tocar el
+         scroll vertical de la página. */
+      try {
+        const r = t.getBoundingClientRect(),
+          caja = t.parentElement.getBoundingClientRect();
+        if (r.left < caja.left || r.right > caja.right)
+          t.scrollIntoView({ inline: "center", block: "nearest" });
+      } catch (e) {}
+    }
+  });
+}
+
+/* Elementos focusables del modal, en orden de tabulación. */
+const polFocables = (po) =>
+  [...po.querySelectorAll("a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex='-1'])")].filter(
+    (el) => el.offsetParent !== null && !el.closest("[hidden]") && !el.closest('[aria-hidden="true"]'),
+  );
+
+document.addEventListener("keydown", (e) => {
+  const po = $("#po");
+  if (!po || po.hidden) return;
+
+  if (e.key === "Escape") {
+    e.preventDefault();
+    ACT.cerrarPol();
+    return;
+  }
+
+  /* Solapas: ← → saltan de sección y mueven el foco, como manda el patrón
+     de tablist. Inicio/Fin van a la primera y a la última. */
+  if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) {
+    const t = e.target.closest(".pol-tab");
+    if (!t) return;
+    e.preventDefault();
+    const tabs = [...po.querySelectorAll(".pol-tab")];
+    const i = tabs.indexOf(t);
+    const sig =
+      e.key === "Home"
+        ? 0
+        : e.key === "End"
+          ? tabs.length - 1
+          : e.key === "ArrowRight"
+            ? (i + 1) % tabs.length
+            : (i - 1 + tabs.length) % tabs.length;
+    /* Se parsea el data-args en vez de recortar el texto: el atributo es
+       JSON y recortarlo con slice rompe si algún día lleva otro campo. */
+    let destino = "";
+    try {
+      destino = JSON.parse(tabs[sig].dataset.args)[0] || "";
+    } catch (err) {}
+    if (destino) polIrTab(destino, true);
+    return;
+  }
+
+  /* Foco atrapado: Tab cicla dentro del modal mientras esté abierto. Sin
+     esto se puede tabular al contenido de la página que queda detrás. */
+  if (e.key === "Tab") {
+    const f = polFocables(po);
+    if (!f.length) return;
+    const i = f.indexOf(document.activeElement);
+    e.preventDefault();
+    f[(i < 0 ? 0 : i + (e.shiftKey ? -1 : 1) + f.length) % f.length].focus();
+  }
+});
+/* Clic en el velo: cierra. Igual que #mo. */
+$("#po").addEventListener("click", (e) => {
+  if (e.target === e.currentTarget) ACT.cerrarPol();
+});
+/* Elementos que-actúan-como-botón (role="button" + tabindex="0", como la
+   tarjeta de barbero en la landing) no disparan click con Enter ni con
+   Espacio: hay que traduzcirlos, o quedan imposibles de abrir sin mouse. */
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+  const el = e.target.closest('[role="button"][data-act]');
+  if (!el) return;
+  e.preventDefault();
+  dRun(el, "act");
+});
+/* Escape cierra la ficha del barbero abierta. Va aparte del listener de
+   Enter/Espacio porque la tecla es distinta y el resto del teclado
+   (Escape) lo manejan otros bloques. */
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (document.querySelector(".lb-barber--abierta")) lbCierraTodos();
+  /* Escape cierra los dos menús del header y devuelve el foco a la foto,
+     que es lo que los abre. Sin esto el foco se queda en un botón que ya
+     no existe. */
+  if (perfilOpen || navOpen) {
+    perfilOpen = 0;
+    navOpen = 0;
+    R();
+    const p = $("#mebadge");
+    if (p) p.focus();
+  }
+});
 $("#mo").addEventListener("click", (e) => {
   if (e.target === e.currentTarget) Mx();
 });
@@ -2543,10 +3093,21 @@ const ST = {
   hecho: "Completado",
   cancel: "Cancelado",
 };
+
+/* Secciones del panel del CLIENTE. Un solo origen: alimenta la barra del
+   encabezado (escritorio) y la barra inferior (celular), así no pueden
+   desincronizarse. "ajus" no va acá a propósito: Ajustes se abre desde la
+   foto de perfil, no desde la navegación. */
+const SEC_CLI = [
+  ["home", "Inicio"],
+  ["res", "Reservar"],
+  ["tur", "Mis turnos"],
+  ["rev", "Reseña"],
+];
 const lines = () =>
   S.map(
     (s) =>
-      `<div class="line"><span><b>${esc(s.n)}</b> <small>${esc(s.tx)}</small></span><span class="price">${$$(s.p)}</span></div>`,
+      `<div class="line">${s.img ? `<img class="mini" src="${esc(s.img)}" alt="" loading="lazy" decoding="async">` : ""}<span><b>${esc(s.n)}</b> <small>${esc(s.tx)}</small></span><span class="price">${$$(s.p)}</span></div>`,
   ).join("");
 function loginH() {
   const up = tab === "up",
@@ -2574,7 +3135,10 @@ function loginH() {
       <button type="button" class="volver" data-act="backLanding">← Volver a la web</button>
     </div>
     <div class="tarjeta">
-      <div class="vista" id="ingresar" ${up || rec ? "hidden" : ""}>
+      <!-- La pantalla de contraseña social cuenta como una vista más: sin
+               el redPass en la condición, el ingreso quedaba visible debajo y las
+               dos se superponían. -->
+            <div class="vista" id="ingresar" ${up || rec || redPass ? "hidden" : ""}>
         <h1>INGRESÁ</h1>
         <p class="sub">Reservá tu turno y sumá puntos en cada visita</p>
         <div class="campo"><label for="ie">Email</label><input class="entrada" id="ie" name="email" type="email" autocomplete="email" inputmode="email" placeholder="sofia@correo.com"></div>
@@ -2589,7 +3153,7 @@ function loginH() {
       </div>
       <div class="vista" id="registro" ${up ? "" : "hidden"}>
         <h1>CREÁ TU CUENTA</h1>
-        <p class="sub">Reservá tu turno en menos de un minuto · Al registrarte te cargamos 20 puntos</p>
+        <p class="sub">Reservá tu turno en menos de un minuto · Al registrarte te cargamos ${PTSRv} ${PTSRv === 1 ? "punto" : "puntos"}</p>
         <div class="campo"><label for="nm">Nombre</label><input class="entrada" id="nm" name="nombre" type="text" autocomplete="name" placeholder="Tu nombre"></div>
         <div class="campo"><label for="ph">Teléfono</label><input class="entrada" id="ph" name="telefono" type="tel" autocomplete="tel" inputmode="tel" placeholder="Tu teléfono"></div>
         <div class="campo"><label for="em">Email</label><input class="entrada" id="em" name="email" type="email" autocomplete="email" inputmode="email" placeholder="sofia@correo.com"></div>
@@ -2599,9 +3163,18 @@ function loginH() {
         <button class="boton primario" data-act="registro">Crear cuenta</button>
         <div class="o" style="margin-top:14px">o continuá con</div>
         <div style="display:flex;gap:10px">
-          <button class="boton secundario" type="button" data-act="red" data-args="${A("google")}" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px"><img src="assets/google.png" alt="" width="20" height="20">Google</button>
-          <button class="boton secundario" type="button" data-act="red" data-args="${A("facebook")}" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px"><img src="assets/facebook.png" alt="" width="20" height="20">Facebook</button>
+          <button class="boton secundario" type="button" data-act="red" data-args="${A("google", true)}" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px"><img src="assets/google.png" alt="" width="20" height="20">Google</button>
+          <button class="boton secundario" type="button" data-act="red" data-args="${A("facebook", true)}" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px"><img src="assets/facebook.png" alt="" width="20" height="20">Facebook</button>
         </div>
+      </div>
+      <div class="vista" id="redpass" ${redPass ? "" : "hidden"}>
+        <h1>ELEGÍ UNA CONTRASEÑA</h1>
+        <p class="sub">Tu cuenta ya está creada con ${redPass && redPass.red === "facebook" ? "Facebook" : "Google"}. Poné una contraseña para poder entrar después sin usar esa red social.</p>
+        <div class="campo"><label for="rpw">Contraseña</label><div class="clave"><input class="entrada" id="rpw" name="password" type="password" autocomplete="new-password" placeholder="Tu contraseña" data-in="redPassIn" data-args="${A("n", "@el")}"><button type="button" class="ver" data-act="ver" data-args="${A("@el")}">Ver</button></div><ul class="reglas" id="rpwl">${pwHtml("", "")}</ul></div>
+        <div class="campo"><label for="rpw2">Repetí la contraseña</label><div class="clave"><input class="entrada" id="rpw2" name="password2" type="password" autocomplete="new-password" placeholder="Repetí la contraseña" data-in="redPassIn" data-args="${A("c", "@el")}"><button type="button" class="ver" data-act="ver" data-args="${A("@el")}">Ver</button></div></div>
+        <button class="boton primario" data-act="redPassOk">Guardar y entrar</button>
+        <p style="margin-top:14px"><small>Si seguís sin poner contraseña vas a poder mirar tu cuenta ahora, pero después no vas a poder volver a entrar.</small></p>
+        <button class="enlace" data-act="redPassNo" style="margin-top:8px">Ahora no, gracias</button>
       </div>
       <div class="vista" id="recuperar" ${rec ? "" : "hidden"}>
         <h1>Recuperá tu acceso</h1>
@@ -2764,17 +3337,17 @@ function lbPaint() {
 /* Tarjeta que abre el asistente de reserva. El widget de 4 pasos que
    estaba acá pasa a ser el modal: son los mismos 6 pasos. */
 function lbReservaCard() {
-  const libre = S.filter((x) => x.p > 0).length;
   return `<div class="lb-widget lb-wcard">
     <h3>Reservá tu turno</h3>
     <p class="lb-lead">Elegí servicio, barbero, día y horario. Te lleva menos de un minuto.</p>
-    <ol class="wz-pasos lb-wpasos">${WZ_PASOS.map(
+    <!-- La lista de pasos (1 a 6) es decorativa: el asistente real ya los
+         muestra con nombre arriba. En el celular ocupaba dos filas de
+         números sueltos que no significaban nada ("no se entiende esos
+         números"), así que se oculta en pantallas chicas. -->
+    <ol class="wz-pasos lb-wpasos" aria-hidden="true">${WZ_PASOS.map(
       ([n, t]) => `<span class="wz-paso"><b>${n}</b>${t}</span>`,
     ).join("")}</ol>
     <button class="lb-btn lb-btn--pri lb-btn--lg lb-btn--full" type="button" data-act="wzAbrir">Elegir mi turno</button>
-    <p class="lb-wcard-note">${
-      libre ? `Desde $${Math.min(...S.filter((x) => x.p > 0).map((x) => x.p)).toLocaleString("es-AR")}.` : "Cargá tus servicios desde el panel."
-    } ${me ? "Iniciá sesión y confirmá en un paso." : "Te pedimos la contraseña solo al final."}</p>
   </div>`;
 }
 
@@ -2793,6 +3366,64 @@ function lbPuntos() {
 
 /* Tabla de horarios tomada del horario GENERAL (config/horario),
    no de valores fijos: si el barbero los cambia, cambian solos. */
+/* Link de "Cómo llegar". Se arma desde el MISMO MAP_IFRAME del mapa, para
+   que no puedan quedar desincronizados: si se cambia la coordenada en
+   config.js, cambian los dos. */
+const lbMapLink = () => {
+  const q = /[?&]q=([^&]+)/.exec(MAP_IFRAME);
+  return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(q ? q[1] : NOMBRE);
+};
+
+/* Horarios para el bloque de Contacto. Sale de config/horario, incluido
+   el descanso (al/ah): si el dueño no cargó ninguno, no se muestra la
+   línea en vez de inventar uno. */
+/* OJO con el nombre: ya hay un `lbHorarios` más arriba (el que arma las
+   franjas de la agenda). Este es el bloque de horarios de la sección de
+   Contacto, con el descanso y la pastilla "Cerrado". */
+function lbBloqueHorarios() {
+  const c = CFB("");
+  const CORTO = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+  const LARGO = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+  const orden = c.dias.includes(0) || !c.dias.includes(1) ? [0, 1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5, 6, 0];
+  /* Días consecutivos como "Lunes a jueves", que es lo que pide el
+     mockup, en vez de "Lun, Mar, Mié, Jue". Si no son corridos, se listan. */
+  const rangoDias = (dias) => {
+    if (dias.length === 1) return LARGO[dias[0]];
+    /* Consecutivos con salto de semana: vie(5), sáb(6), dom(0). Comparar
+       contra dias[i-1]+1 a secas daba 0 !== 7 y la fila salía
+       "viernes, sábado, domingo" en vez de "viernes a domingo". El módulo
+       7 es lo que hace que el domingo cierre la semana y no la abra. */
+    let corrido = true;
+    for (let i = 1; i < dias.length; i++) if (dias[i] !== (dias[i - 1] + 1) % 7) corrido = false;
+    return corrido ? LARGO[dias[0]] + " a " + LARGO[dias[dias.length - 1]] : dias.map((d) => LARGO[d]).join(", ");
+  };
+  /* Se agrupan los días que comparten horario: con Lun/Mar/Mié/Jue igual
+     salían cuatro filas idénticas, mucho texto para decir lo mismo. */
+  const grupos = [];
+  orden.forEach((d) => {
+    const abre = c.dias.includes(d);
+    const desc = abre && c.al && c.ah ? hm(c.al) + "-" + hm(c.ah) : "";
+    const clave = abre ? "abre|" + desc : "cerrado";
+    const g = grupos[grupos.length - 1];
+    if (g && g.clave === clave) g.dias.push(d);
+    else grupos.push({ clave, dias: [d], abre, desc });
+  });
+  /* El horario de apertura sale SIEMPRE de a/c. Si se usa el descanso
+     para el número grande, la fila muestra "11:30 a 13:30 hs" como si
+     fuera el horario de atención, que es lo contrario de lo que abre. */
+  return grupos
+    .map(
+      (g) => `<div class="lb-hr${g.abre ? "" : " lb-hr--cerrado"}">
+        <div>
+          <b>${rangoDias(g.dias)}</b>
+          ${g.abre && g.desc ? `<small>Descanso ${g.desc.replace("-", " a ")} hs</small>` : ""}
+        </div>
+        ${g.abre ? `<strong>${hm(c.a)} a ${hm(c.c)} hs</strong>` : `<span class="lb-hr-cerrado">Cerrado</span>`}
+      </div>`,
+    )
+    .join("");
+}
+
 function lbTablaHorarios() {
   const c = CFB("");
   const CORTO = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
@@ -2835,23 +3466,239 @@ function lbTablaHorarios() {
   return `<ul class="lb-hor">${filas}</ul>`;
 }
 
-/* Enlace social del header/contacto: ícono + texto, 44px de alto mínimo.
-   El ícono es un <span> con mask (no un <img>): así toma el color del
-   enlace y se ve igual en claro y en oscuro.
-   `clase` se aplica al link: "lb-soc-ico" lo deja sólo con el ícono. */
-/* Los iconos van como <img>, no como máscara de CSS.
-   Antes se usaba mask-image para poder pintar con currentColor, pero eso
-   obliga a que el SVG sea una forma de UN solo color: los logos reales
-   (Instagram con su degradado, WhatsApp con su verde) arriving multicolor
-   se convertían en un bloque y un disco opacos. Al ser logos con color
-   propio, <img> es lo correcto. */
-const lbSoc = (clase) => `<a class="lb-soc-lnk ${clase}" href="https://www.instagram.com/${esc(INSTAGRAM)}" target="_blank" rel="noopener">
-      <img class="ic-ig" src="assets/instagram.svg" alt="" width="20" height="20" loading="lazy" decoding="async"><span class="lb-soc-tx">Instagram</span></a>
-    ${WA_LISTA.map(
-      (w) =>
-        `<a class="lb-soc-lnk lb-soc-wa ${clase}" href="https://wa.me/${esc(w.num)}" target="_blank" rel="noopener">
-      <img class="ic-wa" src="assets/whatsapp.svg" alt="" width="20" height="20" loading="lazy" decoding="async"><span class="lb-soc-tx">WhatsApp ${esc(w.n)}</span></a>`,
-    ).join("")}`;
+/* Ficha ampliada de un barbero, para el diálogo de la landing.
+   Los datos salen de config/barberos porque es lo único legible sin sesión
+   (ver comentario de la tarjeta). Todo es opcional: si el barbero no cargó
+   nada, la tarjeta ni muestra el botón. */
+const lbFichaBarbero = (b) => ({
+  n: b.n || "",
+  esp: b.esp || b.especialidad || "",
+  desc: b.desc || "",
+  tel: b.tel || b.whatsapp || "",
+  ig: b.ig || "",
+  redes: Array.isArray(b.redes) ? b.redes.filter((r) => r && r.url) : [],
+});
+
+/* Normaliza un teléfono a formato de wa.me (solo dígitos, con 549). */
+const lbTelWa = (t) => {
+  const d = String(t || "").replace(/\D/g, "");
+  if (!d) return "";
+  return d.startsWith("54") ? d : "54" + d.replace(/^0/, "");
+};
+
+/* ---------- La tarjeta que se da vuelta ----------
+   Dos caras dentro de .lb-barber-int: la de adelante con foto y nombre, la
+   de atrás con la ficha. La rotación 180° la hace el CSS; acá sólo se
+   cambia la clase y se anima la altura.
+
+   El alto hay que animarlo a mano porque el dorso es más alto que el frente
+   y las dos caras están superpuestas (position:absolute): sin esto la
+   tarjeta rota se saldría de la grilla y taparía a la de al lado. */
+/* El grupo es la zona que GIRA (`.lb-barber-giro`), no la tarjeta entera.
+   Con el rediseño la tarjeta se partió en dos: la zona de la foto y el
+   nombre gira, y el pie con los dos botones queda fijo. `data-act` y
+   `data-args` viven en la zona que gira, así que lbFlip tiene que buscar
+   ahí: si el grupo fuera la tarjeta, no encontraría el turno y el giro
+   no abriría nada. */
+const LB_GRUPO = ".lb-barber-giro";
+/* Para el alto y la clase de "abierta" hay que ir a la tarjeta: es la que
+   tiene overflow:hidden y la transición de altura. La zona que gira no
+   tiene bordered, y animarle el alto a ella no expande la caja visible. */
+const lbTarjeta = (giro) => giro.closest(".lb-barber") || giro;
+
+/* Estado de las caras: la oculta queda `inert` para que sus enlaces y
+   botones no entren al taborder ni la lea el lector de pantalla. Girada,
+   `backface-visibility:hidden` la esconde de la vista pero NO la saca del
+   árbol de accesibilidad, así que sin `inert` se podría tabular a un link
+   que no se ve. */
+function lbCaras(tarjeta, abierta) {
+  const frente = tarjeta.querySelector(".lb-barber-frente");
+  const atras = tarjeta.querySelector(".lb-barber-atras");
+  tarjeta.setAttribute("aria-expanded", abierta ? "true" : "false");
+  if (atras) {
+    atras.setAttribute("aria-hidden", abierta ? "false" : "true");
+    atras.inert = !abierta;
+    if (frente) frente.inert = abierta;
+  }
+}
+
+/* Alto que necesita una cara. Las dos están superpuestas con
+   position:absolute, así que scrollHeight ya es su alto real: no hay que
+   sacarlas del flujo para medirlas. */
+const lbAltoCara = (cara) => (cara ? Math.ceil(cara.getBoundingClientRect().height) : 0);
+
+/* Alto que necesita la TARJETA, que no es el de la cara.
+
+   La tarjeta se compone de la zona que gira (la cara) MÁS el pie con los
+   dos botones, y entre los dos hay 2 px de borde (1 arriba, 1 abajo).
+   Medir sólo la cara y putearle ese alto a la tarjeta dejaba al pie sin
+   lugar: la caja se achicaba 83 px al empezar el giro —justo los botones—
+   y a los 620 ms saltaba de golpe al alto real. Eso era lo que se veía
+   como "se contrae un poco".
+
+   Ojo: se mide con la cara SIN rotar. Una cara con rotateY(180deg)
+   devuelve la caja ya transformada y el número no es de fiar. */
+function lbAltoTarjeta(cara) {
+  if (!cara) return 0;
+  const tarjeta = lbTarjeta(cara.closest(".lb-barber-giro") || cara);
+  const pie = tarjeta.querySelector(".lb-barber-pie");
+  const pieAlto = pie ? Math.ceil(pie.getBoundingClientRect().height) : 0;
+  return lbAltoCara(cara) + pieAlto + 2;
+}
+
+/* Abre o cierra una tarjeta. */
+function lbAbre(giro, abrir) {
+  const atras = giro.querySelector(".lb-barber-atras");
+  const frente = giro.querySelector(".lb-barber-frente");
+  if (!atras || !frente) return;
+  /* El alto y la clase van en la TARJETA, no en la zona que gira: la que
+     tiene overflow:hidden y la transición es la de afuera. */
+  const tarjeta = lbTarjeta(giro);
+
+  /* La tarjeta NO cambia de tamaño al girar: se le da el alto del dorso más
+     alto de los dos, así el toque no redimensiona nada bajo el dedo y sólo
+     rota. Antes se animaba de frente a dorso y ese cambio de tamaño se leía
+     como un tirón. Si algún día el dorso queda más alto que el frente (una
+     ficha larga), la tarjeta crece igual, pero nunca se encoge. */
+  const h = Math.max(lbAltoTarjeta(frente), lbAltoTarjeta(atras));
+  const actual = Math.ceil(tarjeta.getBoundingClientRect().height);
+  const cambia = Math.abs(h - actual) > 1;
+
+  /* Reflow antes de cambiar: sin esto el navegador ve "auto" -> "739px"
+     como un solo salto y no anima. Sólo hace falta si el alto cambia de
+     verdad; si la tarjeta ya mide eso, no se toca el style y la rotación
+     corre limpia. */
+  if (cambia) {
+    tarjeta.style.height = "";
+    void tarjeta.offsetHeight;
+    tarjeta.style.height = h + "px";
+  }
+
+  tarjeta.classList.toggle("lb-barber--abierta", abrir);
+  lbCaras(giro, abrir);
+
+  /* Cuando termina la transición se suelta a `auto` para que la tarjeta
+     siga acompañando el alto si el texto se reacomoda al cambiar el ancho.
+     Se espera al `transitionend` y no a un tiempo fijo: con un timeout la
+     suelta caía en el aire y se veía el salto. Si la altura no se animó no
+     hay evento al que esperar y no hay nada que soltar. */
+  clearTimeout(tarjeta._lbT);
+  if (cambia) {
+    const suelta = (ev) => {
+      if (ev && ev.propertyName !== "height") return;
+      tarjeta.removeEventListener("transitionend", suelta);
+      clearTimeout(tarjeta._lbT);
+      tarjeta._lbT = null;
+      /* `auto` da el mismo alto que se acaba de medir; si por lo que sea
+         no, se vuelve al número para que la caja no salte. */
+      tarjeta.style.height = "";
+      if (Math.ceil(tarjeta.getBoundingClientRect().height) < h) {
+        tarjeta.style.height = h + "px";
+      }
+    };
+    tarjeta.addEventListener("transitionend", suelta);
+    /* Red de seguridad: si la transición no dispara (reduced-motion la deja
+       en 0s, o la pestaña está en background) el listener no queda colgado. */
+    tarjeta._lbT = setTimeout(() => suelta(null), 700);
+  }
+
+  /* El dorso es más alto que el frente: al crecer, la tarjeta puede
+     quedarse a medias fuera de pantalla o —peor— quedar con el remate de
+     arriba tapado por el header fijo.
+
+     `scrollIntoView({block:"nearest"})` NO sirve para esto: "nearest" mira
+     los bordes del viewport, no el header. Como la tarjeta abierta entra
+     justa en la ventana, nearest decide que no hay nada que mover y la
+     deja con los primeros 100 px debajo del header. Por eso el scroll se
+     calcula a mano contra el alto real del header. */
+  if (abrir) {
+    clearTimeout(tarjeta._lbT2);
+    tarjeta._lbT2 = setTimeout(() => {
+      tarjeta._lbT2 = null;
+      const r = tarjeta.getBoundingClientRect();
+      const hd = document.querySelector(".lb-hd");
+      /* +12 de aire para que el borde de la tarjeta no quede pegado al
+         header. Si el header no está, el default es 68. */
+      const arriba = (hd ? hd.getBoundingClientRect().bottom : 68) + 12;
+      const abajo = window.innerHeight - 12;
+      /* Prioridad al borde de arriba: lo que se tapa es el remate de la
+         foto. Si además no entra por abajo, se prioriza que al menos se vea
+         el final (nombre y botón), que es la parte accionable. */
+      let delta = 0;
+      if (r.top < arriba) delta = r.top - arriba;
+      else if (r.bottom > abajo) delta = r.bottom - abajo;
+      if (delta) window.scrollBy({ top: delta, behavior: "smooth" });
+    }, 460);
+  }
+}
+
+/* Cierra todas las fichas abiertas. Se usa al tocar otra y antes de
+   saltar a reservar, para no dejar ninguna dada vuelta. */
+function lbCierraTodos(excepto) {
+  /* La clase "abierta" va en la tarjeta, pero el grupo son las zonas que
+     giran: se busca por la tarjeta y se pasa el giro a lbAbre. */
+  document.querySelectorAll(".lb-barber.lb-barber--abierta").forEach((tarjeta) => {
+    const giro = tarjeta.querySelector(LB_GRUPO);
+    if (giro && giro !== excepto) lbAbre(giro, false);
+  });
+}
+
+/* Entrada desde el click o el teclado en la tarjeta. Cierra las demás y
+   abre ésta; si ya estaba abierta, la cierra. */
+function lbFlip(id) {
+  /* Se busca comparando el data-args en vez de por selector de atributo:
+     el valor es JSON con comillas escapadas y CSS.escape sobre eso se
+     pone frágil. */
+  let giro = null;
+  for (const t of document.querySelectorAll(LB_GRUPO)) {
+    if (t.dataset.args === JSON.stringify([id])) {
+      giro = t;
+      break;
+    }
+  }
+  if (!giro) return;
+  const tarjeta = lbTarjeta(giro);
+  const abierta = tarjeta.classList.contains("lb-barber--abierta");
+  /* Sólo una ficha abierta: al tocar una nueva, la anterior se da vuelta
+     para su lado. */
+  lbCierraTodos(giro);
+  lbAbre(giro, !abierta);
+}
+
+/* Ficha que ve el cliente en la landing. Se guarda en
+   config/barberos (única colección de perfil legible sin sesión) y no en
+   staff/{uid}, que exige sesión. La foto sí va a staff. */
+function perfilH() {
+  const f = miFicha();
+  const redes = (f.redes || [])
+    .map((r) => (r.url ? (r.n || r.url) + " | " + r.url : ""))
+    .join("\n");
+  /* La descripción va como CONTENIDO del textarea, no como placeholder:
+     con placeholder, abrir el panel y guardar sin tocarla vaciaba el
+     campo en Firestore. */
+  return `<details class="perfil" style="max-width:640px;margin-bottom:16px">
+  <summary style="cursor:pointer;font-weight:700">Mi perfil en la web</summary>
+  <p style="margin:8px 0 14px"><small>Estos datos salen en tu tarjeta del equipo, en la landing. Si los dejás vacíos, la tarjeta no muestra el botón de información.</small></p>
+  <div class="cols2">
+    <label class="campo"><span class="etq">Nombre</span><input class="entrada" id="pfNombre" value="${esc(f.n || (SB && SB.n) || "")}" maxlength="40"></label>
+    <label class="campo"><span class="etq">Oficio / especialidad</span><input class="entrada" id="pfEsp" value="${esc(f.esp || f.especialidad || "")}" placeholder="Barbero, colorista…" maxlength="40"></label>
+  </div>
+  <label class="campo"><span class="etq">Descripción</span><textarea class="entrada" id="pfDesc" rows="3" maxlength="300" placeholder="Contá tu estilo, tu oficio, qué te gusta hacer.">${esc(f.desc || "")}</textarea></label>
+  <div class="cols2">
+    <label class="campo"><span class="etq">WhatsApp</span><input class="entrada" id="pfTel" inputmode="tel" value="${esc(f.tel || "")}" placeholder="5493757xxxxxx"></label>
+    <label class="campo"><span class="etq">Instagram</span><input class="entrada" id="pfIg" value="${esc(f.ig || "")}" placeholder="usuario, sin @"></label>
+  </div>
+  <label class="campo"><span class="etq">Otra red social</span><textarea class="entrada" id="pfRedes" rows="2" placeholder="una por línea: Nombre | https://…">${esc(redes)}</textarea></label>
+  <button class="boton primario" data-act="guardarPerfil" type="button">Guardar perfil</button>
+</details>`;
+}
+
+/* Los links sociales del header y del pie compacto se fueron: el pie se
+   eliminó de la landing y las redes ya están en la sección de Contacto,
+   como botones .lb-pill. Con eso la familia .lb-soc* quedó sin uso y se
+   borró junto con lbSoc(). Ojo: los iconos van como <img>, nunca como
+   mask-image de CSS — los logos reales (Instagram con degradado, WhatsApp
+   con su verde) son multicolor y como máscara se vuelven un bloque opaco. */
 
 /* Botón Reservar: si ya hay sesión va directo a reservar; si no, deja el
    hash en #/reservar para que al loguearse el router lo tome solo. */
@@ -2877,9 +3724,14 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
   const svcGrid = S.length
     ? S.map(
         (x) => `<article class="lb-sv">
+        ${/* La foto de preview la carga el dueño desde Servicios y premios y
+             veníaguardada en el dato (`img`), pero la tarjeta no la
+             pintaba: por eso "las cargo y no se muestran". */ x.img ? `<img class="lb-sv-img" src="${esc(x.img)}" alt="" loading="lazy" decoding="async">` : ""}
+        <div class="lb-sv-bd">
         <h3>${esc(x.n)}</h3>
         ${x.tag ? `<p class="lb-sv-desc">${esc(x.tag)}</p>` : ""}
         <div class="lb-sv-ft"><span class="lb-sv-dur">${esc(x.tx)}</span><span class="lb-price">${$$(x.p)}</span></div>
+        </div>
       </article>`,
       ).join("")
     : `<p class="lb-empty">Todavía no hay servicios cargados.</p>`;
@@ -2887,6 +3739,7 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
   const svcList = S.length
     ? S.map(
         (x) => `<div class="lb-sv-row">
+        ${x.img ? `<img class="lb-sv-mini" src="${esc(x.img)}" alt="" loading="lazy" decoding="async">` : ""}
         <span class="lb-sv-row-t"><b>${esc(x.n)}</b><small>${esc(x.tx)}</small></span>
         <span class="lb-price">${$$(x.p)}</span></div>`,
       ).join("")
@@ -2914,35 +3767,128 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
         )
         .join("");
 
-  /* ---------- 12. equipo ---------- */
+  /* ---------- 12. equipo ----------
+   Los datos de cada barbero salen de config/barberos, que es la única
+   colección de perfil que se puede leer SIN sesión (staff/{uid} pide
+   sesión). Por eso la ficha —teléfono, Instagram, redes, descripción—
+   vive acá y no en el documento de staff.
+
+   La tarjeta es una ficha que se DA VUELTA: al tocarla rota 180° y muestra
+   la información atrás. Al tocar otro barbero, el anterior se cierra y
+   éste se abre (sólo una a la vez, ver lbFlip).
+
+   Antes sólo era pulsable el que tenía ficha cargada, y como ningún
+   barbero la cargaba la función no se veía nunca. Ahora TODA tarjeta se
+   da vuelta: el dorso muestra lo que haya y siempre el botón de reservar,
+   así sirve aunque la ficha esté vacía. */
+  const lbDorso = (b) => {
+    const f = lbFichaBarbero(b);
+    const wa = lbTelWa(f.tel);
+    const enlaces = [
+      wa
+        ? `<a class="lb-bd-red" href="https://wa.me/${esc(wa)}" target="_blank" rel="noopener">
+            <img src="assets/whatsapp-96.png" alt="" width="18" height="18"> WhatsApp${f.tel ? " · " + esc(f.tel) : ""}</a>`
+        : "",
+      f.ig
+        ? `<a class="lb-bd-red" href="https://www.instagram.com/${esc(f.ig.replace(/^@/, ""))}" target="_blank" rel="noopener">
+            <img src="assets/instagram-96.png" alt="" width="18" height="18"> @${esc(f.ig.replace(/^@/, ""))}</a>`
+        : "",
+      ...f.redes.map(
+        (r) => `<a class="lb-bd-red" href="${esc(r.url)}" target="_blank" rel="noopener">
+          ${r.ic ? `<img src="${esc(r.ic)}" alt="" width="18" height="18">` : ""} ${esc(r.n || r.url)}</a>`,
+      ),
+    ]
+      .filter(Boolean)
+      .join("");
+    const vacio = !f.desc && !enlaces;
+    return `${f.esp ? `<p class="lb-bd-esp">${esc(f.esp)}</p>` : ""}
+      ${f.desc ? `<p class="lb-bd-desc">${esc(f.desc)}</p>` : ""}
+      ${enlaces ? `<div class="lb-bd-redes">${enlaces}</div>` : ""}
+      ${vacio ? '<p class="lb-bd-vacio">Todavía no cargó su información de contacto.</p>' : ""}`;
+  };
+
+  /* ---------- equipo (mockup del dueño) ----------
+   La tarjeta se parte en dos: arriba la zona que gira (foto + nombre) y
+   abajo el pie con los dos botones, que NO giran.
+
+   Antes era un solo elemento con role="button" que giraba entero, y el
+   "Ver información" era un cartelito posicionado sobre la foto. Con el
+   mockup hacen falta DOS botones ("Reservar con X" y "Ver información") y
+   un botón dentro de otro botón no es HTML válido, así que el pie quedó
+   fuera de la zona que gira.
+
+   El disparador del giro es un <div role="button"> y no un <button> a
+   propósito: el dorso puede contener enlaces (WhatsApp, Instagram) y
+   anidar un <button> real ahí dentro tampoco valdría. El teclado lo
+   maneja el listener de Enter/Espacio que ya existía. */
   const equipo = BARS.length
-    ? BARS.map(
-        (b) => `<article class="lb-barber">
-      <span class="lb-barber-ph">${b.foto ? `<img src="${esc(b.foto)}" alt="${esc(b.n)}" loading="lazy" decoding="async" width="400" height="400">` : esc((b.n || "?")[0].toUpperCase())}</span>
-      <span><b>${esc(b.n)}</b><small>${esc(b.esp || b.especialidad || "Barbero")}</small></span>
-    </article>`,
-      ).join("")
+    ? BARS.map((b) => {
+        const ficha = lbFichaBarbero(b);
+        const nombre = (b.n || "el barbero").split(" ")[0];
+        return `<article class="lb-barber">
+      <div class="lb-barber-giro" data-act="lbFlip" data-args="${A(b.id)}" tabindex="0" role="button" aria-expanded="false" aria-label="Ver información de ${esc(b.n)}">
+        <div class="lb-barber-int">
+          <span class="lb-barber-cara lb-barber-frente">
+            <span class="lb-barber-ph">${b.foto ? `<img src="${esc(b.foto)}" alt="${esc(b.n)}" loading="lazy" decoding="async" width="400" height="400">` : `<span class="lb-barber-falta" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M20 4 8.5 15.5M14.5 14.5 20 20M8.5 15.5 4 20"/></svg><small>[Foto]</small></span>`}</span>
+            <span class="lb-barber-id"><b>${esc(b.n)}</b><span class="lb-barber-pill">${esc(ficha.esp || "Barbero")}</span></span>
+          </span>
+          <span class="lb-barber-cara lb-barber-atras" aria-hidden="true" inert>
+            <b class="lb-bd-nom">${esc(b.n)}</b>
+            ${lbDorso(b)}
+          </span>
+        </div>
+      </div>
+      <div class="lb-barber-pie">
+        <button class="lb-btn lb-btn--pri lb-barber-res" type="button" data-act="lbReservarBar" data-args="${A(b.id)}">Reservar con ${esc(nombre)}</button>
+        <button class="lb-btn lb-btn--ghost lb-barber-info" type="button" data-act="lbFlip" data-args="${A(b.id)}">Ver información</button>
+      </div>
+    </article>`;
+      }).join("")
     : `<p class="lb-todo"><b>Equipo sin cargar</b>Cargá los barberos desde el panel de la barbería y aparecen acá solos.</p>`;
 
-  /* ---------- 13. testimonios: carrusel ---------- */
+  /* Tarjeta de llamado que el mockup pone debajo de la grilla. */
+  const ctaEquipo = BARS.length
+    ? `<div class="lb-elige">
+         <span class="lb-elige-ico" aria-hidden="true">
+           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+         </span>
+         <h3>Elegí con quién cortarte</h3>
+         <p>Elegís barbero, día y horario en menos de un minuto.</p>
+         <button class="lb-btn lb-btn--pri lb-btn--full" type="button" data-act="lbReservar">Reservar ahora</button>
+       </div>`
+    : "";
+
+  /* ---------- 13. testimonios: carrusel ----------
+     En escritorio se ven 3 por vez y en el celomar 1. Antes se veía una sola
+     en una caja del ancho de la pantalla: con una reseña corta ("asd") el
+     90% de la caja quedaba vacío y el texto perdía importancia. Los
+     puntitos tampocoaban: con 12 reseñas eran 12 pastillas iguales y no
+    aban en cuál estabas. Ahora va un contador "1–3 de 12". */
   const tsts = TESTS.length
     ? `<div class="lb-car" id="lbcar" role="region" aria-roledescription="carrusel" aria-label="Reseñas de clientes">
         <div class="lb-car-vent">
         <div class="lb-car-viz">
           ${TESTS.map(
-            (t, i) => `<article class="lb-tst" role="group" aria-roledescription="diapositiva" aria-label="${i + 1} de ${TESTS.length}"${i ? ' aria-hidden="true"' : ""}>
+            (t, i) => `<article class="lb-tst" role="group" aria-roledescription="diapositiva" aria-label="${i + 1} de ${TESTS.length}" aria-hidden="true">
             <span class="lb-stars" role="img" aria-label="${Math.max(1, Math.min(5, t.estrellas || 5))} de 5 estrellas">${"<svg width='18' height='18' viewBox='0 0 24 24' fill='currentColor' aria-hidden='true'><path d='M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.3 5.9 20.6l1.4-6.8L2.2 9.1l6.9-.8z'/></svg>".repeat(Math.max(1, Math.min(5, t.estrellas || 5)))}</span>
             <blockquote>“${esc(t.texto || "")}”</blockquote>
-            <cite>${esc(t.nm || "Cliente")}</cite></article>`,
+            <footer>
+              ${/* La foto sí estaba guardada en el documento de la reseña
+                   (`revSend` escribe `foto`), pero el carrusel no la
+                   pintaba: sólo nombre y texto. Si el cliente no cargó
+                   foto, va la inicial. */
+                t.foto
+                  ? `<img class="lb-tst-av" src="${esc(t.foto)}" alt="" width="30" height="30" loading="lazy" decoding="async">`
+                  : `<span class="lb-tst-av lb-tst-av--ini" aria-hidden="true">${esc((t.nm || "?").trim()[0].toUpperCase())}</span>`}
+              <cite>${esc(t.nm || "Cliente")}</cite>
+            </footer></article>`,
           ).join("")}
         </div>
         </div>
         <div class="lb-car-ctl">
-          <button class="lb-car-btn" type="button" data-act="lbCar" data-args="${A(-1)}" aria-label="Reseña anterior"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
-          <div class="lb-car-puntos" role="tablist" aria-label="Elegí reseña">
-            ${TESTS.map((_, i) => `<button type="button" role="tab" class="lb-car-punto${i ? "" : " on"}" aria-selected="${i ? "false" : "true"}" aria-label="Reseña ${i + 1} de ${TESTS.length}" data-act="lbCar" data-args="${A(i)}"></button>`).join("")}
-          </div>
-          <button class="lb-car-btn" type="button" data-act="lbCar" data-args="${A(1)}" aria-label="Reseña siguiente"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+          <button class="lb-car-btn" type="button" data-act="lbCar" data-args="${A(-1)}" aria-label="Reseñas anteriores"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+          <p class="lb-car-n" aria-live="polite" aria-atomic="true"><span class="lb-car-nr"></span></p>
+          <button class="lb-car-btn" type="button" data-act="lbCar" data-args="${A(1)}" aria-label="Reseñas siguientes"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
         </div>
       </div>`
     : `<p class="lb-todo"><b>Aún no hay reseñas</b>Cargá testimonios reales desde el panel: acá se muestran con su nombre y estrellas.</p>`;
@@ -2956,10 +3902,10 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
       <a class="lb-brand" href="#inicio"><img src="${LOGO}" alt="" width="54" height="54"><b>${esc(NOMBRE)}</b></a>
       <nav class="lb-nav" aria-label="Principal">
         <a href="#inicio">Inicio</a>
-        <a href="#equipo">Equipo</a>
         <a href="#servicios">Servicios</a>
         <a href="#puntos">Puntos</a>
         <a href="#galeria">Galería</a>
+        <a href="#equipo">Equipo</a>
         <a href="#testimonios">Reseñas</a>
         <a href="#contacto">Contacto</a>
       </nav>
@@ -2981,14 +3927,16 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
     </div>
     <div class="lb-panel" id="lbPanel" hidden>
       <a href="#inicio">Inicio</a>
-      <a href="#equipo">Equipo</a>
       <a href="#servicios">Servicios</a>
       <a href="#puntos">Puntos</a>
       <a href="#galeria">Galería</a>
+      <a href="#equipo">Equipo</a>
       <a href="#testimonios">Reseñas</a>
       <a href="#contacto">Contacto</a>
       <button class="lb-panel-btn" type="button" data-act="${me ? "verWebOff" : "goLogin"}">${me ? "Mi panel" : "Ingresar"}</button>
-      <div class="lb-panel-soc">${lbSoc("")}</div>
+      <!-- Las redes NO van en el menú (lo pidió el dueño): el menú es para
+           navegar dentro de la página, y las redes ya están en el pie y en
+           la sección de Contacto, que es donde se las busca. -->
       ${lbCta("lb-panel-res")}
     </div>
   </header>
@@ -2996,11 +3944,11 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
   <!-- 2. HERO -->
   <section id="inicio" class="lb-hero lb-wrap reveal">
     <div class="lb-hero-tx">
-      <span class="lb-eyebrow">Barbería clásica, hecha a tu medida</span>
+      <!-- El eyebrow y la nota de los 20 puntos los sacó el dueño: sobra
+           texto dettes que ya dicen los botones. -->
       <h1>Tu turno,<br><em>sin vueltas.</em></h1>
       <p class="lb-lead">Reservá en cuatro pasos, sumá ${PTSv} puntos por cada corte y canjealos por descuentos y cortes gratis.</p>
       <div class="lb-hero-cta">${lbCta("lb-btn--lg")}</div>
-      <p class="lb-hero-note"><b>20 puntos de bienvenida</b> al registrarte.</p>
     </div>
     <div class="lb-hero-wd">${lbReservaCard()}</div>
   </section>
@@ -3011,7 +3959,6 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
       <div class="lb-sec-h">
         <span class="lb-eyebrow">Lo que hacemos</span>
         <h2>Nuestros servicios.</h2>
-        <p class="lb-lead">El precio final se muestra al confirmar el turno.</p>
       </div>
       <!-- TODO: la descripción corta de cada servicio sale del campo "tag".
            Si el barbero no lo carga, se usa la genérica de arriba. -->
@@ -3073,6 +4020,7 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
       </div>
       <!-- TODO: la especialidad sale del campo "esp" de cada barbero. -->
       <div class="lb-team">${equipo}</div>
+      ${ctaEquipo}
     </div>
   </section>
 
@@ -3095,50 +4043,89 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
         <span class="lb-eyebrow">Visitanos</span>
         <h2>Pasá o escribinos.</h2>
       </div>
+      <!-- Columna izquierda: mapa, dirección y horarios.
+           Columna derecha: el formulario y las redes.
+           La dirección sale de src/config.js (CALLE / BARRIO / CIUDAD /
+           PROVINCIA) y las coordenadas de MAP_IFRAME; si la barbería se muda
+           hay que cambiar las dos. Los horarios salen de config/horario,
+           incluido el descanso (al/ah): no hay un horario escrito en el
+           HTML, así que lo que se ve acá es el real. -->
       <div class="lb-cont">
-        <div>
-          <!-- La dirección sale de src/config.js (CALLE / BARRIO / CIUDAD /
-               PROVINCIA) y las coordenadas de MAP_IFRAME: si la barbería se
-               muda hay que cambiar las dos cosas.
-               Los horarios salen de config/horario (horario general): no
-               hace falta tocarlos acá. Los días fechados de "libres"
-               (feriados) no se listan en esta tabla. -->
-          <div class="lb-card">
-            <h3>Dónde estamos</h3>
-            <p class="lb-addr"><b>${esc(CALLE)}</b><span>${esc(BARRIO)}</span><b>${esc(CIUDAD)}, ${esc(PROVINCIA)}</b></p>
-            <p class="lb-addr"><b>Horarios</b></p>
-            ${lbTablaHorarios()}
-            <div class="lb-soc lb-cont-soc">${lbSoc("")}</div>
-            <div class="lb-map">
-              <iframe
-                title="Ubicación de ${esc(NOMBRE)}"
-                src="${esc(MAP_IFRAME)}"
-                loading="lazy"
-                referrerpolicy="no-referrer-when-downgrade"
-                allowfullscreen></iframe>
+        <div class="lb-cont-col">
+          <!-- Orden pedido: dónde estamos, horarios, mapa, cómo llegar. -->
+          <div class="lb-card lb-donde">
+            <div class="lb-donde-t">
+              <span class="lb-donde-ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11Z"/><circle cx="12" cy="10" r="2.6"/></svg>
+              </span>
+              <div>
+                <span class="lb-etq">Dónde estamos</span>
+                <b>${esc(CALLE)}</b>
+                <span>${esc(BARRIO)}</span>
+                <b>${esc(CIUDAD)}, ${esc(PROVINCIA)}</b>
+              </div>
+            </div>
+          </div>
+
+          <div class="lb-card lb-hor">
+            <span class="lb-donde-ico lb-etq" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+              Horarios
+            </span>
+            ${lbBloqueHorarios()}
+          </div>
+
+          <div class="lb-map lb-map--top">
+            <span class="lb-map-lbl"><b>${esc(NOMBRE)}</b><small>${esc(CALLE)}, ${esc(CIUDAD)}</small></span>
+            <a class="lb-map-btn" href="${esc(lbMapLink())}" target="_blank" rel="noopener">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="15" height="15"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11Z"/><circle cx="12" cy="10" r="2.6"/></svg>
+              [MAPA · Google Maps]</a>
+            <iframe
+              title="Ubicación de ${esc(NOMBRE)}"
+              src="${esc(MAP_IFRAME)}"
+              loading="lazy"
+              referrerpolicy="no-referrer-when-downgrade"
+              allowfullscreen></iframe>
+          </div>
+
+          <!-- "Cómo llegar" va último y como botón suelto, no adentro de la
+               tarjeta de dirección: el dueño lo pidió como paso aparte. -->
+          <a class="lb-btn lb-btn--ghost lb-llegar lb-llegar--suelto" href="${esc(lbMapLink())}" target="_blank" rel="noopener">Cómo llegar
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="17" height="17"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        </div>
+
+        <div class="lb-cont-col">
+          <form class="lb-card lb-card--form" id="lbForm" novalidate>
+            <h3>Dejanos tu mensaje</h3>
+            <div class="lb-field" data-f="nombre">
+              <label for="cf-name">Nombre</label>
+              <input id="cf-name" name="nombre" type="text" autocomplete="name" placeholder="Tu nombre">
+              <span class="lb-err" data-e="nombre" aria-live="polite"></span>
+            </div>
+            <div class="lb-field" data-f="email">
+              <label for="cf-email">Email <abbr title="obligatorio">*</abbr></label>
+              <input id="cf-email" name="email" type="email" inputmode="email" autocomplete="email" placeholder="tunombre@correo.com" required>
+              <span class="lb-err" data-e="email" aria-live="polite"></span>
+            </div>
+            <div class="lb-field" data-f="mensaje">
+              <label for="cf-msg">Mensaje</label>
+              <textarea id="cf-msg" name="mensaje" rows="5" placeholder="Contanos qué necesitás"></textarea>
+              <span class="lb-err" data-e="mensaje" aria-live="polite"></span>
+            </div>
+            <button class="lb-btn lb-btn--pri lb-btn--lg" style="width:100%" id="cfSend" type="button" data-act="enviarContacto">Enviar</button>
+            <p class="lb-status" id="cf-status" role="status" aria-live="polite"></p>
+          </form>
+
+          <div class="lb-card lb-tambien">
+            <span class="lb-etq">También podés escribirnos por</span>
+            <div class="lb-pills">
+              ${INSTAGRAM ? `<a class="lb-pill" href="https://www.instagram.com/${esc(INSTAGRAM)}" target="_blank" rel="noopener"><img class="ic-ig" src="assets/instagram-96.png" alt="" width="22" height="22">Instagram</a>` : ""}
+              ${WA_LISTA.map(
+                (w) => `<a class="lb-pill" href="https://wa.me/${esc(w.num)}" target="_blank" rel="noopener"><img class="ic-wa" src="assets/whatsapp-96.png" alt="" width="22" height="22">WhatsApp ${esc(w.n)}</a>`,
+              ).join("")}
             </div>
           </div>
         </div>
-        <form class="lb-card" id="lbForm" novalidate>
-          <h3>Dejanos tu mensaje</h3>
-          <div class="lb-field" data-f="nombre">
-            <label for="cf-name">Nombre</label>
-            <input id="cf-name" name="nombre" type="text" autocomplete="name" placeholder="Tu nombre">
-            <span class="lb-err" data-e="nombre" aria-live="polite"></span>
-          </div>
-          <div class="lb-field" data-f="email">
-            <label for="cf-email">Email</label>
-            <input id="cf-email" name="email" type="email" inputmode="email" autocomplete="email" placeholder="tunombre@correo.com" required>
-            <span class="lb-err" data-e="email" aria-live="polite"></span>
-          </div>
-          <div class="lb-field" data-f="mensaje">
-            <label for="cf-msg">Mensaje</label>
-            <textarea id="cf-msg" name="mensaje" rows="5" placeholder="Contanos qué necesitás"></textarea>
-            <span class="lb-err" data-e="mensaje" aria-live="polite"></span>
-          </div>
-          <button class="lb-btn lb-btn--pri lb-btn--lg" style="width:100%" id="cfSend" type="button" data-act="enviarContacto">Enviar</button>
-          <p class="lb-status" id="cf-status" role="status" aria-live="polite"></p>
-        </form>
       </div>
     </div>
   </section>
@@ -3151,13 +4138,10 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
     </div>
   </section>
 
-  <!-- 10. FOOTER -->
-  <footer class="lb-ft">
-    <div class="lb-wrap lb-ft-in">
-      <p>© ${esc(NOMBRE)} · Turnos y puntos</p>
-      <div class="lb-soc lb-ft-soc">${lbSoc("")}</div>
-    </div>
-  </footer>
+  <!-- El pie compacto de la landing se fue (lo pidió el dueño): era una
+       franja con "© Codigo Barber · Turnos y puntos" y las redes, que
+       repetía lo que ya está en la sección de Contacto. Sin él la landing
+       cierra con la banda dorada de "Reservar ahora". -->
 
   <div class="lb-sticky">${lbCta("lb-btn--lg")}</div>
 </div>`;
@@ -3166,6 +4150,24 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
 /* --- Handlers del widget, del menú y del color del estado del formulario.
        Aditivos: no modifican ningún handler existente. --- */
 Object.assign(ACT, {
+  /* Da vuelta la tarjeta del barbero. Al tocar uno, se cierra el que
+     estuviera abierto: sólo puede haber una ficha abierta, así no quedan
+     dos doros dando vueltas al mismo tiempo. Volver a tocarlo lo cierra. */
+  lbFlip(id) {
+    lbFlip(id);
+  },
+  /* Reservar eligiendo a ese barbero: lo deja puesto en el widget antes de
+     saltar a la agenda, así el cliente no tiene que volver a elegirlo. */
+  lbReservarBar(id) {
+    if (id && BARS.some((b) => b.id === id)) {
+      lbw.b = lbw.b === id ? "" : id;
+      lbw.t = "";
+    }
+    /* El botón vive en el dorso de la tarjeta: se cierra para que el
+       usuario vea a dónde lo lleva el widget. */
+    lbCierraTodos();
+    ACT.lbReservar();
+  },
   /* Reservar: con sesión va directo a la agenda; sin sesión deja el hash en
      #/reservar y muestra el login. Al loguearse, el router de la app
      (rtView/rtOk, líneas ~3756) toma ese hash y abre la reserva solo. */
@@ -3224,11 +4226,16 @@ Object.assign(ACT, {
     lbPaint();
   },
   /* Carrusel de reseñas: -1 / +1 avanza o retrocede; un índice exacto va a esa. */
-  lbCar(i) {
+  /* Avanza o retrocede UNA PÁGINA (no una reseña). Las flechas mandan -1/+1
+     como número de página; antes cada flecha movía una sola tarjeta y con
+     3 a la vez eso "recortaba" la caja. */
+  lbCar(delta) {
     const n = TESTS.length;
     if (!n) return;
-    const a = +i;
-    lbCar.i = a < 0 ? (lbCar.i - 1 + n) % n : a >= n ? a % n : a;
+    const v = lbCarPorVista(n);
+    const pags = Math.ceil(n / v);
+    const a = +delta;
+    lbCar.pag = a < 0 ? (lbCar.pag - 1 + pags) % pags : a % pags;
     lbCar.pausa = Date.now() + 12000; // tras tocar a mano, deja de rotar un rato
     lbCarPinta();
   },
@@ -3242,20 +4249,37 @@ Object.assign(ACT, {
 /* Ojo con los dos refresh que dispara la app: hay que distinguir
    "cambió la cantidad de reseñas" (volvemos a la primera) de "se volvió
    a renderizar la misma lista" (conservamos la que se estaba viendo). */
-const lbCar = { i: 0, n: 0, t: null, pausa: 0 };
+const lbCar = { pag: 0, n: 0, t: null, pausa: 0 };
 const LB_CAR_MS = 5500;
+/* Cuántas reseñas se ven a la vez. 3 en escritorio, 1 en el celular. El CSS
+   tiene que coincidir con este número (--lb-car-por en landing.css), o la
+   caja quedaría con huecos: si el JS cree que entran 3 y el ancho dice 2,
+   se ve medio carrusel al aire. */
+const lbCarPorVista = (n) => (matchMedia("(min-width: 861px)").matches ? Math.min(3, n) : 1);
 const lbCarPinta = () => {
   const viz = document.querySelector(".lb-car-viz");
   if (!viz) return;
-  viz.style.transform = `translateX(${-lbCar.i * 100}%)`;
+  const n = TESTS.length;
+  if (!n) return;
+  const v = lbCarPorVista(n);
+  const pags = Math.max(1, Math.ceil(n / v));
+  if (lbCar.pag >= pags) lbCar.pag = 0;
+  const desde = lbCar.pag * v;
+  /* El desplazamiento va en PÍXELES, no en porcentaje. El track es un
+     flex de 12 tarjetas dentro de una caja de overflow:hidden, así que su
+     ancho de border-box es el de la caja (~1716px), no el ancho total
+     desplazable. En porcentaje, translateX(-25%) movía 429px en vez de
+     los ~1770 que corresponden a una página, y el carrusel saltaba a una
+     tarjeta a la vez. Medido con DOMMatrix. */
+  const anchoCaja = viz.parentElement.clientWidth;
+  const hueco = 14;
+  viz.style.transform = `translateX(${-(lbCar.pag * (anchoCaja + hueco))}px)`;
   viz.querySelectorAll(".lb-tst").forEach((el, i) => {
-    el.setAttribute("aria-hidden", i === lbCar.i ? "false" : "true");
+    el.setAttribute("aria-hidden", i >= desde && i < desde + v ? "false" : "true");
   });
-  document.querySelectorAll(".lb-car-punto").forEach((b, i) => {
-    const on = i === lbCar.i;
-    b.classList.toggle("on", on);
-    b.setAttribute("aria-selected", on ? "true" : "false");
-  });
+  const fin = Math.min(desde + v, n);
+  const nr = document.querySelector(".lb-car-nr");
+  if (nr) nr.textContent = n <= v ? `${n} de ${n}` : `${desde + 1}–${fin} de ${n}`;
 };
 const lbCarQuieto = () =>
   matchMedia("(prefers-reduced-motion: reduce)").matches ||
@@ -3268,13 +4292,13 @@ function lbCarMonta() {
   const raiz = document.getElementById("lbcar");
   if (!raiz) return;
   if (TESTS.length !== lbCar.n) {
-    lbCar.i = 0;
+    lbCar.pag = 0;
     lbCar.n = TESTS.length;
-  } else {
-    lbCar.i = Math.min(lbCar.i, TESTS.length - 1);
   }
   lbCarPinta();
-  if (TESTS.length < 2) return;
+  /* Con una sola página no hay nada que recorrer: sin este corte quedaba
+     un temporizador corriendo que empujaba el contador para siempre. */
+  if (TESTS.length <= lbCarPorVista(TESTS.length)) return;
 
   /* hover y foco se enganchan al nodo del carrusel: pointerenter no
      burbujea, así que escucharlo en document lo dispararía en cada hijo. */
@@ -3287,7 +4311,8 @@ function lbCarMonta() {
   lbCar.t = setInterval(() => {
     if (!document.getElementById("lbcar")) return lbCarMonta(); // cambió la vista
     if (lbCarQuieto()) return;
-    lbCar.i = (lbCar.i + 1) % TESTS.length;
+    const pags = Math.max(1, Math.ceil(TESTS.length / lbCarPorVista(TESTS.length)));
+    lbCar.pag = (lbCar.pag + 1) % pags;
     lbCarPinta();
   }, LB_CAR_MS);
 }
@@ -3347,18 +4372,78 @@ function homeH() {
   const ult = [...T]
     .filter((t) => t.st === "hecho")
     .sort((a, b) => (b.d + b.t).localeCompare(a.d + a.t))[0];
-  const hh = new Date().getHours();
-  const sal = hh < 13 ? "Buenos días" : hh < 20 ? "Buenas tardes" : "Buenas noches";
-  const hf = U.foto
-    ? `<img src="${esc(U.foto)}" alt="" width="64" height="64" style="border-radius:50%;object-fit:cover;border:2px solid var(--brass);flex:0 0 auto">`
-    : `<span class="aval" style="width:64px;height:64px;font-size:28px;flex:0 0 auto">${esc((U.nm || "?")[0].toUpperCase())}</span>`;
+  /* El próximo turno es el pendiente más cercano por fecha. Si no hay
+     ninguno se muestra un hueco con el botón de reservar, para que la
+     tarjeta sea un atajo y no un espacio en blanco. */
+  const prox = [...T]
+    .filter((t) => t.st === "pend")
+    .sort((a, b) => (a.d + a.t).localeCompare(b.d + b.t))[0];
+  const s = prox ? sv(prox) : null;
+  const nomBar = prox ? bn(prox) : "";
+  const nom = esc((U.nm || "").split(" ")[0]).toUpperCase();
+  /* Las estrellas del último corte, para la franja de abajo. */
+  const estrellas = `<span class="ini-est" role="img" aria-label="${ult ? ult.estrellas || 5 : 0} de 5 estrellas">` +
+    [1, 2, 3, 4, 5].map((i) => (ult && i <= (ult.estrellas || 5) ? "★" : "☆")).join("") +
+    `</span>`;
+
+  const tarjetaProx = prox
+    ? `<div class="card ini-prox">
+      <div class="ini-etq">Próximo turno<span class="ini-badge">Confirmado</span></div>
+      <div class="ini-serv"><span class="ini-serv-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M20 4L8.5 15.5M14.5 14.5L20 20M8.5 15.5L4 20"/></svg></span><div><b>${esc(s ? s.n : "Turno")}</b><small>${esc(s ? s.tx : "")}</small></div></div>
+      <div class="ini-cuadro"><div><small>Día y hora</small><b>${esc(fd(prox.d))} · ${esc(prox.t)}hs</b></div><div><small>Barbero</small><b>${esc(nomBar || "—")}</b></div></div>
+      <div class="chips" style="margin-top:12px"><button data-act="reprogramar" data-args="${A(prox.id)}">Reprogramar</button><button data-act="askCancel" data-args="${A(prox.id)}">Cancelar turno</button></div>
+      ${/* El formulario de confirmación tiene que estar ACÁ. askCancel
+           sólo pone cx = id y repinta: la confirmación se dibuja en línea,
+           en la tarjeta del turno. En el Inicio faltaba, así que el botón
+           "Cancelar turno" no hacía nada visible: el dueño lo reportó. */ cx === prox.id ? cxForm(prox) : ""}
+    </div>`
+    : `<div class="card ini-prox">
+      <div class="ini-etq">Próximo turno</div>
+      <p style="margin:8px 0 14px;color:var(--mut)">No tenés turnos reservados. Sacate uno cuando quieras.</p>
+      <button class="main" data-act="go" data-args="${A("res")}">Reservar ahora</button>
+    </div>`;
+
   return (
-    `${vn()}<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">${hf}<div style="flex:1;min-width:0"><small style="color:var(--mut)">${sal}</small><h1 style="font-size:clamp(34px,6vw,50px);margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">HOLA, ${esc((U.nm || "").split(" ")[0]).toUpperCase()}</h1></div><button data-act="fotoTomar" style="flex:0 0 auto;margin-top:0">Cambiar foto</button></div>` +
-    `<div class="card" style="padding:22px"><div style="display:flex;justify-content:space-between;align-items:baseline"><b class="big" style="font-size:clamp(48px,10vw,68px);margin:0">${U.pt}</b><span style="color:var(--mut)">puntos acumulados</span></div><div class="bar" style="margin-top:10px"><i style="width:${pct}%"></i></div><p style="margin:10px 0 0">${nx ? `Te faltan <b>${nx.p - U.pt}</b> puntos para “${nx.n}”` : "Ya podés canjear cualquier premio"}</p></div>` +
-    `<h3 class="lab">Premios</h3><div class="card" style="padding:0">` +
+    `${vn()}` +
+    /* ---------- saludo ---------- */
+    `<h1 class="ini-hola">Hola, ${esc(nom)}</h1>
+     <p style="color:var(--mut);margin:6px 0 22px">Tus turnos, puntos y reseñas en un solo lugar.</p>` +
+    /* ---------- puntos + próximo turno ---------- */
+    `<div class="ini-par">
+      <div class="card ini-pts">
+        <div class="ini-etq">Tus puntos</div>
+        <div class="ini-num"><b>${U.pt}</b><span>puntos</span></div>
+        <p style="margin:8px 0 14px;color:var(--mut)">Canjealos por descuentos o un corte gratis.</p>
+        <div class="bar" style="margin:0 0 12px"><i style="width:${pct}%"></i></div>
+        <button class="pillb" style="width:100%" data-act="verPremios">Canjear puntos</button>
+      </div>
+      ${tarjetaProx}
+    </div>` +
+    /* ---------- tres accesos ---------- */
+    `<div class="ini-tri">
+      <button class="card ini-acc ini-acc--pri" data-act="go" data-args="${A("res")}">
+        <span class="ini-acc-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span>
+        <b>Reservar turno</b><small>Elegí servicio y horario en menos de un minuto.</small>
+      </button>
+      <button class="card ini-acc" data-act="go" data-args="${A("tur")}">
+        <span class="ini-acc-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+        <b>Mis turnos</b><small>Mirá tu historial y repetí tu último corte.</small>
+      </button>
+      <button class="card ini-acc" data-act="go" data-args="${A("rev")}">
+        <span class="ini-acc-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></span>
+        <b>Mi reseña</b><small>Contanos cómo te fue y ayudá a otros clientes.</small>
+      </button>
+    </div>` +
+    /* ---------- la franja de la reseña ---------- */
+    `<div class="card ini-franja">
+      <div><b>¿Cómo te fue en tu último corte?</b>${estrellas}</div>
+      <button class="pillb" data-act="go" data-args="${A("rev")}">${ult ? "Editar reseña" : "Dejar reseña"}</button>
+    </div>` +
+    /* ---------- premios y canjes: siguen debajo, no se pierden ---------- */
+    `<h3 class="lab" id="premios">Premios</h3><div class="card" style="padding:0">` +
     PRv.map((p, i) => {
-      const ok = U.pt >= p.p;
-      return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 18px;border-bottom:1px solid var(--line)"><div><b>${esc(p.n)}</b><br><small>${p.p} puntos</small></div><button class="pillb" ${ok ? "" : "disabled"} data-act="redeem" data-args="${A(i)}">${cf === i ? "Confirmar canje" : "Canjear"}</button></div>`;
+      const puede = U.pt >= p.p;
+      return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 18px;border-bottom:1px solid var(--line)"><div><b>${esc(p.n)}</b><br><small>${p.p} puntos</small></div><button class="pillb" ${puede ? "" : "disabled"} data-act="redeem" data-args="${A(i)}">${cf === i ? "Confirmar canje" : "Canjear"}</button></div>`;
     }).join("") +
     `</div>` +
     (mine.length
@@ -3370,9 +4455,7 @@ function homeH() {
           )
           .join("")
       : "") +
-    (ult
-      ? `<button class="main" data-act="repeat" style="margin-top:20px">Repetir mi último corte</button>`
-      : "")
+    (ult ? `<button class="main" data-act="repeat" style="margin-top:20px">Repetir mi último corte</button>` : "")
   );
 }
 /* El panel del usuario con sesión usa EXACTAMENTE el mismo asistente que
@@ -3478,16 +4561,41 @@ const wzCabeza = () => `<div class="wz-head">
   <p class="wz-mini">Paso ${WZ.paso} de 6</p>
 </div>`;
 
+/* En el celular NO hay botón de "continuar": al tocar una opción se pasa
+   sola al paso siguiente (lo pidió el dueño: "en celular seleccionamos y ya
+   pase al siguiente"). Quedan sólo "Atrás" y, en el resumen, "Confirmar
+   turno". En escritorio el botón sigue, porque con lista de barberos o de
+   servicios conviene poder volver atrás sin perder lo elegido.
+
+   El salto tiene un retardo corto para que se vea qué quedó marcado. El
+   token `wzAuto` evita dos cosas: que un timer viejo salte después de que
+   el usuario ya cambió de paso, y que dos timers se acumulen si toca
+   rápido. */
+const wzEsCelular = () => matchMedia("(max-width: 859px)").matches;
+let wzAuto = 0;
+const wzAvanzaSolo = (desde) => {
+  if (!wzEsCelular()) return;
+  clearTimeout(wzAuto);
+  wzAuto = setTimeout(() => {
+    if (WZ.paso !== desde) return; // el usuario ya se movió: no se pisa
+    WZ.paso = Math.min(6, desde + 1);
+    if (WZ.paso === 3 && !WZ.unsub) wzOcc();
+    WZ.pintar();
+  }, 280);
+};
+
 const wzPie = (siguiente, listo, txt) => `<div class="wz-pie">
   ${WZ.paso > 1 ? `<button class="wz-btn wz-btn--ghost" type="button" data-act="wzBack">← Atrás</button>` : "<span></span>"}
-  <button class="wz-btn wz-btn--pri" type="button" data-act="wzNext" ${listo ? "" : "disabled"}>${txt || siguiente}</button>
+  ${wzEsCelular() ? "" : `<button class="wz-btn wz-btn--pri" type="button" data-act="wzNext" ${listo ? "" : "disabled"}>${txt || siguiente}</button>`}
 </div>`;
 
 /* --- 1. servicio --- */
 const wzServicio = () =>
   S.length
     ? S.map(
-        (x, i) => `<button type="button" class="wz-item${sel.s === i ? " on" : ""}" aria-pressed="${sel.s === i}" data-act="wzS" data-args="${A(i)}">
+        (x, i) => `<button type="button" class="wz-item wz-item--svc${sel.s === i ? " on" : ""}" aria-pressed="${sel.s === i}" data-act="wzS" data-args="${A(i)}">
+      ${/* La foto de preview del servicio, que el dueño carga desde el panel
+           y hasta ahora no se veía ni acá ni en la landing. */ x.img ? `<img class="wz-item-img" src="${esc(x.img)}" alt="" width="72" height="72" loading="lazy" decoding="async">` : ""}
       <span class="wz-item-t"><b>${esc(x.n)}</b><small>${esc(x.tx)}</small></span>
       <span class="lb-price">${$$(x.p)}</span></button>`,
       ).join("")
@@ -3621,29 +4729,84 @@ function wzHoras() {
 }
 
 /* --- 6. resumen: idéntico al del panel --- */
+/* Hora de fin: el turno dura lo que dura el servicio, así que mostrando
+   hasta qué hora vas a estar ocupado se evita el "yo salía a las 16".
+   Si el horario no se puede parsear, no se muestra nada en vez de inventar. */
+function wzTermina(hora, durMin) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hora || ""));
+  if (!m || !durMin) return "";
+  const fin = (+m[1] * 60 + +m[2] + durMin) % 1440;
+  return String(Math.floor(fin / 60)).padStart(2, "0") + ":" + String(fin % 60).padStart(2, "0");
+}
+const wzIco = {
+  tijera:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M20 4 8.5 15.5M14.5 14.5 20 20M8.5 15.5 4 20"/></svg>',
+  persona:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="8" r="3.4"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>',
+  cal:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+  reloj:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+};
+
 function wzResumen() {
   const s = S[sel.s],
-    b = (BARS.find((x) => x.id === sel.b) || {}).n || "—";
-  return `<div class="wz-sum">
-      <div><span>Barbero</span><b>${esc(b)}</b></div>
-      <div><span>Servicio</span><b>${esc(s.n)}</b></div>
-      <div><span>Fecha</span><b>${esc(fd(sel.d))}</b></div>
-      <div><span>Hora</span><b>${esc(sel.t || "—")}</b></div>
-      <div><span>Duración</span><b>${esc(s.tx)}</b></div>
-      <div><span>Precio</span><b class="lb-price">${esc($$(s.p))}</b></div>
+    bar = BARS.find((x) => x.id === sel.b) || {};
+  const b = bar.n || "—";
+  const termina = wzTermina(sel.t, s.m);
+  /* Cada fila lleva a su propio paso: "Cambiar" al lado del dato, para no
+     tener que adivinar a qué campo se refiere.
+
+     `foto` es opcional: cuando viene, reemplaza al ícono de la fila, así el
+     cliente reconoce el corte y el barbero de un vistazo antes de confirmar.
+     Si el barbero no tiene foto (o el servicio no la tiene cargada), la fila
+     se cae al ícono de siempre: nunca queda un cuadro vacío. */
+  const fila = (ico, etq, val, sub, paso, foto, circular) =>
+    `<div class="wz-rf">
+      ${
+        foto
+          ? `<span class="wz-rf-img${circular ? " wz-rf-img--red" : ""}"><img src="${esc(foto)}" alt="" loading="lazy" decoding="async"></span>`
+          : `<span class="wz-rf-ico" aria-hidden="true">${ico}</span>`
+      }
+      <div class="wz-rf-t"><span>${esc(etq)}</span><b>${esc(val)}${sub ? `<small>${esc(sub)}</small>` : ""}</b></div>
+      <button type="button" class="wz-rf-c" data-act="wzIr" data-args="${A(paso)}">Cambiar</button>
+    </div>`;
+
+  return `<div class="wz-res">
+    <h2 class="wz-res-tit">Confirmá tu turno</h2>
+    <p class="wz-res-sub">Paso 6 de 6 · Revisá que esté todo bien antes de confirmar.</p>
+    <div class="wz-res-cols">
+      <div class="wz-res-card">
+        ${fila(wzIco.tijera, "Servicio", s.n || "-", s.tx, 1, s.img || "")}
+        ${fila(wzIco.persona, "Barbero", b, "", 2, bar.foto || "", true)}
+        ${fila(wzIco.cal, "Fecha", fd(sel.d), "", 3)}
+        ${fila(wzIco.reloj, "Hora", sel.t ? sel.t + "hs" : "—", termina ? "termina " + termina : "", 5)}
+      </div>
+      <div class="wz-res-lado">
+        <div class="wz-res-precio">
+          <span>Precio</span>
+          <b class="lb-price">${esc($$(s.p))}</b>
+          <small>Se abona en la barbería.</small>
+        </div>
+        <p class="wz-pol"><span aria-hidden="true">ⓘ</span> Política de cancelación: podés cancelar tu turno hasta ${CHSv} horas antes.</p>
+        <label class="wz-tyc${sel.pol ? " on" : ""}" for="wzpk">
+          <input type="checkbox" id="wzpk" ${sel.pol ? "checked" : ""} data-ch="wzPol" data-args="${A("@ck")}">
+          <span>Leí los <a href="#" data-act="openPolSec" data-args="${A("datos")}">términos y condiciones</a>, la <a href="#" data-act="openPolSec" data-args="${A("uso")}">política de privacidad</a> y las <a href="#" data-act="openPolSec" data-args="${A("condiciones")}">condiciones del servicio</a>.</span>
+        </label>
+        ${
+          me
+            ? `<button class="wz-btn wz-btn--pri wz-btn--full" type="button" data-act="askBook">Confirmar turno</button>`
+            : `<p class="wz-aviso">Para confirmar necesitás entrar a tu cuenta. Te guardamos la elección.</p>
+               <button class="wz-btn wz-btn--pri wz-btn--full" type="button" data-act="wzEntrar">Ingresar y confirmar</button>`
+        }
+        ${
+          MP_LINK
+            ? `<a class="wz-btn wz-btn--ghost wz-btn--full" href="${esc(MP_LINK)}" target="_blank" rel="noopener">Pagar seña con Mercado Pago</a>`
+            : ""
+        }
+      </div>
     </div>
-    <p class="wz-pol">Política de cancelación: podés cancelar tu turno hasta ${CHSv} horas antes.</p>
-    ${
-      me
-        ? `<button class="wz-btn wz-btn--pri wz-btn--full" type="button" data-act="askBook">Confirmar turno</button>`
-        : `<p class="wz-aviso">Para confirmar necesitás entrar a tu cuenta. Te guardamos la elección.</p>
-           <button class="wz-btn wz-btn--pri wz-btn--full" type="button" data-act="wzEntrar">Ingresar y confirmar</button>`
-    }
-    ${
-      MP_LINK
-        ? `<a class="wz-btn wz-btn--ghost wz-btn--full" href="${esc(MP_LINK)}" target="_blank" rel="noopener">Pagar seña con Mercado Pago</a>`
-        : ""
-    }`;
+  </div>`;
 }
 
 /* --- el asistente completo --- */
@@ -3656,6 +4819,16 @@ function wizH() {
     !!sel.t,
     !!sel.t,
   ][WZ.paso - 1];
+  /* En modo reprogramar el asistente dice "Confirmar turno" como si fuera
+     una reserva nueva, y el cliente no entiende si le va a quedar el turno
+     anterior. El aviso lo saca de dudas y le da salida. */
+  const avisoRep = rep
+    ? `<div class="wz-aviso-rep">
+         <b>Estás reprogramando un turno</b>
+         <span>No se crea uno nuevo: se cambia la fecha y la hora del que ya tenés.</span>
+         <button type="button" data-act="repSalir">Salir sin cambiar nada</button>
+       </div>`
+    : "";
   let cuerpo = "";
   if (WZ.paso === 1) cuerpo = wzServicio();
   else if (WZ.paso === 2) cuerpo = wzBarbero();
@@ -3667,6 +4840,7 @@ function wizH() {
   const sig = ["Elegir barbero", "Elegir día", "Elegir turno", "Elegir horario", "Revisar"][WZ.paso - 1] || "";
   return `<div class="wz" id="wiz">
     ${wzCabeza()}
+    ${avisoRep}
     <div class="wz-body">${cuerpo}</div>
     ${WZ.paso < 6 ? wzPie(sig, listo) : `<div class="wz-pie"><button class="wz-btn wz-btn--ghost" type="button" data-act="wzBack">← Volver a horarios</button></div>`}
   </div>`;
@@ -3683,6 +4857,10 @@ function wzPaint() {
    Si el modal queda abierto encima del login el usuario ve el paso 6
    congelado y no hay forma de seguir: no hay ni login ni botón. */
 function wzCerrarModal() {
+  /* Se cancela el salto automático pendiente: si no, el timer se dispara
+     con el modal ya cerrado y deja el asistente en un paso distinto al que
+     se ve en pantalla. */
+  clearTimeout(wzAuto);
   const p = document.getElementById("wzm");
   if (p) {
     p.hidden = true;
@@ -3720,8 +4898,43 @@ const US = (list) =>
       u.rol !== "barbero" &&
       !FN.bs.some((b) => b.uid === u.id),
   );
+/* Privacidad: qué guardamos y para qué. El botón de borrar vive ahora en
+   Ajustes (ajusH), al final de la lista, como pidió el dueño. Esta vista
+   queda como la explicación y sin acción destructiva. */
 function privH() {
-  return `<h1>Privacidad</h1><div class="card" style="max-width:640px"><p><small>Guardamos tu nombre, teléfono y email solo para gestionar tus turnos y tus puntos.<br><br>No compartimos tus datos con terceros.<br><br>Podés pedir que los borremos cuando quieras.</small></p></div><div class="card" style="max-width:640px;margin-top:14px"><p><small>Si borrás tus datos, se elimina tu cuenta, tus turnos y tus puntos. No se puede deshacer.</small></p><button class="main danger" data-act="borrarAsk">Borrar mis datos</button></div>`;
+  return `<h1>Privacidad</h1><div class="card" style="max-width:640px"><p><small>Guardamos tu nombre, teléfono y email solo para gestionar tus turnos y tus puntos.<br><br>No compartimos tus datos con terceros.<br><br>Podés pedir que los borremos cuando quieras, desde <b>Ajustes</b>.</small></p></div>`;
+}
+
+/* ---------- Ajustes del cliente ----------
+   Es donde se edita el perfil y donde termina —al final de la lista— el
+   borrado de la cuenta. Va por un hash propio (#/mi-cuenta) para no
+   pisar el #/ajustes del dueño. */
+function ajusH() {
+  const foto = U.foto
+    ? `<img src="${esc(U.foto)}" alt="" width="72" height="72" style="border-radius:50%;object-fit:cover;border:2px solid var(--brass)">`
+    : `<span class="aval" style="width:72px;height:72px;font-size:30px">${esc((U.nm || "?")[0].toUpperCase())}</span>`;
+  const msj = U.nm ? "" : "<p><small>Cargando tu cuenta…</small></p>";
+  return (
+    `<h1>Ajustes</h1><p style="color:var(--mut);margin-top:-10px">Tu perfil y tu cuenta.</p>` +
+    /* --- Perfil --- */
+    `<div class="card" style="margin-bottom:14px"><div class="ajus-fila" style="display:flex;gap:14px;align-items:center">${foto}<div style="flex:1;min-width:0"><b style="display:block">${esc(U.nm || "—")}</b><small style="color:var(--mut)">${esc(U.ph || "sin teléfono")}</small></div><button data-act="fotoTomar" style="flex:0 0 auto">Cambiar foto</button></div>` +
+    `<div style="display:grid;gap:10px;margin-top:14px">` +
+    `<label class="campo"><span class="etq">Nombre</span><input class="entrada" id="ajusNm" value="${esc(U.nm || "")}" maxlength="40"></label>` +
+    `<label class="campo"><span class="etq">Teléfono</span><input class="entrada" id="ajusPh" inputmode="tel" value="${esc(U.ph || "")}" maxlength="30" placeholder="5493757xxxxxx"></label>` +
+    `<div><button class="main" data-act="guardarPerfilCli">Guardar cambios</button></div>` +
+    `</div></div>` +
+    /* --- Datos --- */
+    `<div class="card" style="margin-bottom:14px"><b style="display:block;margin-bottom:6px">Tus datos</b>` +
+    `<p><small style="color:var(--mut)">Tu email es <b>${esc(me.email || "—")}</b> y no se cambia desde acá: es con el que entrás.</small></p>` +
+    `<div><button data-act="go" data-args="${A("priv")}">Ver qué guardamos y por qué</button></div>` +
+    `<div style="margin-top:10px"><button data-act="openPol">Políticas y privacidad</button></div>` +
+    `</div>` +
+    /* --- Eliminar cuenta: SIEMPRE al final --- */
+    `<div class="card ajus-peligro" style="border-color:var(--red)"><b style="display:block;margin-bottom:6px">Eliminar cuenta</b>` +
+    `<p><small style="color:var(--mut)">Se borran tu nombre, teléfono y puntos, se cancelan tus turnos pendientes y perdés el acceso a esta cuenta. <b>No se puede deshacer.</b></small></p>` +
+    `<div><button class="main danger" data-act="borrarAsk">Eliminar mi cuenta</button></div>` +
+    `</div>`
+  );
 }
 function galH() {
   return (
@@ -3734,65 +4947,259 @@ function galH() {
       : "<p><small>Todavía no hay fotos publicadas.</small></p>")
   );
 }
+/* Etiqueta de cada puntaje. Se muestra debajo de las estrellas para que el
+   usuario sepa qué está eligiendo antes de tocar. */
+const REV_TXT = ["", "Muy malo", "Malo", "Regular", "Bueno", "Muy bueno"];
+const REV_PASOS = ["Calificá", "Contanos", "Revisá"];
+
 function revH() {
+  const n = revS || 0;
   const stars = [1, 2, 3, 4, 5]
     .map(
-      (n) =>
-        `<button type="button" class="rev-estrella${n <= revS ? " on" : ""}" aria-label="${n} ${n === 1 ? "estrella" : "estrellas"}" aria-pressed="${n <= revS}" data-act="revStars" data-args="${A(n)}">★</button>`,
+      (i) =>
+        `<button type="button" class="rev-estrella${i <= n ? " on" : ""}" aria-label="${i} ${i === 1 ? "estrella" : "estrellas"} — ${REV_TXT[i]}" aria-pressed="${i <= n}" data-act="revStars" data-args="${A(i)}">${i <= n ? "★" : "☆"}</button>`,
     )
     .join("");
-  if (revStep === 1)
-    return (
-      `<h1 class="rev-tit">Tu reseña</h1><div class="card rev-card"><h2 style="margin-top:0">¿Qué te pareció el corte?</h2><div class="rev-estrellas" role="group" aria-label="Puntaje">${stars}</div>${revS ? `<p class="rev-hint">${revS} de 5 · <button type="button" class="lnk2" data-act="revBack">cambiar</button></p>` : `<p class="rev-hint rev-hint--vacio">Tocá las estrellas para seguir</p>`}</div>`
-    );
-  if (revStep === 2)
-    return (
-      `<h1>Tu reseña</h1><div class="card" style="max-width:520px;margin-top:10px"><h2 style="margin-top:0">¿Qué nos contás?</h2><textarea id="revText" placeholder="Contanos qué te gustó o qué cambiarías" style="width:100%;min-height:130px">${esc(revText)}</textarea><div class="chips" style="margin-top:14px"><button data-act="revBack">Volver</button><button class="main" data-act="revNext">Siguiente</button></div></div>`
-    );
+  /* Indicador de pasos: el activo en dorado, los ya hechos con un ✓, los
+     de adelante apagados. Informativo: el paso se cambia con los botones de
+     abajo, no clickeando el número. */
+  const paso = (i) =>
+    `<li class="rev-paso${revStep === i ? " on" : ""}${revStep > i ? " hecho" : ""}">
+       <span class="rev-paso-n" aria-hidden="true">${revStep > i ? "✓" : i}</span>
+       <span>${REV_PASOS[i - 1]}</span>
+     </li>`;
+  const pasos = `<ol class="rev-pasos" aria-label="Pasos de la reseña">${[1, 2, 3]
+    .map((i, k) => (k ? '<li class="rev-guion" aria-hidden="true"></li>' : "") + paso(i))
+    .join("")}</ol>`;
+
+  /* Vista previa: lo mismo que va a verse en la web, armado con los datos
+     que se guardan, para que no haya sorpresa al publicar. */
+  const prevEst = `<span class="rev-est" role="img" aria-label="${n} de 5 estrellas">` +
+    [1, 2, 3, 4, 5].map((i) => (i <= n ? "★" : "☆")).join("") +
+    `</span>`;
+  /* La inicial del avatar: siempre en mayúscula. Antes algunas ramas
+     hacían .toUpperCase() y otras no, y con nombres en minúscula la ficha
+     mostraba "r" en vez de "R" (era el caso de la vista previa). */
+  const ini = (U && U.nm && U.nm[0] ? U.nm[0] : "?").toUpperCase();
+  const prev = `<div class="rev-prev">
+      <h3 class="rev-h3">Así se verá en la web</h3>
+      <div class="card rev-ficha">
+        <div class="rev-ficha-cab">
+          ${U && U.foto
+            ? `<img src="${esc(U.foto)}" alt="" width="44" height="44" style="border-radius:50%;object-fit:cover;border:2px solid var(--brass)">`
+            : `<span class="aval" style="width:44px;height:44px;font-size:19px">${esc(ini)}</span>`}
+          <div style="min-width:0"><b>${esc((U && U.nm) || "Tu nombre")}</b>${prevEst}</div>
+        </div>
+        ${/* El texto también va en la vista previa: antes sólo mostraba foto,
+            nombre y estrellas, que es exactamente lo mismo para cualquier
+            reseña. El mockup pide ver "cómo se verá en la web", y lo que
+            se publica es el texto. */
+          `<blockquote class="rev-ficha-txt">${revText && revText.trim() ? esc(revText) : '<span class="rev-ficha-vacia">Tu reseña va a aparecer acá</span>'}</blockquote>`}
+      </div>
+      <p style="margin:12px 0 0;color:var(--mut);font-size:14px;line-height:1.45">Se muestra tu foto de perfil, tu nombre, la cantidad de estrellas y lo que escribas.</p>
+    </div>`;
+
+  const paneles = [
+    `<div class="card rev-panel">
+      <h2 style="margin:0 0 16px">¿Cómo calificás tu experiencia?</h2>
+      <div class="rev-estrellas" role="group" aria-label="Puntaje de tu experiencia">${stars}</div>
+      <p class="rev-hint${n ? "" : " rev-hint--vacio"}">${n ? REV_TXT[n] : "Tocá las estrellas y seguimos"}</p>
+      <!-- No hay botón "Siguiente" acá a propósito: al tocar una estrella
+           revStars() ya salta al paso 2, así que el botón era inalcanzable
+           (el dueño loMarco: "no tiene sentido"). Con teclado tampoco se
+           pierde nada: se elige con Enter o Espacio sobre la estrella. -->
+      <p class="rev-pie"><small>Tocá una estrella para seguir. Podés volver atrás cuando quieras.</small></p>
+    </div>`,
+    `<div class="card rev-panel">
+      <h2 style="margin:0 0 6px">${revStep > 2 ? "¿Qué nos contás?" : "¿Cómo calificás tu experiencia?"}</h2>
+      <p style="color:var(--mut);margin:0 0 14px">Contanos qué te gustó o qué cambiarías. Se publica en la web con tu nombre.</p>
+      <textarea id="revText" rows="5" maxlength="600" placeholder="Contanos qué te gustó o qué cambiarías" style="width:100%">${esc(revText)}</textarea>
+      <div class="chips" style="margin-top:14px"><button data-act="revBack">Volver</button><button class="main" data-act="revNext">Siguiente</button></div>
+    </div>`,
+    `<div class="card rev-panel">
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:14px">
+        ${U && U.foto
+          ? `<img src="${esc(U.foto)}" alt="" width="60" height="60" style="border-radius:50%;object-fit:cover;border:2px solid var(--brass)">`
+          : `<span class="aval" style="width:60px;height:60px;font-size:26px">${esc(ini)}</span>`}
+        <div><b style="display:block">${esc((U && U.nm) || "Tu nombre")}</b>${prevEst}</div>
+      </div>
+      <p style="margin:0 0 6px">${revText && revText.trim() ? esc(revText) : '<small style="color:var(--mut)">No escribiste un mensaje.</small>'}</p>
+      <small style="color:var(--mut)">${REV_TXT[n] || "Sin calificar"}</small>
+      <div class="chips" style="margin-top:18px"><button data-act="revBack">Editar</button><button class="main" data-act="revSend">Guardar reseña</button></div>
+    </div>`,
+  ];
+
+  /* Orden de las piezas: título, indicador, panel, vista previa.
+     En celular caen en una sola columna y queda como en el mockup
+     (indicador arriba de la tarjeta). En escritorio las áreas de grilla
+     lo parten en dos columnas: título+panel a la izquierda,
+     indicador+previa a la derecha. Por eso van como hijos directos y no
+     agrupados en dos contenedores: agruparlos fijaba el orden y en el
+     celular el indicador quedaba debajo de la tarjeta. */
   return (
-    `<h1>Revisar reseña</h1><div class="card" style="max-width:520px;margin-top:10px"><div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">${U && U.foto ? `<img src="${esc(U.foto)}" alt="" width="60" height="60" style="border-radius:50%;object-fit:cover;border:2px solid var(--brass)">` : `<div class="aval" style="width:60px;height:60px;font-size:26px;flex:0 0 auto">${esc((U && U.nm && U.nm[0] ? U.nm[0] : "?").toUpperCase())}</div>`}<div><b>${esc(U && U.nm ? U.nm : "Tu nombre")}</b><br><small style="color:var(--brass)">${"★".repeat(Math.min(5, Math.max(1, revS)))}${"☆".repeat(5 - Math.min(5, Math.max(1, revS)))}</small></div></div><p>${esc(revText || 'Aún no escribiste tu reseña.')}</p><div class="chips"><button data-act="revBack">Editar</button><button class="main" data-act="revSend">Guardar reseña</button></div></div>`
+    `<div class="rev-todo">` +
+    `<h1 class="rev-tit">Tu reseña</h1>` +
+    pasos +
+    (paneles[revStep - 1] || paneles[0]) +
+    prev +
+    `</div>`
   );
 }
+/* Versión y fecha de las políticas. Se muestran en el encabezado del modal
+   y en el aviso de cambios: si se tocan, subí la versión. */
+const POL_VERSION = "1.0";
+const POL_FECHA = "7 de octubre de 2026";
+const PAIS = "Argentina";
+
+/* Secciones de las políticas. El mismo contenido se alcanza de dos formas:
+   por solapa (celular) o corrido (escritorio). El orden de POL_SECC es el de
+   las dos. */
+const POL_SECC = [
+  ["resumen", "En resumen"],
+  ["datos", "Datos"],
+  ["uso", "Uso"],
+  ["derechos", "Derechos"],
+  ["condiciones", "Condiciones"],
+  ["cambios", "Cambios"],
+];
+/* Íconos de línea del mockup, en SVG inline. Se dibujan con currentColor
+   para que hereden el dorado del bloque donde caen. */
+const POL_ICO = {
+  escudo: '<path d="M12 3l7 3v5c0 4.5-3 8.2-7 9.5C8 19.2 5 15.5 5 11V6l7-3z"/><path d="M9 12l2 2 4-4"/>',
+  usuario: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"/>',
+  candado: '<rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8.5 10V7.5a3.5 3.5 0 017 0V10"/>',
+  tacho: '<path d="M4 7h16M9.5 7V5h5v2M6.5 7l1 13h9l1-13"/>',
+  ojo: '<path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.6"/>',
+  lapiz: '<path d="M4 20h4L20 8l-4-4L4 16v4z"/>',
+  refresco: '<path d="M20 12a8 8 0 11-2.3-5.6"/><path d="M20 4v5h-5"/>',
+  llave: '<circle cx="8" cy="12" r="3.5"/><path d="M11.5 12H21l-2 3h-2v-3"/>',
+};
+const polSvg = (k, cls) =>
+  `<svg class="${cls || ""}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true" focusable="false">${POL_ICO[k] || ""}</svg>`;
+
+/* Chip de dato pendiente de cargar. No se inventa: si el dueño no lo puso en
+   config.js, se ve la etiqueta con el hueco, no un dato falso. */
+const POL_PEND = (t) => `<span class="pol-pend" title="Falta completar en config.js">${esc(t)}</span>`;
+
 function polH() {
-  const it = (t, d) => `<div class="pol-card"><h4>${t}</h4><p>${d}</p></div>`;
-  return `<div class="polbox" role="dialog" aria-modal="true" aria-label="Políticas y privacidad">
+  /* Tarjeta de "en resumen": ícono + título + texto. */
+  const it = (ic, t, d) => `<div class="pol-card">${polSvg(ic)}<div><h4>${t}</h4><p>${d}</p></div></div>`;
+  /* Sección numerada del documento. */
+  const num = (i, t, cuerpo) => `<div class="pol-num"><span class="pol-num-n" aria-hidden="true">${i}</span><h4 id="h-${i}">${t}</h4></div>${cuerpo}`;
+
+  const resumen = `<h3 class="pol-h3">EN RESUMEN</h3>
+    <div class="pol-grid">
+      ${it("escudo", "No vendemos tus datos", "Solo los usamos para gestionar tus turnos y tus puntos.")}
+      ${it("usuario", "Pedimos lo mínimo", "Nombre, teléfono y email. Nada de datos sensibles.")}
+      ${it("candado", "Tu contraseña va cifrada", "Nadie del local puede verla.")}
+      ${it("tacho", "Borrás tu cuenta cuando quieras", "Desde Privacidad → «Borrar mis datos».")}
+    </div>`;
+
+  /* La tabla del mockup: qué dato, para qué y si es obligatorio. Es la forma
+     más clara de decir qué pasa si dejás un campo en blanco. */
+  const fila = (a, b, c, opt) =>
+    `<tr><th scope="row">${a}</th><td>${b}</td><td class="pol-si">${c}</td></tr>`;
+  const datos = `<h3 class="pol-h3">PRIVACIDAD</h3>
+    ${num(1, "QUIÉN ES RESPONSABLE", `<p>${esc(NOMBRE)} es el responsable de tus datos personales (en la ley, el responsable de la base de datos).</p>
+      <ul class="pol-datos-resp">
+        <li><span>Titular</span> <span class="pol-val">${POL_PEND("RAZÓN SOCIAL / NOMBRE Y APELLIDO")}</span></li>
+        <li><span>Domicilio</span> <span class="pol-val">${POL_PEND("DIRECCIÓN")}, ${esc(PAIS)}</span></li>
+        <li><span>Contacto por temas de privacidad</span> <span class="pol-val"><a href="mailto:${esc(EMAIL)}">${esc(EMAIL)}</a></span></li>
+      </ul>`)}
+    ${num(2, "QUÉ DATOS RECOPILAMOS", `<p>Solo los datos necesarios para que reserves, sumes puntos y para que el local pueda organizarse. <b>No pedimos datos sensibles</b> (salud, origen, religión, ideas políticas ni similares).</p>
+      <div class="pol-tbl-wrap"><table class="pol-tbl">
+        <thead><tr><th scope="col">Dato</th><th scope="col">Para qué lo usamos</th><th scope="col">¿Es obligatorio?</th></tr></thead>
+        <tbody>
+          ${fila("Nombre", "Que el barbero sepa quién viene.", "Sí")}
+          ${fila("Teléfono", "Contactarte por tu turno y enviarte recordatorios por WhatsApp.", "Sí")}
+          ${fila("Email y contraseña", "Crear tu cuenta, verificarte e ingresar. La contraseña se guarda cifrada.", "Sí")}
+          ${fila("Turnos", "Fecha, hora, barbero, servicio y estado (pendiente, completado o cancelado).", "Se generan al reservar", 1)}
+          ${fila("Puntos y canjes", "Llevar tu saldo y los códigos de premio que ganaste.", "Se generan al usar la app", 1)}
+          ${fila("Faltas y cancelaciones", "Organizar la agenda y el tiempo de los demás clientes.", "Se generan al usar la app", 1)}
+          ${fila("Cobros", "Registrar el pago en efectivo o transferencia y cuánto. <b>No guardamos números de tarjeta.</b>", "Lo carga el barbero", 1)}
+        </tbody>
+      </table></div>`)}`;
+
+  const uso = `<h3 class="pol-h3">PRIVACIDAD</h3>
+    ${num(3, "PARA QUÉ LOS USAMOS", `<p>Usamos tus datos únicamente para:</p>
+      <ul class="pol-ul">
+        <li>Crear y proteger tu cuenta.</li>
+        <li>Gestionar tus reservas, cancelaciones y reprogramaciones.</li>
+        <li>Enviarte recordatorios de turno por WhatsApp y avisarte si se libera un horario que pediste.</li>
+        <li>Llevar tus puntos, premios y códigos de canje.</li>
+        <li>Que el local lleve su agenda, su caja y sus finanzas.</li>
+        <li>Prevenir abuso, por ejemplo reservas que nunca se usan.</li>
+      </ul>
+      <p>No los usamos para publicidad de terceros ni para tomar decisiones automáticas sobre vos. Los tratamos con tu consentimiento, que das al crear tu cuenta y aceptar estas políticas.</p>`)}
+    ${num(4, "CON QUIÉN LOS COMPARTIMOS", `<p>No vendemos ni alquilamos tus datos. Solo se los damos a:</p>
+      <ul class="pol-ul">
+        <li><b>El equipo del local.</b> Cada barbero ve sus propios turnos y clientes; el dueño ve toda la agenda y las finanzas.</li>
+        <li><b>Proveedores tecnológicos</b> que hacen funcionar la app: Google Firebase (cuentas y base de datos) y, si el local activa la seña, Mercado Pago, que procesa el pago bajo sus propios términos.</li>
+        <li><b>WhatsApp</b>, al contratar la cuenta para enviarte recordatorios.</li>
+        <li><b>Autoridades</b>, sólo a una ley u orden judicial que lo exija.</li>
+      </ul>`)}
+    ${num(5, "CUÁNTO TIEMPO LOS GUARDAMOS", `<p>Mientras tu cuenta esté activa. Si decidís borrarla, eliminamos tu cuenta, tus turnos y tus puntos. No hay venta atrás. Si una ley nos obliga a conservar algo, guardamos sólo por el plazo que esa ley exija.</p>`)}
+    ${num(6, "CÓMO LOS PROTEGEMOS", `<ul class="pol-ul">
+        <li>Tu contraseña se guarda <b>cifrada</b>: nosotros ni el local podemos verla.</li>
+        <li>La conexión entre tu celular y la app va cifrada (HTTPS).</li>
+        <li>Verificamos tu email al crear la cuenta.</li>
+        <li>Los accesos son por rol: cada persona del equipo ve <b>sólo lo que le corresponde</b> trabajar.</li>
+      </ul>
+      <p>Ningún sistema es infalible. Si hubiera un incidente que afecte tus datos, te avisamos y tomamos medidas para reducir el daño.</p>`)}`;
+
+  /* Los plazos de la Ley 25.326 van como chip, no como texto corrido: es lo
+     primero que uno mira cuando va a ejercer un derecho. */
+  const der = (ic, t, p, d) => `<div class="pol-card">${polSvg(ic)}<div><h4>${t}</h4><p>${p}</p><span class="pol-dias">${d}</span></div></div>`;
+  const derechos = `<h3 class="pol-h3">TUS DERECHOS</h3>
+    ${num(7, "TUS DERECHOS", `<p>La Ley 25.326 de Protección de los Datos Personales te da estos derechos. Son gratuitos y tus puntos siguen contando aunque los ejerzas o borres la cuenta.</p>
+      <div class="pol-grid pol-grid--4">
+        ${der("ojo", "Acceso", "Pedimos saber qué datos tuyos tenemos.", "10 días hábiles")}
+        ${der("lapiz", "Rectificación", "Corregimos datos que sean incorrectos.", "5 días hábiles")}
+        ${der("refresco", "Actualización", "Ponemos al día los datos de tu cuenta.", "5 días hábiles")}
+        ${der("tacho", "Supresión", "Pedimos que se borre tu cuenta y tus datos.", "5 días hábiles")}
+      </div>
+      <p>Para ejercerlos, escribinos a <a href="mailto:${esc(EMAIL)}">${esc(EMAIL)}</a> desde el email de tu cuenta, o usá <b>Privacidad → «Borrar mis datos»</b> en la app. Si el pedido queda sin resolver, te respondemos por escrito. También podés retirar tu consentimiento en cualquier momento.</p>`)}
+    ${num(8, "MENORES DE EDAD", `<p>Si sos menor de 18 años, reservá con autorización de tu madre, padre o tutor, que pueden pedir el acceso o el borrado de tus datos.</p>`)}`;
+
+  const condiciones = `<h3 class="pol-h3">CONDICIONES DEL SERVICIO</h3>
+    ${num(9, "TURNOS, CANCELACIONES Y FALTAS", `<p>Podés cancelar o reprogramar desde <b>Mis turnos</b> hasta <b>${CHSv} horas</b> antes. Si no te presentás, avisá.</p>
+      <p>Si no te presentás y avisás, se registra una falta. Con faltas repetidas, el local puede pedirte una seña para reservar.</p>`)}
+    ${num(10, "PUNTOS Y PREMIOS", `<ul class="pol-ul">
+        <li>Ganás <b>${PTSv} puntos</b> por cada corte completado. No se suman por turnos cancelados ni por faltas.</li>
+        <li><b>Descuento 20% (25 puntos)</b>, <b>Descuento 50% (50 puntos)</b> y <b>Corte gratis (100 puntos)</b>.</li>
+        <li>Al canjear se genera un código (por ejemplo <code>CB-4FK7</code>). Mostralo en la barbería: el barbero lo marca como usado y solo sirve una vez.</li>
+        <li>Los puntos no tienen valor en dinero, no se transfieren y no se pierden al borrar tu cuenta.</li>
+      </ul>
+      <p>El local puede cambiar los premios; los avisos a la app.</p>`)}
+    ${num(11, "PAGOS Y PRECIOS", `<p>Los servicios se pagan en el local, <b>en efectivo o transferencia</b>. Los precios están en pesos argentinos y se muestran antes de confirmar tu turno. Se paga con Mercado Pago y queda asociado a sus términos.</p>`)}
+    ${num(12, "RECORDATORIOS POR WHATSAPP", `<p>Te escribimos al teléfono que cargas, sólo para hablar de tus turnos. Si no querés recibirlos, avisanos al barbero y los desactivamos.</p>`)}`;
+
+  const cambios = `<h3 class="pol-h3">CAMBIOS</h3>
+    ${num(13, "CAMBIOS EN ESTAS POLÍTICAS", `<p>Si las modificamos, te avisamos en la app antes de que apliquen. La fecha de la última actualización figura arriba de esta pantalla.</p>`)}`;
+
+  const cuerpo = { resumen, datos, uso, derechos, condiciones, cambios };
+  return `<div class="polbox" role="dialog" aria-modal="true" aria-labelledby="polTt" aria-describedby="polSub">
+  <div class="pol-grab" aria-hidden="true"></div>
   <div class="pol-hd">
-    <img src="${LOGO}" alt="" width="36" height="36" style="border-radius:8px">
-    <div style="flex:1;min-width:0"><h2>POLÍTICAS Y PRIVACIDAD</h2><small>Versión 1.0 · Actualizadas el 7 de octubre de 2026 · Ley 25.326 de Protección de los Datos Personales</small></div>
-    <button class="pol-x" data-act="cerrarPol" aria-label="Cerrar">✕</button>
+    <span class="pol-ico">${polSvg("escudo")}</span>
+    <div class="pol-hd-tx">
+      <h2 id="polTt">POLÍTICAS Y PRIVACIDAD</h2>
+      <small id="polSub">Versión ${POL_VERSION} · ${POL_FECHA} · Ley 25.326 de Protección de los Datos Personales</small>
+    </div>
+    <button class="pol-x" data-act="cerrarPol" aria-label="Cerrar políticas">✕</button>
+  </div>
+  <div class="pol-tabs" role="tablist" aria-label="Secciones de las políticas">
+    ${POL_SECC.map(([id, t], i) => `<button class="pol-tab${i === 0 ? " on" : ""}" id="pol-t-${id}" role="tab" data-act="polTab" data-args="${A(id)}" aria-selected="${i === 0 ? "true" : "false"}" aria-controls="pol-s-${id}" tabindex="${i === 0 ? "0" : "-1"}">${t}</button>`).join("")}
   </div>
   <div class="pol-body">
-    <h3>EN RESUMEN</h3>
-    <div class="pol-grid">
-      ${it("No vendemos tus datos", "Solo usamos tu nombre, teléfono y email para gestionar tus turnos y tus puntos.")}
-      ${it("Pedimos lo mínimo", "Solo lo necesario para reservar. Nada de datos sensibles.")}
-      ${it("Tu contraseña va cifrada", "Nadie del local puede verla.")}
-      ${it("Borrás tu cuenta cuando quieras", "Desde Privacidad → «Borrar mis datos».")}
-    </div>
-    <h3>PRIVACIDAD</h3>
-    <ol class="pol-list">
-      <li><b>Quién es responsable.</b> ${esc(NOMBRE)} es el responsable de tus datos personales.</li>
-      <li><b>Qué datos recopilamos.</b> Nombre, teléfono y email para la cuenta; fechas y estados de turnos; puntos, canjes y faltas; y montos de cobros. <b>No guardamos datos de tarjetas.</b></li>
-      <li><b>Para qué los usamos.</b> Crear y gestionar tu cuenta, reservar y cancelar turnos, llevar tus puntos y canjes, y enviarte recordatorios por WhatsApp.</li>
-      <li><b>Con quién los compartimos.</b> Con el equipo del local para trabajar, con Firebase para guardar los datos, y con WhatsApp para los avisos. No los vendemos ni alquilamos.</li>
-      <li><b>Cuánto tiempo los guardamos.</b> Mientras tu cuenta esté activa. Si borrás tu cuenta, se elimina todo.</li>
-      <li><b>Cómo los protegemos.</b> Contraseña cifrada y conexión cifrada (HTTPS).</li>
-      <li><b>Tus derechos.</b> Podés pedir acceso, rectificación, actualización o supresión de tu cuenta.</li>
-      <li><b>Menores de edad.</b> Si sos menor de 18 años, reservá con autorización de tu padre, madre o tutor.</li>
-    </ol>
-    <h3>CONDICIONES DEL SERVICIO</h3>
-    <ol class="pol-list">
-      <li><b>Turnos, cancelaciones y faltas.</b> Podés cancelar o reprogramar hasta ${CHSv} horas antes. Si no te presentás, se registra una falta; con faltas repetidas, el local puede pedirte una seña.</li>
-      <li><b>Puntos y premios.</b> Sumás ${PTSv} puntos por corte completado. Los premios no tienen valor en dinero ni se transfieren, y pueden cambiar con previo aviso.</li>
-      <li><b>Pagos y precios.</b> Los precios se muestran antes de confirmar. Podés pagar en efectivo o transferencia; si se usa seña, se abona con Mercado Pago.</li>
-      <li><b>Avisos por WhatsApp.</b> Solo te escribimos para hablar de tus turnos. Si no querés recibirlos, avisanos.</li>
-    </ol>
-    <h3>CAMBIOS</h3>
-    <p>Estas políticas pueden cambiar. Te avisamos en la app con la fecha de la última actualización.</p>
+    ${POL_SECC.map(([id], i) => `<div class="pol-panel" id="pol-s-${id}" data-panel="${id}" role="tabpanel" aria-labelledby="pol-t-${id}" tabindex="0"${i === 0 ? "" : " hidden"}>${cuerpo[id]}</div>`).join("")}
   </div>
   <div class="pol-ft">
-    <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="polOk" style="width:auto;margin:0"> Leí y acepto las Políticas y privacidad y las condiciones del servicio.</label>
-    <div><button data-act="cerrarPol">Cerrar</button> <button class="lnd-cta" data-act="cerrarPol">Aceptar y continuar</button></div>
+    <label class="pol-acepto"><input type="checkbox" id="polOk"><span>Leí y acepto las Políticas y privacidad y las condiciones del servicio.</span></label>
+    <div class="pol-ft-btns">
+      <button class="pol-b pol-b--ghost" data-act="cerrarPol">Cerrar</button>
+      <button class="pol-b pol-b--pri" data-act="cerrarPol">Aceptar y continuar</button>
+    </div>
   </div>
 </div>`;
 }
@@ -3831,7 +5238,7 @@ const agH = () => {
     if (blocks(hm(x), dur).some((t) => tomados.has(t))) continue;
     libres.push(hm(x));
   }
-  return `<div class="card man"><h2 style="margin-top:0">Agendar turno</h2><small>Turno a nombre de un cliente, cargado desde la barbería.</small><h3>Cliente</h3><select style="width:100%" data-ch="agCh" data-args="${A("u", "@v")}"><option value="">Cliente nuevo (nombre abajo)</option>${US(UA).map((u) => `<option value="${esc(u.id)}" ${m.u === u.id ? "selected" : ""}>${esc(u.nm)} · ${esc(u.ph)}</option>`).join("")}</select>${m.u ? "" : `<input id="agnn" placeholder="Nombre del cliente" maxlength="40" value="${esc(m.nm)}" data-in="agInEl" data-args="${A("nm", "@el")}">`}<h3>Servicio</h3><select style="width:100%" data-ch="agCh" data-args="${A("s", "@v")}">${S.map((x, i) => `<option value="${i}" ${m.s === i ? "selected" : ""}>${esc(x.n)} · ${$$(x.p)}</option>`).join("")}</select><h3>Día</h3><select style="width:100%" data-ch="agCh" data-args="${A("d", "@v")}">${daysFor(propio).map((d) => `<option value="${d}" ${m.d === d ? "selected" : ""}>${fd(d)}</option>`).join("")}</select><h3>Hora disponible</h3><select style="width:100%" data-ch="agCh" data-args="${A("t", "@v")}"><option value="">Elegí una hora…</option>${libres.map((t) => `<option value="${t}" ${m.t === t ? "selected" : ""}>${t}</option>`).join("")}</select>${!SB && FN.bs.length ? `<h3>Barbero</h3><div class="chips">${FN.bs.map((b) => `<button class="chip ${propio === b.id ? "on" : ""}" aria-pressed="${propio === b.id}" data-act="agBar" data-args="${A(b.id)}">${esc(b.n)}</button>`).join("")}</div>` : ""}<div class="chips" style="margin-top:16px"><button class="main" style="margin-top:0" data-act="agSave">Agendar</button><button data-act="agX">Cancelar</button></div></div>`;
+  return `<div class="card man"><h2 style="margin-top:0">Agendar turno</h2><small>Turno a nombre de un cliente, cargado desde la barbería.</small><h3>Cliente</h3><select style="width:100%" data-ch="agCh" data-args="${A("u", "@v")}"><option value="" >Cliente nuevo (nombre abajo)</option>${US(UA).map((u) => `<option value="${esc(u.id)}" ${m.u === u.id ? "selected" : ""}>${esc(etqUsuario(u))}</option>`).join("")}</select>${m.u ? "" : `<input id="agnn" placeholder="Nombre del cliente" maxlength="40" value="${esc(m.nm)}" data-in="agInEl" data-args="${A("nm", "@el")}">`}<h3>Servicio</h3><select style="width:100%" data-ch="agCh" data-args="${A("s", "@v")}">${S.map((x, i) => `<option value="${i}" ${m.s === i ? "selected" : ""}>${esc(x.n)} · ${$$(x.p)}</option>`).join("")}</select><h3>Día</h3><select style="width:100%" data-ch="agCh" data-args="${A("d", "@v")}">${daysFor(propio).map((d) => `<option value="${d}" ${m.d === d ? "selected" : ""}>${fd(d)}</option>`).join("")}</select><h3>Hora disponible</h3><select style="width:100%" data-ch="agCh" data-args="${A("t", "@v")}"><option value="">Elegí una hora…</option>${libres.map((t) => `<option value="${t}" ${m.t === t ? "selected" : ""}>${t}</option>`).join("")}</select>${!SB && FN.bs.length ? `<h3>Barbero</h3><div class="chips">${FN.bs.map((b) => `<button class="chip ${propio === b.id ? "on" : ""}" aria-pressed="${propio === b.id}" data-act="agBar" data-args="${A(b.id)}">${esc(b.n)}</button>`).join("")}</div>` : ""}<div class="chips" style="margin-top:16px"><button class="main" style="margin-top:0" data-act="agSave">Agendar</button><button data-act="agX">Cancelar</button></div></div>`;
 };
 const dnForm = (t) => {
   const l = sv(t).p,
@@ -3853,7 +5260,7 @@ function turH() {
   const card = (t) => {
     const x = cx === t.id,
       pr = t.st === "hecho" && t.precio != null ? t.precio : sv(t).p;
-    return `<div class="card" style="margin-bottom:12px"><div class="appt" style="border:0;background:none;padding:0;margin:0"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font:700 34px 'Barlow Condensed'">${t.t}</b><span class="pill ${t.st === "hecho" ? "st-hecho" : t.st === "cancel" ? "st-cancel" : "st-pend"}">${ST[t.st]}</span></div><small style="color:var(--mut)">${fd(t.d)}</small><br><b>${esc(sv(t).n)}</b><br><small>con ${esc(bn(t) || "—")} · ${esc(sv(t).tx)} · ${$$(pr)}</small></div>${t.st === "pend" && !x ? `<button class="pillb" style="width:100%;margin-top:12px;padding:11px" data-act="askCancel" data-args="${A(t.id)}">Cancelar</button>` : ""}${x ? cxForm(t) : ""}</div>`;
+    return `<div class="card" style="margin-bottom:12px"><div class="appt" style="border:0;background:none;padding:0;margin:0"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font:700 34px 'Barlow Condensed'">${t.t}</b><span class="pill ${t.st === "hecho" ? "st-hecho" : t.st === "cancel" ? "st-cancel" : "st-pend"}">${ST[t.st]}</span></div><small style="color:var(--mut)">${fd(t.d)}</small><br><b>${esc(sv(t).n)}</b><br><small>con ${esc(bn(t) || "—")} · ${esc(sv(t).tx)} · ${$$(pr)}</small></div>${t.st === "pend" && !x ? `<div class="chips" style="margin-top:12px"><button class="pillb" style="flex:1;padding:11px" data-act="reprogramar" data-args="${A(t.id)}">Reprogramar</button><button class="pillb" style="flex:1;padding:11px" data-act="askCancel" data-args="${A(t.id)}">Cancelar</button></div>` : ""}${x ? cxForm(t) : ""}</div>`;
   };
   return (
     `<h1>MIS TURNOS</h1>` +
@@ -3891,6 +5298,66 @@ const recH = () => {
       : "")
   );
 };
+/* Mi ficha dentro de config/barberos (id = uid del barbero). Es la
+   misma que lee la landing, así que lo que se carga acá se ve allá.
+   `me` puede ser null si se llega a pintar sin sesión: se devuelve vacío
+   en vez de reventar, porque esta función se llama desde el render. */
+const miFicha = () => (me ? BARS.find((x) => x.id === me.uid) || {} : {});
+
+/* Guarda los datos de la tarjeta del landing.
+   async + await a propósito: setDoc devuelve una promesa, así que con un
+   try/catch sin await el error de las reglas de Firestore se escapaba como
+   rechazo sin capturar y la app decía "se guardó" sin haber guardado. */
+async function guardarPerfil() {
+  if (!me) return;
+  const id = me.uid;
+  const val = (k) => (((($(k) || {}).value) || "").trim());
+  const redesTxt = val("#pfRedes");
+  /* Una red por línea, "Nombre | https://…". Se parte sólo por el primer
+     "|": una URL puede traer otros pipes y no debe comerse el resto. */
+  const redes = redesTxt
+    ? redesTxt
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .map((l) => {
+          const i = l.indexOf("|");
+          const n = (i < 0 ? "" : l.slice(0, i)).trim();
+          const u = (i < 0 ? l : l.slice(i + 1)).trim();
+          return { n: n || u, url: u };
+        })
+        .filter((r) => r.url)
+    : [];
+  const nueva = {
+    ...miFicha(),
+    n: val("#pfNombre") || (SB && SB.n) || "Barbero",
+    esp: val("#pfEsp"),
+    desc: val("#pfDesc"),
+    tel: val("#pfTel"),
+    ig: val("#pfIg").replace(/^@/, ""),
+    redes,
+  };
+  /* Si el barbero todavía no está en la lista pública (recién creado, o
+     la lista se vació), el map no lo iba a tocar y el guardado era un
+     no-op silencioso: se perdía todo. Se agrega al final. */
+  const l = BARS.some((b) => b.id === id)
+    ? BARS.map((b) => (b.id === id ? nueva : b))
+    : [...BARS, { ...nueva, id }];
+  try {
+    busy(1, "Guardando…", 1);
+    await setDoc(doc(db, "config", "barberos"), { l }, { merge: true });
+    msg = "Tu ficha se guardó. Ya está visible en la web.";
+    R();
+  } catch (e) {
+    err(e);
+  }
+}
+/* Se registra en ACT y no sólo en W a propósito: ACT es una COPIA de W
+   (Object.assign({}, W, …) en la línea ~2484), así que asignar en W acá no
+   llegaría al despachador de data-act y el botón "Guardar perfil" no haría
+   nada. Este bloque corre después de esa copia, sobre el objeto vivo. */
+Object.assign(ACT, { guardarPerfil });
+
 function barH() {
   const hoy = ymd(),
     barbers = FN.bs.filter((b) => (!SB || isOwner() || b.uid === me.uid) && (!bf || b.id === bf)),
@@ -3900,7 +5367,7 @@ function barH() {
       .sort((a, b) => (a.d + a.t).localeCompare(b.d + b.t));
   const mySBFoto = SB && SB.foto ? SB.foto : "";
   return (
-    `<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;max-width:640px">${mySBFoto ? `<img src="${esc(mySBFoto)}" alt="" width="44" height="44" style="border-radius:50%;object-fit:cover">` : `<span class="aval" style="width:44px;height:44px;font-size:20px;flex:0 0 auto">${esc(((SB && SB.n) || (me && me.displayName) || "?")[0].toUpperCase())}</span>`}<div style="flex:1"><b>${esc((SB && SB.n) || (me && me.displayName) || "Tu barbería")}</b><br><small>Tu foto aparece para los clientes al reservar.</small></div><button data-act="fotoTomar" style="flex:0 0 auto">Cambiar foto</button></div>` +
+    `<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;max-width:640px">${mySBFoto ? `<img src="${esc(mySBFoto)}" alt="" width="44" height="44" style="border-radius:50%;object-fit:cover">` : `<span class="aval" style="width:44px;height:44px;font-size:20px;flex:0 0 auto">${esc(((SB && SB.n) || (me && me.displayName) || "?")[0].toUpperCase())}</span>`}<div style="flex:1"><b>${esc((SB && SB.n) || (me && me.displayName) || "Tu barbería")}</b><br><small>Tu foto aparece para los clientes al reservar.</small></div><button data-act="fotoTomar" style="flex:0 0 auto">Cambiar foto</button></div>` + perfilH() +
     `<div class="head" style="margin-top:0;flex-wrap:wrap"><div><h1 style="margin-bottom:4px">Agenda</h1><small>${ag ? fd(ag) : "Todos los días"} · ${p.length} ${p.length === 1 ? "turno" : "turnos"}</small></div><div class="chips" style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px">${[["", "Todos"], ...[...new Set([hoy, ...days()])].sort().map((d) => [d, d === hoy ? "Hoy" : fd(d)])].map((a) => `<button class="chip ${ag === a[0] ? "on" : ""}" aria-pressed="${!!(ag === a[0])}" data-act="setAg" data-args="${A(a[0])}" style="border:0">${a[1]}</button>`).join("")}</div><div class="chips"><button data-act="openMan">+ Carga manual</button><button data-act="agOpen">+ Agendar turno</button></div></div>${manH()}${agT ? agH() : ""}<div class="chips" style="margin-bottom:14px">${isOwner() ? [["", "Todos"], ...FN.bs.map((b) => [b.id, b.n])].map((x) => `<button class="chip ${bf === x[0] ? "on" : ""}" data-act="setBf" data-args="${A(x[0])}">${esc(x[1])}</button>`).join("") : ""}</div>` +
     `<div class="cols3">${barbers
       .concat(
@@ -4056,7 +5523,10 @@ function barsH() {
           const u = UA.find((x) => x.id === b.uid),
             cortes = HA().filter((t) => t.bid === b.id && t.d.startsWith(ymd().slice(0, 7))).length;
           const farmFoto = (BARS.find((x) => x.id === b.id) || {}).foto || "";
-          return `<div class="card" style="text-align:center">${farmFoto ? `<img src="${esc(farmFoto)}" alt="" width="64" height="64" style="border-radius:50%;object-fit:cover;margin:0 auto 12px;display:block">` : `<div class="aval" style="margin:0 auto 12px">${esc((b.n || "?")[0].toUpperCase())}</div>`}<h2 style="margin:0">${esc(b.n)}</h2><small>Dueño ${b.pd}% · Barbero ${100 - b.pd}%</small><div style="margin:12px 0"><span class="pill st-hecho">Activo</span></div><div class="line" style="justify-content:space-around"><span><small>Porcentaje</small><br><b style="color:var(--brass)">${100 - b.pd} %</b></span><span><small>Este mes</small><br><b>${cortes} cortes</b></span></div><div class="chips" style="margin-top:14px"><button style="flex:1" data-act="go" data-args="${A("fin")}">✎ Editar</button><button style="flex:1" data-act="fotoBarbero" data-args="${A(b.id)}">📷 Foto</button>${b.uid ? `<button style="flex:1" data-act="askQuitBar" data-args="${A(b.uid)}">Quitar</button>` : ""}</div></div>`;
+          return `<div class="card" style="text-align:center">${farmFoto ? `<img src="${esc(farmFoto)}" alt="" width="64" height="64" style="border-radius:50%;object-fit:cover;margin:0 auto 12px;display:block">` : `<div class="aval" style="margin:0 auto 12px">${esc((b.n || "?")[0].toUpperCase())}</div>`}<h2 style="margin:0">${esc(b.n)}</h2><small>Dueño ${b.pd}% · Barbero ${100 - b.pd}%</small><div style="margin:12px 0"><span class="pill st-hecho">Activo</span></div><div class="line" style="justify-content:space-around"><span><small>Porcentaje</small><br><b style="color:var(--brass)">${100 - b.pd} %</b></span><span><small>Este mes</small><br><b>${cortes} cortes</b></span></div><div class="chips" style="margin-top:14px"><button style="flex:1" data-act="go" data-args="${A("fin")}">✎ Editar</button><button style="flex:1" data-act="fotoBarbero" data-args="${A(b.id)}">📷 Foto</button>${/* "Quitar" para los dos tipos. Antes sólo se mostraba si el barbero
+        tenía cuenta (b.uid), así que a los agregados a mano con "+ Agregar
+        barbero" no se los podía sacar nunca: quedaban publicados en la web
+        sin salida. */ `<button style="flex:1" data-act="askQuitBar" data-args="${A(b.uid || b.id)}">Quitar</button>`}</div></div>`;
         }).join("") +
         `</div>`
       : "<p><small>Todavía no hay barberos con cuenta. Entrá a Clientes y tocá “Hacer barbero” en alguien que ya se registró.</small></p>")
@@ -4096,7 +5566,7 @@ function cliH() {
                       .join("") +
                     "</div>"
                   : "<small>Todavía no tiene cortes.</small>";
-          return `<div class="clin" role="button" style="cursor:pointer;${u.id === cliSel ? "background:#1f2a38;box-shadow:inset 3px 0 var(--brass)" : ""}" data-act="cliSel" data-args="${A(u.id)}"><b>${esc(u.nm)}</b><span>${esc(u.ph || "—")}</span><b style="color:var(--brass)">${u.pt}</b><span style="color:${u.ns > 2 ? "var(--red)" : "inherit"}">${u.ns || 0}</span></div>`;
+          return `<div class="clin" role="button" style="cursor:pointer;${u.id === cliSel ? "background:#1f2a38;box-shadow:inset 3px 0 var(--brass)" : ""}" data-act="cliSel" data-args="${A(u.id)}"><b>${esc(u.nm || "(sin nombre)")}</b><span>${esc(u.ph || "—")}</span><b style="color:var(--brass)">${u.pt}</b><span style="color:${u.ns > 2 ? "var(--red)" : "inherit"}">${u.ns || 0}</span></div>`;
         }).join("") +
         "</div>" +
         (L.length > cliN
@@ -4271,7 +5741,7 @@ function cfgH() {
     `<div class="grid b"><div>${svH()}</div><div><h2>Premios</h2><div class="card">${PRv.map(
       (p, i) =>
         `<div class="svr"><input id="prn${i}" aria-label="Nombre del premio" placeholder="Nombre" maxlength="30" value="${esc(p.n)}" data-in="rgPrn" data-args="${A(i, "@el")}"><div class="two"><input id="prp${i}" aria-label="Puntos requeridos" inputmode="numeric" placeholder="Puntos" value="${esc(p.p)}" data-in="rgPrp" data-args="${A(i, "@el")}"></div></div>`,
-    ).join("")}<small>Editá el nombre y los puntos requeridos de cada premio.</small></div><h2>Reglas de puntos</h2><div class="card"><label>Puntos por corte completado</label><input id="ppts" inputmode="numeric" maxlength="4" value="${esc(PTSv)}" data-in="rgPts" data-args="${A("@el")}"><p><small>Se suman cuando el barbero guarda el cobro.</small></p><h3 style="margin-top:14px">Política de cancelación</h3><label>Cancelar sin cargo hasta (horas antes)</label><input id="pcan" inputmode="numeric" maxlength="3" value="${esc(CHSv)}" data-in="rgCan" data-args="${A("@el")}"></div><button class="main" data-act="rgGuardar">Guardar reglas y premios</button></div></div>`;
+    ).join("")}<small>Editá el nombre y los puntos requeridos de cada premio.</small></div><h2>Reglas de puntos</h2><div class="card"><label>Puntos por corte completado</label><input id="ppts" inputmode="numeric" maxlength="4" value="${esc(PTSv)}" data-in="rgPts" data-args="${A("@el")}"><p><small>Se suman cuando el barbero guarda el cobro.</small></p><label style="margin-top:14px">Puntos de bienvenida al registrarse</label><input id="pptsreg" inputmode="numeric" maxlength="4" value="${esc(PTSRv)}" data-in="rgPtsRegistro" data-args="${A("@el")}"><p><small>Se cargan una sola vez, al crear la cuenta. Aparece en el formulario de registro de la web y en la app.</small></p><h3 style="margin-top:14px">Política de cancelación</h3><label>Cancelar sin cargo hasta (horas antes)</label><input id="pcan" inputmode="numeric" maxlength="3" value="${esc(CHSv)}" data-in="rgCan" data-args="${A("@el")}"></div><button class="main" data-act="rgGuardar">Guardar reglas y premios</button></div></div>`;
   const negTab = `<div class="card" style="max-width:640px"><h2 style="margin-top:0">Negocio</h2><div class="line"><span>Nombre</span><b>${esc(NOMBRE)}</b></div><div class="line"><span>Autor</span><b>${esc(AUTOR)}</b></div><div class="line"><span>WhatsApp</span><b>${esc(WHATSAPP || "—")}</b></div></div>`;
   return `<h1>Ajustes</h1><div class="tabs"><button class="${tab === "hor" ? "on" : ""}" data-act="cfgTab" data-args="${A("hor")}">Horarios</button><button class="${tab === "svc" ? "on" : ""}" data-act="cfgTab" data-args="${A("svc")}">Servicios y premios</button><button class="${tab === "neg" ? "on" : ""}" data-act="cfgTab" data-args="${A("neg")}">Negocio</button></div>` +
     (tab === "svc" ? svcTab : tab === "neg" ? negTab : horCard);
@@ -4283,10 +5753,10 @@ function footer() {
       .map((d) => D[d])
       .join(" · ");
   $("#ft").innerHTML =
-    `<div class="ft"><div><div class="fb"><img src="${LOGO}" alt="" width="48" height="48"><div><b>${esc(NOMBRE)}</b><small>Turnos online y puntos por cada visita</small></div></div></div><div><h4>Horarios</h4><p>${dd}</p><p>${hm(CF.a)} a ${hm(CF.c)} hs</p></div><div><h4>Contacto</h4>${WA_LISTA.map(
+    `<div class="ft"><div><div class="fb"><img src="${LOGO}" alt="" width="48" height="48"><div><b>${esc(NOMBRE)}</b><small>Turnos online y puntos por cada visita</small></div></div></div><div><h4>Horarios</h4><p>${dd}</p><p>${hm(CF.a)} a ${hm(CF.c)} hs</p></div><div class="ft-cont"><h4>Contacto</h4><div class="ft-soc">${WA_LISTA.map(
     (w) =>
-      `<p><a href="https://wa.me/${esc(w.num)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none"><img class="ic-wa" src="assets/whatsapp.svg" alt="" width="22" height="22" loading="lazy">WhatsApp ${esc(w.n)} · ${esc(w.num)}</a></p>`,
-  ).join("")}<p><a href="https://www.instagram.com/${esc(INSTAGRAM)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none"><img class="ic-ig" src="assets/instagram.svg" alt="" width="22" height="22" loading="lazy">@${esc(INSTAGRAM)}</a></p><p>Reservá desde la web, sin llamadas.</p></div></div><div class="fz">© ${new Date().getFullYear()} ${esc(NOMBRE)} · Desarrollado por <b>${esc(AUTOR)}</b> · <a href="#" data-act="openPol" style="color:#cbd3dc">Políticas</a> · <a href="#" data-act="openPol" style="color:#cbd3dc">Privacidad</a></div>`;
+      `<p><a href="https://wa.me/${esc(w.num)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none"><img class="ic-wa" src="assets/whatsapp-96.png" alt="" width="22" height="22" loading="lazy">WhatsApp ${esc(w.n)} · ${esc(w.num)}</a></p>`,
+  ).join("")}<p><a href="https://www.instagram.com/${esc(INSTAGRAM)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none"><img class="ic-ig" src="assets/instagram-96.png" alt="" width="22" height="22" loading="lazy">@${esc(INSTAGRAM)}</a></p></div><p>Reservá desde la web, sin llamadas.</p></div></div><div class="fz">© ${new Date().getFullYear()} ${esc(NOMBRE)} · Desarrollado por <b>${esc(AUTOR)}</b> · <a href="#" data-act="openPol" style="color:#cbd3dc">Políticas</a> · <a href="#" data-act="openPol" style="color:#cbd3dc">Privacidad</a></div>`;
 }
 function R() {
   let h,
@@ -4391,26 +5861,39 @@ function R() {
   } else if (!U) h = "<p><small>Cargando tu cuenta…</small></p>";
   else {
     h =
-      view === "res" ? resH() : view === "tur" ? turH() : view === "priv" ? privH() : view === "rev" ? revH() : homeH();
+      view === "res"
+        ? resH()
+        : view === "tur"
+          ? turH()
+          : view === "priv"
+            ? privH()
+            : view === "ajus"
+              ? ajusH()
+              : view === "rev"
+                ? revH()
+                : homeH();
     const ICO = {
       home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>',
       res: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
       tur: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
       rev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>',
     };
-    nv = [
-      ["home", "Inicio"],
-      ["res", "Reservar"],
-      ["tur", "Mis turnos"],
-      ["rev", "Reseña"],
-    ]
-      .map(
-        (a) =>
-          `<button class="${view === a[0] ? "on" : ""}" data-act="go" data-args="${A(a[0])}">${ICO[a[0]]}<span>${a[1]}</span></button>`,
-      )
-      .join("");
+    /* La MISMA lista alimenta la barra de arriba (escritorio) y la de
+       abajo (celular): un solo origen, así no pueden desincronizarse. La
+       barra de abajo es la que se posiciona fija; la de arriba, en línea. */
+    nv = SEC_CLI.map(
+      (a) =>
+        `<button class="${view === a[0] ? "on" : ""}"${view === a[0] ? ' aria-current="page"' : ""} data-act="go" data-args="${A(a[0])}">${ICO[a[0]]}<span>${a[1]}</span></button>`,
+    ).join("");
+    /* Menú del perfil: lo abre la foto del encabezado. Los botones
+       "Ver la web" y "Cerrar sesión" antes vivían sueltos en el header
+       (`#web`, `#lo`); ahora salen de acá, para que el cliente llegue a
+       ellos desde un solo lugar. Para el admin el header queda como
+       estaba: no se toca lo que ya funciona. */
     nm =
-      `<button data-act="openPol">Políticas</button><button data-act="openPol">Privacidad</button><button class="irweb" data-act="verWebOn">Ver la web</button><button class="salir" data-act="salir">Cerrar sesión</button>`;
+      `<button data-act="go" data-args="${A("ajus")}">Ajustes</button>` +
+      `<button data-act="verWebOn">Ver la web</button>` +
+      `<button class="salir" data-act="salir">Cerrar sesión</button>`;
   }
   } catch (e) {
     console.error("render", e);
@@ -4422,9 +5905,23 @@ function R() {
   const nmE = $("#nmenu");
   nmE.innerHTML = nm;
   nmE.hidden = !(navOpen && me && rd);
-  const hb = $("#hamb");
-  hb.hidden = !me || !rd || !isAdm();
-  hb.setAttribute("aria-expanded", navOpen ? "true" : "false");
+  /* Menú del perfil del cliente. Para el admin se deja vacío y oculto:
+     el suyo es #nmenu y lo abre la misma foto. */
+  const pmE = $("#pmenu");
+  const esCli = !!(me && rd && !isAdm());
+  pmE.innerHTML = esCli ? nm : "";
+  pmE.hidden = !(perfilOpen && esCli);
+  /* La foto lleva el estado de su propio menú, según el rol. */
+  const mb = $("#mebadge");
+  if (mb) mb.setAttribute("aria-expanded", esCli ? (perfilOpen ? "true" : "false") : navOpen ? "true" : "false");
+  /* El cliente ya no usa los botones sueltos del header: "Ver la web" y
+     "Cerrar sesión" pasaron al menú de la foto. Se ocultan por CSS con
+     body:not(.adm), pero también se marcan hidden para que no queden en el
+     orden de tabulación. */
+  ["web", "lo"].forEach((id) => {
+    const el = $("#" + id);
+    if (el) el.hidden = !me || esCli;
+  });
   $("#app").innerHTML = (msg ? `<p class="msg">${esc(msg)}</p>` : "") + h;
   setupReveal();
   footer();
@@ -4448,8 +5945,14 @@ document.addEventListener("keydown", (e) => {
   if ($("#mo").hidden) return;
   if (e.key === "Escape") Mx();
   if (e.key === "Tab") {
-    const b = [...$("#mo").querySelectorAll("button")],
+    /* Se focusan botones Y enlaces: la ficha del barbero muestra links de
+       WhatsApp/Instagram/redes, y con sólo botones en el ciclo quedaban
+       inalcanzables con el teclado. */
+    const b = [
+      ...$("#mo").querySelectorAll("button, a[href], input, textarea, select"),
+    ].filter((el) => !el.disabled && el.offsetParent !== null),
       i = b.indexOf(document.activeElement);
+    if (!b.length) return;
     e.preventDefault();
     b[(i + (e.shiftKey ? -1 : 1) + b.length) % b.length].focus();
   }
@@ -4470,9 +5973,87 @@ window.__ok = 1; // la usa boot.js para saber que la app cargó
 })();
 R();
 
+/* Gancho para las pruebas de la landing (tests/landing.*.js).
+   Sólo se expone en local: en producción no se publica nada, así que no
+   queda una puerta abierta en el sitio. Sirve para poblar BARS con datos
+   sintéticos y probar la ficha del barbero sin depender de lo que el
+   dueño tenga cargado en Firestore, y para leer el estado interno. */
+if (["localhost", "127.0.0.1", ""].includes(location.hostname)) {
+  window.__test = {
+    setBars(l) {
+      BARS = Array.isArray(l) ? l : [];
+      R();
+    },
+    /* Estado de la pantalla de contraseña social, para probar los caminos
+       sin abrir el pop-up de Google ni de Facebook (que abriría otra
+       pestaña y pide una cuenta real). */
+    setRedPass(v) {
+      redPass = v;
+      tab = v ? "redpass" : "in";
+      R();
+    },
+    get redPass() {
+      return redPass;
+    },
+    redPassIn,
+    redPassOk: () => ACT.redPassOk(),
+    redPassNo: () => ACT.redPassNo(),
+    get bars() {
+      return BARS;
+    },
+    voltear: (id) => ACT.lbFlip(id),
+    ficha: (id) => lbFichaBarbero(BARS.find((b) => b.id === id) || {}),
+    telWa: lbTelWa,
+    parseRedes(txt) {
+      return String(txt || "")
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .map((l) => {
+          const i = l.indexOf("|");
+          const n = (i < 0 ? "" : l.slice(0, i)).trim();
+          const u = (i < 0 ? l : l.slice(i + 1)).trim();
+          return { n: n || u, url: u };
+        })
+        .filter((r) => r.url);
+    },
+    /* Turnos sintéticos EN MEMORIA, para probar reprogramar y cancelar sin
+       escribir en Firestore. `setTurnos` reemplaza la lista; nada de lo que
+       se haga con estos sale a la base real, así que el test puede
+       recorrer la política de las 2 horas y el modo edición sin tocar los
+       turnos de los clientes. */
+    setTurnos(l) {
+      T = Array.isArray(l) ? l : [];
+      R();
+    },
+    get turnos() {
+      return T;
+    },
+    get rep() {
+      return rep;
+    },
+    get sel() {
+      return sel;
+    },
+    get CHSv() {
+      return CHSv;
+    },
+    /* El uid de la sesión, para que los turnos sintéticos del test
+       pertenezcan de verdad a quien entra y no reboten contra el
+       guardia "ese turno no es tuyo". */
+    get uid() {
+      return me && me.uid;
+    },
+    reprogramar: (id) => ACT.reprogramar(id),
+    repSalir: () => ACT.repSalir(),
+    askCancel: (id) => ACT.askCancel(id),
+  };
+}
+
 /* ---------- handlers del asistente (compartidos por panel y modal) ---------- */
 Object.assign(ACT, {
   wzAbrir() {
+    clearTimeout(wzAuto);
     WZ.paso = 1;
     WZ.turno = "";
     sel.t = "";
@@ -4495,7 +6076,28 @@ Object.assign(ACT, {
     WZ.pintar();
   },
   wzBack() {
+    /* Si había un salto automático pendiente, se cancela: si no, el timer
+       se dispararía después de volver atrás y teletransportaría al usuario
+       al paso siguiente. */
+    clearTimeout(wzAuto);
     WZ.paso = Math.max(1, WZ.paso - 1);
+    WZ.pintar();
+  },
+  /* "Cambiar" de una fila del resumen: salta a ese paso directo. El
+     paso 4 (turno mañana/tarde) no aparece en el resumen, así que la fila
+     de la hora apunta al 5, que es el horario. */
+  wzIr(paso) {
+    clearTimeout(wzAuto);
+    WZ.paso = Math.max(1, Math.min(5, +paso || 1));
+    if (WZ.paso === 3 && !WZ.unsub) wzOcc();
+    WZ.pintar();
+  },
+  /* La casilla de términos. Se pinta desde el estado (sel.pol) y no desde
+     el atributo `checked` del input: el asistente se re-pinta entero en
+     cada cambio, y si el estado viviera en el DOM el tilde se perdería al
+     primer render. */
+  wzPol(v) {
+    sel.pol = v ? 1 : 0;
     WZ.pintar();
   },
   wzS(i) {
@@ -4503,6 +6105,7 @@ Object.assign(ACT, {
     sel.t = "";
     WZ.turno = "";
     WZ.pintar();
+    wzAvanzaSolo(1);
   },
   wzB(id) {
     sel.b = id;
@@ -4511,6 +6114,7 @@ Object.assign(ACT, {
     WZ.turno = "";
     if (WZ.paso > 2) WZ.paso = 2;
     WZ.pintar();
+    wzAvanzaSolo(2);
   },
   wzD(d) {
     sel.d = d;
@@ -4518,15 +6122,22 @@ Object.assign(ACT, {
     WZ.turno = "";
     if (WZ.paso > 3) WZ.paso = 3;
     WZ.pintar();
+    wzAvanzaSolo(3);
   },
   wzT(k) {
     WZ.turno = k;
     sel.t = "";
     WZ.pintar();
+    wzAvanzaSolo(4);
   },
   wzH(t) {
+    /* Tocar el mismo horario lo deselecciona. En ese caso NO se avanza: si
+       fuera, el usuario que sólo quería cambiar de horario caería de vuelta
+       en el resumen sin querer. */
+    const quedaba = sel.t === t;
     sel.t = sel.t === t ? "" : t;
     WZ.pintar();
+    if (!quedaba && sel.t) wzAvanzaSolo(5);
   },
   wzMes(k) {
     const [a, m] = WZ.mes.split("-").map(Number);

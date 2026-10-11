@@ -77,8 +77,28 @@ const LEER_NAV = () => {
   };
 };
 
+/* El asistente avanza SOLO al elegir en el celular (este test corre a 390),
+   asi que no hay boton de "continuar" que clickear: se espera a que el paso
+   cambie. Ese click daba timeout de 30 s al desaparecer el boton. */
+const pasoWz = (pg) =>
+  pg.evaluate(() => {
+    const on = document.querySelector(".wz-paso.on b");
+    return on ? +on.textContent : -1;
+  });
+const avanzarWz = async (pg) => {
+  const antes = await pasoWz(pg);
+  for (let i = 0; i < 40; i++) {
+    const act = await pasoWz(pg);
+    if (act > 0 && act !== antes) return act;
+    await pg.waitForTimeout(120);
+  }
+  return -1;
+};
+
 async function entrar(p, email, pass) {
-  await p.goto(BASE, { waitUntil: "domcontentloaded" });
+  
+
+await p.goto(BASE, { waitUntil: "domcontentloaded" });
   await p.waitForSelector(".lb-wcard", { timeout: 25000 });
   await p.waitForTimeout(1200);
   /* A 390 px los dos "Ingresar" están ocultos: uno vive en el header y el
@@ -130,28 +150,23 @@ async function recorrerAsistente(p, tag) {
   out.pasoInicial = await paso();
   await p.click(".wz-item:not(.on)").catch(() => {});
   await p.waitForTimeout(200);
-  await p.click(".wz-pie .wz-btn--pri");
-  await p.waitForTimeout(400);
+  await avanzarWz(p);
   await p.click(".wz-item:not(.on)").catch(() => {});
   await p.waitForTimeout(200);
-  await p.click(".wz-pie .wz-btn--pri");
-  await p.waitForTimeout(1600); // carga la disponibilidad del mes
+  await avanzarWz(p);
   out.pasoCalendario = await paso();
   const w3 = await p.$("#wiz");
   if (w3) await w3.screenshot({ path: path.join(__dirname, "..", "tmp_shots", tag + "-paso3.png") });
   await p.click(".wz-cel.libre").catch(() => {});
   await p.waitForTimeout(250);
-  await p.click(".wz-pie .wz-btn--pri");
-  await p.waitForTimeout(400);
+  await avanzarWz(p);
   await p.click(".wz-turno:not(.off)").catch(() => {});
   await p.waitForTimeout(250);
-  await p.click(".wz-pie .wz-btn--pri");
-  await p.waitForTimeout(400);
+  await avanzarWz(p);
   out.pasoHorarios = await paso();
   await p.click(".wz-hora:not(.oc)").catch(() => {});
   await p.waitForTimeout(250);
-  await p.click(".wz-pie .wz-btn--pri");
-  await p.waitForTimeout(400);
+  await avanzarWz(p);
   out.pasoResumen = await paso();
 
   const cta = await p.evaluate(() =>

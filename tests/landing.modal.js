@@ -61,7 +61,15 @@ async function abrirModal(p) {
     check(!!hdr, "el header tiene <img id=lg>");
     if (hdr) {
       check(hdr.w > 0, "el logo del header carga (naturalWidth " + hdr.w + ")", hdr.src);
-      check(hdr.radius.includes("50%"), "el logo del header es circular", hdr.radius);
+      /* Cuadrado redondeado, no círculo: el emblema es una insignia
+         cuadrada con un círculo adentro, y un círculo le recortaba las
+         esquinas. Además el PNG ya es transparente (los bordes están en
+         alfa 0), así que el logo no necesita recorte para tapar el fondo. */
+      check(
+        hdr.radius.includes("14px"),
+        "el logo del header es un cuadrado redondeado",
+        hdr.radius,
+      );
     }
 
     await abrirModal(p);
@@ -123,14 +131,29 @@ check(!!NOMBRE_EN_PAGINA, "el header define el nombre de marca: \"" + NOMBRE_EN_
         Math.round(dist) + ")");
     }
 
+    
+/* En 390 px el asistente avanza SOLO al elegir (no hay boton de
+   "continuar"), así que en vez de clickearlo se espera a que cambie el
+   paso. Antes cada click daba timeout de 30 s al desaparecer el boton. */
+const irPaso = async (n, ms = 2500) => {
+  for (let i = 0; i < Math.ceil(ms / 120); i++) {
+    const act = await p.evaluate(() => {
+      const on = document.querySelector(".wz-paso.on b");
+      return on ? +on.textContent : -1;
+    });
+    if (act === n) return true;
+    await p.waitForTimeout(120);
+  }
+  return false;
+};
+
     let sheet = await p.$(".wz-sheet");
     if (sheet) await sheet.screenshot({ path: path.join(__dirname, "..", "tmp_shots", `MOD-${theme}-paso1.png`) });
 
     /* ---- fotos de los barberos (paso 2) ---- */
     await p.click(".wz-item:not(.on)");
     await p.waitForTimeout(200);
-    await p.click(".wz-pie .wz-btn--pri");
-    await p.waitForTimeout(600);
+    await irPaso(2);
 
     const bars = await p.evaluate(() => {
       const items = [...document.querySelectorAll(".wz-item--bar")];
@@ -165,21 +188,19 @@ check(!!NOMBRE_EN_PAGINA, "el header define el nombre de marca: \"" + NOMBRE_EN_
     /* ---- el modal no debe tapar el login al continuar ---- */
     await p.click(".wz-item:not(.on)");
     await p.waitForTimeout(200);
-    await p.click(".wz-pie .wz-btn--pri");
-    await p.waitForTimeout(500);
+    await irPaso(3);
     await p.click(".wz-cel.libre");
     await p.waitForTimeout(250);
-    await p.click(".wz-pie .wz-btn--pri");
-    await p.waitForTimeout(400);
+    await irPaso(4);
     await p.click(".wz-turno:not(.off)");
     await p.waitForTimeout(250);
-    await p.click(".wz-pie .wz-btn--pri");
-    await p.waitForTimeout(400);
+    await irPaso(5);
     await p.click(".wz-hora:not(.oc)");
     await p.waitForTimeout(250);
-    await p.click(".wz-pie .wz-btn--pri");
-    await p.waitForTimeout(400);
-    const paso6 = await p.evaluate(() => !!document.querySelector(".wz-sum"));
+    await irPaso(6);
+    /* El resumen ya no se llama .wz-sum (era la tabla de 6 filas): ahora es
+       .wz-res con las tarjetas por fila y su boton "Cambiar". */
+    const paso6 = await p.evaluate(() => !!document.querySelector(".wz-res-tit"));
     check(paso6, "llega al resumen");
 
     await p.click(".wz-body .wz-btn--pri");
@@ -213,12 +234,10 @@ check(!!NOMBRE_EN_PAGINA, "el header define el nombre de marca: \"" + NOMBRE_EN_
     await p.waitForTimeout(300);
     await p.click(".wz-item:not(.on)");
     await p.waitForTimeout(150);
-    await p.click(".wz-pie .wz-btn--pri");
-    await p.waitForTimeout(300);
+    await irPaso(2);
     await p.click(".wz-item:not(.on)");
     await p.waitForTimeout(150);
-    await p.click(".wz-pie .wz-btn--pri");
-    await p.waitForTimeout(1500);
+    await irPaso(3);
     const cal = await p.evaluate(() => {
       const cels = document.querySelector(".wz-cels");
       const sheet = document.querySelector(".wz-sheet");

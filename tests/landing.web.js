@@ -44,11 +44,29 @@ function env(){const o={};fs.readFileSync(path.join(__dirname,"..",".env.local")
     await p.click('[data-act="entrar"]'); await p.waitForTimeout(5000);
     ck(await p.evaluate(()=>{const h=document.querySelector("body > header");
       return !!h&&getComputedStyle(h).display!=="none";}),"entra y aparece el header de la app");
+    /* "Ver la web" ya no esta suelto en el encabezado del cliente: paso al
+       menu que abre la foto (#mebadge). Para el dueno sigue ahi, suelto.
+       Este helper sirve en los dos casos: si el boton del header esta a la
+       vista lo usa; si no, abre el menu del perfil y lo busca adentro. */
+    const verWeb=async()=>{
+      const suelto=await p.evaluate(()=>{const v=document.querySelector("#web");
+        return !!v&&!v.hidden&&!!v.offsetParent;});
+      if(suelto){await p.click("#web");return;}
+      await p.click("#mebadge"); await p.waitForTimeout(600);
+      await p.click('#pmenu [data-act="verWebOn"]');
+    };
     const wb=await p.evaluate(()=>{const v=document.querySelector("#web");
       return v?{vis:!v.hidden&&!!v.offsetParent,t:v.textContent.trim()}:null;});
-    ck(wb&&wb.vis,"el panel tiene el botón 'Ver la web'",wb?wb.t:"falta");
+    if(rol!=="dueno"){
+      await p.click("#mebadge"); await p.waitForTimeout(600);
+      const enMenu=await p.evaluate(()=>!!document.querySelector('#pmenu [data-act="verWebOn"]'));
+      ck(enMenu,"el cliente llega a 'Ver la web' desde el menu del perfil");
+      await p.keyboard.press("Escape"); await p.waitForTimeout(400);
+    }else{
+      ck(wb&&wb.vis,"el dueno tiene 'Ver la web' suelto en el encabezado",wb?wb.t:"falta");
+    }
     // ir a la web
-    await p.click("#web"); await p.waitForTimeout(1600);
+    await verWeb(); await p.waitForTimeout(1600);
     const enWeb=await p.evaluate(()=>({
       landing:!!document.querySelector(".lb-hd"),
       barra:!!document.querySelector(".lb-volver"),
@@ -76,7 +94,7 @@ function env(){const o={};fs.readFileSync(path.join(__dirname,"..",".env.local")
     ck(deVuelta.hdApp!=="none","vuelve el header de la app");
     ck(deVuelta.panel,"vuelve al panel con su nav",deVuelta.nav+" botones");
     // CTA Reservar ahora desde la landing con sesion
-    await p.locator("#web").click(); await p.waitForTimeout(1200);
+    await verWeb(); await p.waitForTimeout(1200);
     await p.locator('[data-act="lbReservar"]:visible').first().click(); await p.waitForTimeout(1800);
     const res=await p.evaluate(()=>({
       landing:!!document.querySelector(".lb-hd"),
