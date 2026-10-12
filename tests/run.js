@@ -44,6 +44,7 @@ const TODAS = [
   { n: "panel.contraste", sesion: true, red: false },
   { n: "tokens.claro", sesion: false, red: false },
   { n: "panel.quitar", sesion: true, red: false },
+  { n: "header", sesion: true, red: false },
 
   /* necesitan el servidor con CSP */
   { n: "csp", sesion: false, red: true },

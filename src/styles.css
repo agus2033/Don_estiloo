@@ -597,7 +597,7 @@ body:not(.adm) #lo {
   padding: 12px 20px;
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 16px;
   min-height: 60px;
 }
 .logo {
@@ -973,6 +973,154 @@ nav .on {
   box-shadow: inset 0 -3px var(--brass);
 }
 
+/* ---------- FILA DERECHA DEL HEADER: casita, toggle, foto ----------
+   El orden lo pidió el dueño y es el mismo en celular y en escritorio.
+   Antes la foto venía antes del toggle y "Cerrar sesión" era un botón
+   suelto que apretaba la fila. La casita reemplaza al botón "Ver la web":
+   mismo data-act, pero sin el texto al lado, que ocupaba media fila. */
+.hd-der {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+/* El logo empujaba con margin-right:auto; ahora que la fila derecha tiene su
+   propio margen, el logo usa el espacio que sobra con la misma idea pero sin
+   competir con el auto del margen. */
+.logo {
+  margin-right: 0;
+}
+/* Casita y toggle: el mismo cuadrado de 42 px que el resto de los botones del
+   panel, para que la fila no se vea con tres alturas distintas. */
+#web,
+#thm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  border-radius: 12px;
+  cursor: pointer;
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease;
+}
+#web[hidden] {
+  display: none;
+}
+#web:hover:not(:disabled),
+#thm:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: var(--brass);
+}
+#web:active:not(:disabled),
+#thm:active:not(:disabled) {
+  transform: scale(0.97);
+}
+#web svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ---------- BARRA INFERIOR: CUÁNTAS SECCIONES ENTRAN ---------- */
+/* Las secciones que sobran se ocultan con nth-child en celular, según la
+   clase que el render pone en #nav. En escritorio no se oculta ninguna. */
+.nav-mas {
+  display: none;
+}
+/* Cuándo se activa la bandeja. El corte está en 1100 px y no en 860 a
+   propósito: en escritorio la fila no tiene ancho infinito, `.hd` está topado
+   en 1040 px, y con las 7 secciones del dueño más la marca y los tres
+   controles de la derecha la fila pasaba de ancho (1057 px medidos con el
+   header viejo). Con 1100 px de corte, en cualquier pantalla de escritorio
+   Angosta el dueño ve 3 secciones y el botón de tres rayitas, igual que en el
+   celular; el barbero y el cliente, que entran justos, no ven bandeja nunca.
+   1060 es el punto medido: a 1060 la fila del due�o entra completa (1007 px de
+   contenido contra 1020 disponibles). */
+@media (max-width: 1059px) {
+  /* El dueño: 3 secciones y el botón de tres rayitas en la cuarta ranura. */
+  #nav.nav-mas3 > button:not(.nav-mas):nth-child(n + 4) {
+    display: none;
+  }
+  #nav.nav-mas3 > button.nav-mas {
+    display: flex;
+  }
+}
+
+/* ---------- LA BANDEJA (#nmenu): HOJA QUE SUBE DESDE LA BARRA ----------
+   Antes era un panel anclado a la foto del header y hacía de menú del
+   admin. Ahora la abre el botón de tres rayitas de la barra de abajo, así que
+   sale desde abajo y ocupa un ancho cómodo para el pulgar. */
+#nmenu {
+  position: fixed;
+  left: 0;
+  right: 0;
+  /* 60px y no 0: la bandeja NO tapa la barra de abajo. Con bottom:0 tapaba
+     justo el botón de tres rayitas que la abrió, y no había forma de volver a
+     cerrarla con el mismo toque. 60 es la barra (54) más los 6 del margen de
+     la píldora dorada de la sección activa. */
+  bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px calc(14px + env(safe-area-inset-bottom, 0px));
+  background: var(--navy);
+  border-top: 3px solid var(--brass);
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -18px 44px #00000073;
+  animation: pmenuIn 0.16s ease-out;
+}
+#nmenu[hidden] {
+  display: none;
+}
+#nmenu button {
+  background: transparent;
+  border: 0;
+  color: #cbd3dc;
+  text-align: left;
+  border-radius: 10px;
+  min-height: 48px;
+  padding: 12px 14px;
+  font-size: 15px;
+}
+#nmenu button:hover,
+#nmenu button:focus-visible {
+  background: #1d2733;
+}
+#nmenu button.on {
+  background: color-mix(in srgb, #c9a24b 16%, transparent);
+  color: #c9a24b;
+}
+
+/* La bandeja desaparece cuando la fila entra entera, y por encima de 1100 px
+   todas las secciones están en la barra del encabezado. */
+@media (min-width: 1060px) {
+  #nmenu {
+    display: none !important;
+  }
+}
+/* Entre 860 y 1059 px la fila no entra entera y la barra no es fija: no
+   tiene sentido una hoja que sube desde abajo. La bandeja sube como un panel
+   desde la esquina inferior derecha, que es de donde está el botón. */
+@media (min-width: 860px) and (max-width: 1059px) {
+  #nmenu {
+    left: auto;
+    right: 24px;
+    bottom: 16px;
+    width: 230px;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--brass);
+    border-radius: 14px;
+    box-shadow: 0 18px 44px #00000073;
+  }
+}
 /* La barra inferior (#nav) vive DENTRO del <header>, y hay una regla
    "body[data-theme=light] header button { color: var(--ink) }" pensada para
    los botones del encabezado. Como el selector de la barra es mucho mas
@@ -1079,7 +1227,10 @@ body[data-theme="light"] header #nav button {
   nav button {
     flex: none;
     min-height: 40px;
-    padding: 6px 18px;
+    /* 15 px y no 18: con las 7 secciones del dueño la fila medía 1057 px
+       contra 1040 disponibles, o sea que no entraba ni en 1280 de ancho.
+       Tres px por lado en 7 botones son los 42 px que faltaban. */
+    padding: 6px 15px;
     border-radius: 6px;
     flex-direction: row;
     align-items: center;
@@ -1946,20 +2097,22 @@ h1::after {
 }
 
 @media (max-width: 859px) {
-  /* En el celular el menú del cliente es la barra de abajo; el del admin
-     sale de la foto. Ya no queda ningún hamburguesa en el header. */
-  body.adm nav {
-    display: none;
-  }
-  body:not(.adm) nav {
+  /* En el celular la barra de abajo es la navegación, para los TRES roles.
+     Antes acá había un "body.adm nav { display: none }": el admin no tenía
+     barra en celular y su menú salía entero de la foto. Eso dejó de servir
+     cuando el dueño pidió que el dueño tuviera barra con 3 secciones y un
+     botón de tres rayitas con el resto. */
+  nav {
     display: flex;
     position: fixed;
   }
   /* La sección activa de la barra de abajo es una píldora dorada, no la
-     raya de 3 px que usa el nav del admin. Va dentro de este bloque a
+     raya de 3 px que usa el nav de escritorio. Va dentro de este bloque a
      propósito: el `nav .on` global también aplica al encabezado de
-     escritorio, que ya tiene su propia regla en min-width: 860px. */
-  body:not(.adm) nav .on {
+     escritorio, que ya tiene su propia regla en min-width: 860px.
+     Ojo: sin el `body:not(.adm)` que tenía antes. La barra es igual para
+     todos los roles, así que el resaltado también. */
+  nav .on {
     box-shadow: none;
     background: color-mix(in srgb, var(--brass) 18%, transparent);
     border-radius: 14px;
@@ -1973,55 +2126,15 @@ h1::after {
     padding-bottom: 48px;
   }
 }
-/* Menú del admin. Va anclado a la foto igual que #pmenu (los dos viven
-   dentro de .mewrap): antes era un panel fijo a lo ancho de la ventana
-   pegado abajo del header, y al scrollear la página quedaba despegado. */
-#nmenu {
-  position: absolute;
-  /* 22px y no 10: el alto del wrapper es el de la foto (40px), así que
-     con 10 el menú todavía caía dentro del header, que es más alto. */
-  top: calc(100% + 22px);
-  right: 0;
-  z-index: 40;
-  min-width: 210px;
-  background: var(--navy);
-  border: 1px solid var(--line);
-  border-top: 3px solid var(--brass);
-  display: flex;
-  flex-direction: column;
-  padding: 8px;
-  border-radius: 14px;
-  box-shadow: 0 18px 44px #00000073;
-  animation: pmenuIn 0.14s ease-out;
-}
-#nmenu[hidden] {
-  display: none;
-}
-#nmenu button {
-  background: transparent;
-  border: 0;
-  color: #cbd3dc;
-  text-align: left;
-  border-radius: 8px;
-  min-height: 44px;
-  padding: 10px 12px;
-}
-#nmenu button.on {
-  background: color-mix(in srgb, var(--brass) 16%, var(--bg));
-  color: var(--brass);
-  box-shadow: inset 3px 0 var(--brass);
-}
-#nmenu button.salir {
-  color: #e07060;
-}
-@media (min-width: 860px) {
-  #nmenu {
-    display: none !important;
-  }
-}
-/* El #hamb se fue: la foto del encabezado (#mebadge) abre el menú, tanto
-   para el cliente como para el admin. Si volviera a aparecer un control
-   con hamburguesa, sería un duplicado de ese. */
+/* El #nmenu que estaba acá era el panel anclado a la foto del admin
+   (position:absolute, top:calc(100% + 22px)). Ya no existe: #nmenu es la
+   bandeja que abre el botón de tres rayitas de la barra de abajo, y su
+   estilo está junto al bloque de .nav-mas, más arriba. Las reglas viejas se
+   sacaron porque si no ganaban por orden de archivo y la bandeja salía pegada
+   a la foto en vez de salir desde abajo. */
+/* El #hamb se fue: la foto del encabezado (#mebadge) abre el menú de tu
+   perfil, para los tres roles. Si volviera a aparecer un control con
+   hamburguesa en el encabezado, sería un duplicado de ese. */
 
 /* ===== Componentes plantilla ===== */
 .pill {

@@ -76,7 +76,10 @@ function envLocal() {
 
     /* ---------- 2. menú del perfil ---------- */
     chk(await page.locator("#mebadge:not([hidden])").count() > 0, `${tag} · la foto del perfil está`);
-    chk(await page.locator("#web[hidden], #lo[hidden]").count() === 2, `${tag} · "Ver la web" y "Cerrar sesión" ya no están sueltos en el header`);
+    /* "Cerrar sesión" ya no existe como botón suelto (vive en el menú de la
+       foto) y "Ver la web" es ahora la casita de la fila derecha. */
+    chk(await page.locator("#lo").count() === 0, `${tag} · no queda el botón suelto de "Cerrar sesión"`);
+    chk(await page.locator("#web:not([hidden])").count() === 1, `${tag} · la casita ("Ver la web") está en el header`);
 
     await page.click("#mebadge");
     await page.waitForTimeout(500);
@@ -110,12 +113,15 @@ function envLocal() {
     chk(pm.visible, `${tag} · el menú del perfil abre`);
     chk(pm.expandida === "true", `${tag} · aria-expanded pasa a true`, pm.expandida);
     chk(
-      pm.items.some((x) => /Ajustes/.test(x)) && pm.items.some((x) => /Cerrar sesi/.test(x)),
-      `${tag} · contiene Ajustes y Cerrar sesión`,
+      pm.items.some((x) => /Editar perfil/.test(x)) &&
+        pm.items.some((x) => /Cambiar foto/.test(x)) &&
+        pm.items.some((x) => /Cerrar sesi/.test(x)),
+      `${tag} · contiene Editar perfil, Cambiar foto y Cerrar sesión`,
       pm.items.join("|"),
     );
-    chk(pm.items.some((x) => /Ver la web/.test(x)), `${tag} · y Ver la web (no se perdió)`, pm.items.join("|"));
-    chk(pm.foco && /Ajustes/.test(pm.foco), `${tag} · el foco entra al menú`, String(pm.foco));
+    /* "Ver la web" ya no está en el menú: es la casita del encabezado. */
+    chk(!pm.items.some((x) => /Ver la web/.test(x)), `${tag} · "Ver la web" ya no está repetido en el menú`, pm.items.join("|"));
+    chk(pm.foco && /Editar perfil/.test(pm.foco), `${tag} · el foco entra al menú`, String(pm.foco));
     chk(pm.dentro, `${tag} · el menú no se sale de la pantalla`);
     chk(!pm.hayHamb, `${tag} · ya no hay botón de hamburguesa en el header`);
     chk(

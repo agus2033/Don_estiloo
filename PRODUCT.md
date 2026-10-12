@@ -308,3 +308,42 @@ Se fijan como regla, no como excepción: todo lo que responde al toque mide 44 p
 ### Lo que no se va a prometer
 
 El sitio **no** es AA en accesibilidad: hay 48 comprobaciones propias y 25 de contraste, y eso es un buen piso, no una certificación. Tampoco se midió con Lighthouse (no está instalado) ni en Safari o Firefox (todo se probó con Chrome). `AUDITORIA.md` §7 lista lo pendiente con esa honestidad.
+
+---
+
+## Header y navegación del panel (lote 23)
+
+### El orden del header es `casita - toggle - foto`, en celular y en escritorio
+
+Es lo único que no se negocia: es lo que pidió el dueño en las dos capturas, y
+va igual en los tres roles. La foto queda a la derecha porque es la que abre
+el menú de tu perfil, y un menú que se abre desde el borde es el que el pulgar
+encuentra.
+
+### La navegación tiene una sola regla: la fila no se desborda nunca
+
+Cada rol dibuja todas sus secciones y el CSS oculta las que no entran. El corte
+está en **1060 px**, no en 860, porque en escritorio la fila está topada en
+1040 px y con el dueño no entraba ni a 1280 de ancho. Al que entre, le sale un
+botón de tres rayitas con el resto.
+
+Consecuencia buscada: el barbero y el cliente, que entran justos, **nunca**
+ven el botón de tres rayitas. Antes el barbero lo tenía y repetía las mismas
+cuatro secciones.
+
+### El menú de la foto es el mismo para los tres roles, y tiene tres cosas
+
+Editar perfil (el dueño no lo ve, no tiene ficha pública), Cambiar foto y
+Cerrar sesión. "Editar perfil" apunta a distinto lugar según el rol porque no
+es lo mismo: el cliente edita su cuenta, el barbero edita los datos que salen
+en su tarjeta de la web, que viven en la ficha del landing.
+
+Los botones sueltos del header ("Ver la web" con texto y "Cerrar sesión") se
+eliminaron: la casita reemplaza al primero y el segundo vive en el menú. Una
+fila de controles con dos botones de texto era lo que apretó el header.
+
+### Lo que queda como decisión abierta
+
+La **casita en el panel del cliente** no la pidió el dueño: se le dejó para no
+perderle el "Ver la web" que tenía en su menú. Si sobra, se oculta con una
+línea de CSS.

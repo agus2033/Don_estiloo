@@ -150,3 +150,59 @@ Corrida completa con `node tests/run.js`. Las pruebas que necesitan una cuenta q
 - Las reglas nuevas contra Firestore real: hacen falta el Rules Playground o el emulador.
 - Un lector de pantalla real para la accesibilidad.
 - Cualquier medición de campo: todo lo medido es de laboratorio, en localhost.
+---
+
+## Lote 23 — Header del panel y barra de secciones
+
+### `index.html`
+- Se reordena `.hd` a `logo | nav | [casita] [toggle] [foto]`. El nuevo
+  wrapper `.hd-der` agrupa los tres controles de la derecha.
+- `#web` queda sólo con el ícono de la casita (se le saca el `<span>Ver la web`),
+  y se mueve antes de `#thm`.
+- **Se elimina `#lo`** (el botón suelto de "Cerrar sesión"): pasa al menú de la foto.
+- `#nmenu` sale de `.mewrap` y queda como hermano de `.hd` dentro del `<header>`:
+  ya no es el menú de la foto sino la bandeja de la barra.
+
+### `src/main.js`
+- Nueva `claseNav` (`"nav-mas3"` / `"nav-todo"`): le dice al CSS cuántas
+  secciones entran en la barra.
+- `CUANTAS = own ? 3 : sec.length`: el dueño muestra 3, el barbero muestra todas.
+- El botón `.nav-mas` (tres rayitas) se agrega a la barra sólo si de verdad
+  sobran secciones, y abre `#nmenu`.
+- Nueva `menuPerfil()` a **nivel de módulo** (antes de `function R()`): el menú
+  de la foto, unificado para los tres roles. Va fuera del `try` de `R()` a
+  propósito: ahí dentro sería block-scoped y el render la vería como
+  `undefined` (menú vacío).
+- Nueva `miPerfilWeb()`: el barbero editando los datos que salen en su tarjeta
+  del landing. Va a la web y le da vuelta a su propia ficha, que es donde vive
+  el bloque "Mi perfil en la web" (no tiene pantalla de Ajustes: `rtOk` no le
+  deja abrir `cfg`).
+- `toggleMebadge()` abre siempre `#pmenu` (antes bifurcaba por rol).
+- `toggleNav()` abre la bandeja `#nmenu` (antes el menú del admin).
+- El cierre por clic fuera de la bandeja mira `.nav-mas` en vez de `#mebadge`.
+- **Se borra `$("#lo").hidden = !me`**: `#lo` ya no existe y la línea tiraba
+  `TypeError` en cada render, dejando el panel a medio pintar.
+
+### `src/styles.css`
+- **Se borra `body.adm nav { display: none }`** (celular). Era la razón de que el
+  admin no tuviera barra inferior: su navegación salía entera de la foto.
+- Nuevo bloque de la fila derecha: `.hd-der`, casita y toggle como cuadrados de
+  42 px, y `.logo { margin-right: 0 }` para que el margen lo ponga `.hd-der`.
+- La bandeja se oculta por `nth-child` según la clase de `#nav`:
+  `#nav.nav-mas3 > button:not(.nav-mas):nth-child(n+4)` con corte en **1060 px**.
+- `#nmenu` deja de ser el panel anclado a la foto y pasa a ser una hoja que
+  sube desde abajo, con `bottom: calc(60px + safe-area)` para **no tapar** el
+  botón que la abrió. Entre 860 y 1059 px sube como panel desde la esquina.
+- `.hd` de `gap: 20px` a 16 px, y los botones de escritorio de `padding: 6px
+  18px` a `6px 15px`: son los 50 px que faltaban para que las 7 secciones del
+  dueño entren en 1040 px.
+
+### Pruebas
+- **Nueva `tests/header.js`**: 13 comprobaciones estáticas sobre el código (no
+  necesitan cuenta) + 19 medidas en navegador del dueño en 390 y 1280 px: orden
+  de la fila, que la fila no desborde, 3 secciones + bandeja, el contenido de la
+  bandeja, y el contenido del menú de la foto.
+- `tests/panel.shell.js` actualizado: ya no busca `#lo`, espera "Editar
+  perfil" / "Cambiar foto" / "Cerrar sesión", y que "Ver la web" **no** esté en
+  el menú. **No se pudo correr** (la cuenta de cliente no autentica).
+- `tests/run.js`: se agrega `header`.

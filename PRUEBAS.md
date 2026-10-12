@@ -161,3 +161,58 @@ node tests\perf.js *> antes.txt
 node tests\perf.js *> despues.txt
 node tests\perf.cmp.js antes.txt despues.txt antes despues
 ```
+---
+
+## `tests/header.js` — el orden del header y la barra de secciones
+
+Corre con `node tests\header.js`. Sale sola en `node tests\run.js`.
+
+Son dos mitades.
+
+### 1. Estructura, sin navegador ni cuenta (13 checks)
+
+Las cuentas de cliente y barbero ya no autentican, así que sus paneles no se
+pueden abrir. Lo que sí se puede fijar es que los bloques de código que arman
+esas barras sigan como deben:
+
+- el cliente tiene 4 secciones (`SEC_CLI`)
+- el dueño muestra 3 (`CUANTAS = own ? 3 : sec.length`)
+- la clase de la barra sale de si hay bandeja
+- el cliente marca `nav-todo` (sin bandeja)
+- `menuPerfil` existe **a nivel de módulo**, y una guarda extra verifica que no
+  haya vuelto adentro de `R()` (dentro del `try` sería block-scoped)
+- el menú tiene "Cambiar foto" y "Cerrar sesión", y "Editar perfil" se le
+  esconde al dueño
+- en `index.html` no queda `#lo` ni `#hamb`, y el orden es `web → thm → mebadge`
+
+> Ojo con los regex acá: `CUANTAS` **no** es un `const CUANTAS =`, es una pieza
+> del `const` encadenado que arma `sec`. Un `const CUANTAS` no encuentra nada y
+> la guarda pasa por verde sin comprobar nada (ya pasó una vez).
+
+### 2. El dueño, en navegador (19 checks, 2 SKIP)
+
+Entra con la cuenta del dueño y mide a 390 y a 1280 px:
+
+- el orden de la fila es casita - toggle - foto (compara `getBoundingClientRect().left`)
+- no queda el botón suelto de "Cerrar sesión"
+- **la fila no desborda**: `scrollWidth <= clientWidth` de `.hd`
+- a 390: la barra marca `nav-mas3`, se ven 3 secciones, el botón de tres rayitas
+  está, la bandeja abre y tiene exactamente Barberos / Finanzas / Ajustes / Galería
+- el menú de la foto abre y trae Cambiar foto + Cerrar sesión, y **no** trae
+  Editar perfil (que es lo correcto para el dueño)
+- deja capturas en `tmp_shots/header/`
+
+**SKIP**: los dos del barbero, porque su cuenta no autentica. La barra del
+barbero es idéntica a la del cliente en el código, pero **no se vio en
+pantalla**.
+
+### Dos trampas que se documentaron en este archivo
+
+- **No contar visibles con `offsetParent`.** La barra de celular es
+  `position: fixed`, y en un elemento con posicionamiento fijo `offsetParent`
+  devuelve `null` aunque esté dibujado. La primera corrida dio "0 secciones
+  visibles" en una barra con 7. Hay que usar `getBoundingClientRect()`.
+- **Los SKIP hay que leerlos.** Los dos SKIP del barbero son la única cobertura
+  que hay de ese panel, y son la mitad de lo que pidió el dueño.
+Las 13 estructurales no necesitan cuenta ni red: leen el código y el HTML. Las
+19 del dueño necesitan la sesión del dueño y el servidor en el 8765.

@@ -456,7 +456,12 @@ let me = null,
   cf = -1,
   sel = { s: 0, d: "", t: "", b: "", pol: 0 },
   navOpen = 0,
-  perfilOpen = 0, // menú del perfil del cliente (lo abre la foto del header)
+  /* Cuántas secciones entran en la barra de celular antes de que el resto
+     vaya a la bandeja. La fija el render según el rol y el CSS la usa para
+     ocultar las que sobran: así no hay estado que se desincronice al
+     cambiar el tamaño de la ventana. */
+  claseNav = "nav-todo",
+  perfilOpen = 0, // menú que abre la foto del header (los tres roles)
   verWeb = 0, // 1 = viendo la landing con sesión (botón "ver la web")
   resStep = 1;
 const isAdm = () => me && (me.uid === ADMIN_UID || !!SB); // barbero: dueño o cuenta de barbero
@@ -1380,10 +1385,17 @@ const W = {
     navOpen = 0;
     R();
   },
+  /* La bandeja con las secciones que no entran en la barra de celular. La
+     abre el botón de tres rayitas de la barra de abajo. */
   toggleNav() {
     navOpen = navOpen ? 0 : 1;
     mas = 0;
+    perfilOpen = 0;
     R();
+    if (navOpen) {
+      const b = $("#nmenu button");
+      if (b) b.focus();
+    }
   },
   /* "Canjear puntos" del inicio: los premios están más abajo en la misma
      vista, así que en vez de navegar a otro lado sólo baja hasta ellos. Con
@@ -1408,14 +1420,6 @@ const W = {
      dos botones distintos —#hamb para el admin y #perfil para el cliente—
      y el dueño pidió que la foto sea el menú. */
   toggleMebadge() {
-    if (isAdm()) {
-      navOpen = navOpen ? 0 : 1;
-      perfilOpen = 0;
-      R();
-      const b = $("#nmenu button");
-      if (b) b.focus();
-      return;
-    }
     perfilOpen = perfilOpen ? 0 : 1;
     navOpen = 0;
     R();
@@ -1425,6 +1429,31 @@ const W = {
       const b = $("#pmenu button");
       if (b) b.focus();
     }
+  },
+  /* El barbero editando los datos que salen en su tarjeta de la landing.
+
+     El bloque se llama "Mi perfil en la web" y vive en el DORSO de la ficha
+     (`<details class="perfil">`, ver lbFichaBarbero). El barbero no tiene
+     pantalla de Ajustes: `rtOk` no le deja abrir "cfg", que es del dueño. Por
+     eso la acción va a la web y le da vuelta a su propia tarjeta, que es
+     exactamente donde ese bloque está. */
+  miPerfilWeb() {
+    perfilOpen = 0;
+    verWeb = 1;
+    verWebOn();
+    /* La landing se pinta recién acá, así que la ficha se busca después. */
+    setTimeout(() => {
+      const mio = BARS.find((b) => b.id === me.uid);
+      if (!mio) return;
+      ACT.lbFlip(mio.id);
+      setTimeout(() => {
+        const d = document.querySelector(`details.perfil`);
+        if (d) {
+          d.open = true;
+          d.scrollIntoView({ block: "center" });
+        }
+      }, 260);
+    }, 260);
   },
   /* Se mantiene el nombre viejo porque hay tests y textos que lo usan, pero
      ahora hace lo mismo que tocar la foto. */
@@ -3110,6 +3139,8 @@ document.addEventListener("click", (e) => {
   if (!e.target.closest(".lb-barber") && document.querySelector(".lb-barber--abierta")) lbCierraTodos();
   /* Menú del perfil: se cierra al tocar fuera. La foto ES el disparador,
      así que sin esta guarda el clic se comería a sí mismo. */
+  /* El menú de la foto existe ahora para los tres roles (antes sólo para el
+     cliente). */
   if (perfilOpen && !e.target.closest("#mebadge,#pmenu")) {
     perfilOpen = 0;
     R();
@@ -3118,7 +3149,10 @@ document.addEventListener("click", (e) => {
     mas = 0;
     if (!el) R();
   }
-  if (navOpen && !e.target.closest('#nmenu,#mebadge,[data-act="toggleMebadge"]')) {
+  /* La bandeja la abre el botón de tres rayitas de la barra de abajo, así que
+     el cierre tiene que mirar ESE botón. Antes miraba la foto, porque #nmenu
+     era el menú del admin. */
+  if (navOpen && !e.target.closest('#nmenu,.nav-mas,[data-act="toggleNav"]')) {
     navOpen = 0;
     if (!el) R();
   }
@@ -6121,6 +6155,42 @@ function footer() {
       `<p><a href="https://wa.me/${esc(w.num)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none"><img class="ic-wa" src="assets/whatsapp-96.png" alt="" width="22" height="22" loading="lazy">WhatsApp ${esc(w.n)} · ${esc(w.num)}</a></p>`,
   ).join("")}<p><a href="https://www.instagram.com/${esc(INSTAGRAM)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none"><img class="ic-ig" src="assets/instagram-96.png" alt="" width="22" height="22" loading="lazy">@${esc(INSTAGRAM)}</a></p></div><p>Reservá desde la web, sin llamadas.</p></div></div><div class="fz">© ${new Date().getFullYear()} ${esc(NOMBRE)} · Desarrollado por <b>${esc(AUTOR)}</b> · <a href="#" data-act="openPol" style="color:#cbd3dc">Políticas</a> · <a href="#" data-act="openPol" style="color:#cbd3dc">Privacidad</a></div>`;
 }
+/* El menú que abre la foto del encabezado, para los tres roles.
+
+   Antes el cliente tenía "Ajustes / Ver la web / Cerrar sesión" y el admin
+   tenía las mismas secciones repetidas en `#nmenu`, más dos botones sueltos
+   en el encabezado ("Ver la web" y "Cerrar sesión"). Ahora hay UN solo lugar
+   para los tres, con lo que pidió el dueño:
+
+     - Editar perfil   (no se muestra al dueño: no tiene ficha pública)
+     - Cambiar foto    (usa la misma acción de siempre, `fotoTomar`)
+     - Cerrar sesión
+
+   "Editar perfil" apunta a cosas distintas según el rol porque tampoco es la
+   misma cosa: el cliente edita su cuenta en Ajustes, y el barbero edita los
+   datos que salen en su tarjeta de la landing, que viven en el bloque
+   "Mi perfil en la web" del dorso de la ficha. Por eso al barbero lo llevan a
+   la web con la tarjeta ya abierta en vez de mandarlo a una pantalla que no
+   existe para su rol (`rtOk` no le deja abrir "cfg").
+
+   Va a nivel de módulo y NO dentro de R() a propósito: si estuviera dentro del
+   bloque try, `function` sería block-scoped (los módulos son strict mode) y
+   desde el render que la llama, que está fuera del try, daría ReferenceError
+   con el panel entero a medio pintar. */
+function menuPerfil() {
+  const items = [];
+  if (!isOwner())
+    items.push(
+      isAdm()
+        ? `<button data-act="miPerfilWeb">Editar perfil</button>`
+        : `<button data-act="go" data-args="${A("ajus")}">Editar perfil</button>`,
+    );
+  items.push(
+    `<button data-act="fotoTomar">Cambiar foto</button>` +
+      `<button class="salir" data-act="salir">Cerrar sesión</button>`,
+  );
+  return items.join("");
+}
 function R() {
   let h,
     nv = "",
@@ -6145,11 +6215,9 @@ function R() {
     appE.style.maxWidth = ancho ? "" : "100%";
     appE.style.padding = ancho ? "" : "0";
   }
-  /* El mapa se pide recién cuando el bloque está cerca de la pantalla. La
-     llamada va al final de R(), después de escribir el HTML. */
-  $("#lo").hidden = !me;
   /* "Ver la web" tiene sentido siempre que haya sesión: es la forma de
-     mirar la landing sin cerrar sesión. */
+     mirar la landing sin cerrar sesión. Ahora es la casita de la fila derecha
+     del header (pedido del dueño), sin el texto al lado. */
   const webB = $("#web");
   if (webB) webB.hidden = !me;
   document.body.classList.toggle("adm", !!(me && isAdm()));
@@ -6215,14 +6283,28 @@ function R() {
             ["fin", "Mis ganancias"],
             ["gal", "Galería"],
           ],
-      extra = [],
+      /* Cuántas entran en la barra de celular antes de necesitar la bandeja.
+         El dueño tiene 7 secciones y 3 ranuras: el resto va a la bandeja. El
+         barbero tiene 4 justas, así que entra todo y no hay bandeja (antes la
+         tenía y repetía las mismas cuatro, como se ve en su captura). */
+      CUANTAS = own ? 3 : sec.length,
       bt1 = (a) =>
         `<button class="${view === a[0] ? "on" : ""}"${view === a[0] ? ' aria-current="page"' : ""} data-act="go" data-args="${A(a[0])}">${a[1]}</button>`;
     nv = sec.map(bt1).join("");
-    nm =
-      [...sec, ...extra].map(bt1).join("") +
-      `<button class="irweb" data-act="verWebOn">Ver la web</button>` +
-      `<button class="salir" data-act="salir">Cerrar sesión</button>`;
+    /* El botón de tres rayitas va ÚLTIMO en la barra y sólo si hay algo que
+       hide. La clase nav-mas3 dice cuántas se ven en celular; en escritorio
+       el CSS no oculta ninguna. */
+    const hayBandeja = sec.length > CUANTAS;
+    claseNav = hayBandeja ? "nav-mas3" : "nav-todo";
+    if (hayBandeja)
+      nv +=
+        `<button class="nav-mas" data-act="toggleNav" aria-label="Más secciones" aria-expanded="false" aria-controls="nmenu">` +
+        `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span>Más</span></button>`;
+    /* Lo que va en la bandeja del botón de tres rayitas. */
+    nm = sec
+      .slice(CUANTAS)
+      .map(bt1)
+      .join("");
   } else if (!U) h = "<p><small>Cargando tu cuenta…</small></p>";
   else {
     h =
@@ -6250,15 +6332,9 @@ function R() {
       (a) =>
         `<button class="${view === a[0] ? "on" : ""}"${view === a[0] ? ' aria-current="page"' : ""} data-act="go" data-args="${A(a[0])}">${ICO[a[0]]}<span>${a[1]}</span></button>`,
     ).join("");
-    /* Menú del perfil: lo abre la foto del encabezado. Los botones
-       "Ver la web" y "Cerrar sesión" antes vivían sueltos en el header
-       (`#web`, `#lo`); ahora salen de acá, para que el cliente llegue a
-       ellos desde un solo lugar. Para el admin el header queda como
-       estaba: no se toca lo que ya funciona. */
-    nm =
-      `<button data-act="go" data-args="${A("ajus")}">Ajustes</button>` +
-      `<button data-act="verWebOn">Ver la web</button>` +
-      `<button class="salir" data-act="salir">Cerrar sesión</button>`;
+    /* El cliente tiene 4 secciones y 4 ranuras: entran todas y no hace falta
+       bandeja. La clase lo deja dicho para el CSS. */
+    claseNav = "nav-todo";
   }
   } catch (e) {
     console.error("render", e);
@@ -6266,27 +6342,26 @@ function R() {
   }
   const ae = document.activeElement,
     aid = ae && ae.tagName === "INPUT" ? ae.id : "";
-  $("#nav").innerHTML = nv;
+  const navE = $("#nav");
+  navE.innerHTML = nv;
+  navE.className = claseNav;
+  /* La bandeja de la barra de celular (la abre el botón de tres rayitas). */
   const nmE = $("#nmenu");
   nmE.innerHTML = nm;
   nmE.hidden = !(navOpen && me && rd);
-  /* Menú del perfil del cliente. Para el admin se deja vacío y oculto:
-     el suyo es #nmenu y lo abre la misma foto. */
+  /* El menú de la foto. Ahora es el mismo para los tres roles: lo que antes
+     estaba partido entre #pmenu (cliente) y #nmenu (admin). */
   const pmE = $("#pmenu");
-  const esCli = !!(me && rd && !isAdm());
-  pmE.innerHTML = esCli ? nm : "";
-  pmE.hidden = !(perfilOpen && esCli);
-  /* La foto lleva el estado de su propio menú, según el rol. */
+  const conSesion = !!(me && rd);
+  pmE.innerHTML = conSesion ? menuPerfil() : "";
+  pmE.hidden = !(perfilOpen && conSesion);
   const mb = $("#mebadge");
-  if (mb) mb.setAttribute("aria-expanded", esCli ? (perfilOpen ? "true" : "false") : navOpen ? "true" : "false");
-  /* El cliente ya no usa los botones sueltos del header: "Ver la web" y
-     "Cerrar sesión" pasaron al menú de la foto. Se ocultan por CSS con
-     body:not(.adm), pero también se marcan hidden para que no queden en el
-     orden de tabulación. */
-  ["web", "lo"].forEach((id) => {
-    const el = $("#" + id);
-    if (el) el.hidden = !me || esCli;
-  });
+  if (mb) mb.setAttribute("aria-expanded", perfilOpen ? "true" : "false");
+  /* El botón de tres rayitas lleva el estado de la bandeja. */
+  const masB = navE.querySelector(".nav-mas");
+  if (masB) masB.setAttribute("aria-expanded", navOpen ? "true" : "false");
+  /* Ya no queda el botón suelto de "Cerrar sesión" (#lo): vive en el menú de la
+     foto, junto con "Editar perfil" y "Cambiar foto". */
   $("#app").innerHTML = (msg ? `<p class="msg">${esc(msg)}</p>` : "") + h;
   /* El mapa se pide recién cuando su bloque está cerca de la pantalla.
      Tiene que ir ACÁ, después de escribir el innerHTML: antes de esa línea el

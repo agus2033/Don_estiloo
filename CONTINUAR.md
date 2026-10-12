@@ -1538,3 +1538,108 @@ Con `prefers-reduced-motion: reduce` **no gira**: se oculta el frente y el dorso
 - El servicio `as` (23 min, $1.222) es basura de prueba; el dueño dijo que lo borra él.
 - **Texto de las políticas**: lo compuse yo desde el mockup de baja resolución. Las secciones **"Tus derechos"** y **"Con quién los compartimos"** las tenés que revisar antes de publicar: son las que más conviene que mires si algo está mal.
 - **Contraste del asistente en modo claro** (ver 5c): hay que abrir el asistente en claro y sacar la cadena real de colores. No lo arregles a ciega.
+---
+
+## 22. Header y barra de celular: casita - toggle - foto, y bandeja de secciones
+
+### Lo que pidió el dueño (4 capturas)
+
+1. **El cliente**: la foto de perfil (que hace de menú) a la **derecha** del toggle.
+2. **El header de escritorio**: "arreglar el diseño, mejorar", con la foto a la derecha del toggle.
+3. **Dueño**: barra de abajo con **sólo 3** (Dashboard, Agenda, Clientes) y la cuarta ranura con un botón de **tres rayitas** que abre Barberos, Finanzas, Ajustes y Galería. "Ver la web" no hace falta si está la casita.
+4. **Barbero**: barra con las **4** (Agenda, Clientes, Mis ganancias, Galería). Si no entran, la cuarta es el botón de tres rayitas.
+5. Los dos: el header en celular **y** en escritorio en el orden **casita - toggle - foto**, y la foto abre un menú desplegable con "Editar perfil" (que no se muestra al dueño), "Cambiar foto" y "Cerrar sesión".
+
+### La estructura nueva
+
+```
+logo ................ nav ......................... [casita] [toggle] [foto]
+                                       └─ #pmenu (menú de la foto, los 3 roles)
+barra de celular (celular):  sección sección sección [☰]   └─ #nmenu (bandeja)
+```
+
+Dos menús que antes eran uno solo:
+
+| | antes | ahora |
+|---|---|---|
+| `#pmenu` | sólo el cliente | los **tres** roles |
+| `#nmenu` | el admin, anclado a la foto | la **bandeja**, sale desde abajo |
+| `#lo` | botón suelto "Cerrar sesión" en el header | **eliminado** (vive en `#pmenu`) |
+| `#web` | botón con texto "Ver la web" | la **casita**, sin texto |
+
+### Las tres decisiones que no son obvias
+
+**a) Cuántas entradas van en la barra se decide con CSS, no con JavaScript.**
+Se dibujan **todas** las secciones siempre y las que sobran se ocultan con
+`#nav.nav-mas3 > button:not(.nav-mas):nth-child(n+4) { display: none }`. La clase
+`nav-mas3` / `nav-todo` la pone el render según el rol.
+Si se decidiera en JS mirando el ancho de la ventana, al girar el teléfono
+habría que repintar y en escritorio el dueño vería sólo 3. Con CSS no hay estado
+que sincronizar.
+
+**b) El corte es a 1060 px, no a 860.**
+En escritorio `.hd` está topado en 1040 px: no es que la fila crezca con la
+pantalla. Con las 7 secciones del dueño más la marca y los tres controles la
+fila medía **1057 px** contra 1040, o sea que **no entraba ni en un monitor de
+1280**. Por eso el corte de la bandeja es a 1060 y no al breakpoint del celular.
+Medido después de los ajustes:
+
+| ancho | `.hd` | desborde | secciones | bandeja |
+|---|---|---|---|---|
+| 390 | 390/390 | no | 3 | sí |
+| 700 | 700/700 | no | 3 | sí |
+| 860 | 860/860 | no | 3 | sí |
+| 1000 | 1000/1000 | no | 3 | sí |
+| 1059 | 1040/1040 | no | 3 | sí |
+| 1060 | 1040/1040 | no | 7 | no |
+| 1280 | 1040/1040 | no | 7 | no |
+
+Los 42 px que faltaban salieron de dos ajustes: el padding lateral de los
+botones de escritorio de 18 a 15 px (3 px × 2 × 7 = 42) y el `gap` de `.hd` de
+20 a 16 px.
+
+**c) El barbero NO tiene bandeja, y antes sí.**
+Tenía 4 secciones en 4 ranuras, así que el botón de tres rayitas repetía
+exactamente las mismas cuatro: eso es lo que se veía en su captura. Ahora la
+bandeja sólo se dibuja si de verdad sobran secciones (`sec.length > CUANTAS`).
+
+### Dos errores reales que hubo que encontrar
+
+**`body.adm nav { display: none }` estaba en el CSS.** El admin no tenía barra
+inferior en celular: su navegación salía entera de la foto. Eso dejó de servir
+cuando el dueño pidió que el dueño tuviera barra, y fue la razón de que la
+primera corrida mostrara "0 secciones visibles" con las 7 secciones en el DOM.
+Está en el bloque `@media (max-width: 859px)` que arranca con ese comentario.
+
+**`menuPerfil()` quedó dentro del `try` de `R()`.** Los módulos de JavaScript
+son *strict mode*, así que un `function` declarado dentro de un bloque es
+**block-scoped**: desde el render que la llama (que está fuera del `try`)
+daba `ReferenceError` y el menú salía vacío. Va a nivel de módulo, antes de
+`function R()`. La prueba `header` ahora tiene una guarda estática que falla si
+alguien la vuelve a meter adentro.
+
+### Lo que NO se pudo verificar
+
+- **El panel del barbero**: su cuenta ya no autentica (el dueño la borró en la
+  limpieza de la base), así que `tests/header.js` lo marca **SKIP**. La barra
+  del barbero es idéntica a la del cliente en el código (`claseNav = "nav-todo"`,
+  las 4 secciones), pero **no se vio en pantalla**.
+- **El panel del cliente**: por lo mismo. `tests/panel.shell.js` quedó
+  actualizado para la estructura nueva (ya no busca `#lo`, espera "Editar
+  perfil" y "Cambiar foto", y que "Ver la web" **no** esté en el menú), pero
+  **no se pudo correr**.
+
+Mientras tanto la estructura de esos dos paneles está cubierta por 13
+comprobaciones **estáticas** en `tests/header.js` (que leen el código: 4
+secciones del cliente, `CUANTAS = own ? 3 : sec.length`, los tres items del
+menú, que "Editar perfil" se le esconde al dueño, que no hay `#lo` ni `#hamb`,
+y el orden `web → thm → mebadge` en el HTML). No es lo mismo que verlo
+funcionando, y no hay que venderlo como si lo fuera.
+
+### Un detalle que se decidió y conviene que sepas
+
+**La casita ahora también se le muestra al cliente.** El dueño la pidió para el
+dueño y el barbero; para el cliente no dijo nada, pero su menú tenía "Ver la
+web" y si a la vez se sacaba la casita del header y ese item del menú, el
+cliente perdía la función. Queda como estaba, pero es una decisión mía, no
+pedida: si no la querés en el panel del cliente, decime y la oculto.

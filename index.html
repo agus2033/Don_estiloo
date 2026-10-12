@@ -251,44 +251,46 @@
              <div> dentro de un <button> es HTML inválido. El wrapper es
              el que lleva position:relative, así el menú se ancla a la
              foto en vez de flotar pegado a una esquina de la ventana. -->
-        <div class="mewrap">
-          <button id="mebadge" data-act="toggleMebadge" aria-label="Menú de tu perfil" aria-expanded="false" aria-controls="pmenu" hidden>
-            <span id="mefn"></span>
-            <span class="med" id="med"></span>
+        <!-- Orden pedido por el dueño: CASITA, TOGGLE, FOTO. El mismo en
+             celular y en escritorio. Antes la foto venía antes del toggle y
+             "Cerrar sesión" era un botón suelto que apretaba la fila. -->
+        <div class="hd-der">
+          <!-- La casita ES el botón de "Ver la web": mismo ícono, mismo
+               data-act, pero sin el texto al lado. El texto ocupaba media
+               fila y en celular empujaba todo. -->
+          <button id="web" hidden data-act="verWebOn" aria-label="Ver la página de la barbería">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M3 11l9-8 9 8" />
+              <path d="M5 10v10h14V10" /></svg
+            >
           </button>
-          <div id="pmenu" hidden></div>
-          <div id="nmenu" hidden></div>
-        </div>
-        <button id="thm" aria-label="Cambiar tema claro oscuro">☀︎</button>
-        <button id="web" hidden data-act="verWebOn" aria-label="Ver la página de la barbería">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            aria-hidden="true"
-          >
-            <path d="M3 11l9-8 9 8" />
-            <path d="M5 10v10h14V10" /></svg
-          ><span>Ver la web</span>
-        </button>
-        <button id="lo" hidden data-act="salir" aria-label="Cerrar sesión">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            <path d="M16 17l5-5-5-5" />
-            <path d="M21 12H9" /></svg
-          ><span>Cerrar sesión</span>
-        </button>
-      </div>
+          <button id="thm" aria-label="Cambiar tema claro oscuro">☀︎</button>
+          <!-- La foto ES el botón del menú: no hay un hamburguesa al lado.
+               El #pmenu va dentro de este wrapper y no del <button>: un
+               <div> dentro de un <button> es HTML inválido. El wrapper es
+               el que lleva position:relative, así el menú se ancla a la
+               foto en vez de flotar pegado a una esquina de la ventana. -->
+          <div class="mewrap">
+            <button id="mebadge" data-act="toggleMebadge" aria-label="Menú de tu perfil" aria-expanded="false" aria-controls="pmenu" hidden>
+              <span id="mefn"></span>
+              <span class="med" id="med"></span>
+            </button>
+            <div id="pmenu" hidden></div>
+          </div>
+        </div>      </div>
+      <!-- La bandeja con las secciones que NO entran en la barra de celular.
+           Antes este mismo #nmenu era el menú de la foto del admin; ahora
+           lo abre el botón de tres rayitas de la barra de abajo. Por eso
+           vive acá, fuera de .hd: se ancla a la barra, no al encabezado. -->
+      <div id="nmenu" hidden></div>
     </header>
     <div id="app"></div>
     <div id="wzm" hidden></div>
