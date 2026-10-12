@@ -576,15 +576,44 @@ const ERR = {
   "auth/popup-blocked":
     "El navegador bloqueó la ventana de inicio de sesión. Habilitá los popups para este sitio e intentá de nuevo.",
   "auth/popup-closed-by-user":
-    "Cerraste la ventana de Google o Facebook sin terminar.",
+    /* Ya no se muestra: es una cancelación y se maneja en CANCELADO, sin
+       cartel (más abajo). Antes decía "Cerraste la ventana de Google o Facebook
+       sin terminar", que además de molestar le decía al usuario que había
+       hecho algo mal cuando simplemente cambió de idea. */
+    "",
   "auth/account-exists-with-different-credential":
     "Ese correo ya tiene una cuenta hecha con contraseña. Entrá con contraseña, o usá el mismo botón con el que te registraste.",
   "auth/cancelled-popup-request":
     "Se abrió una ventana antes de terminar la anterior. Esperá un segundo e intentá de nuevo.",
   unavailable: "Sin conexión con el servidor. Intentá de nuevo en un momento.",
 };
+
+/* Cancelaciones: NO son errores y no se avisan.
+
+   Lo pidió el dueño: si alguien aprieta "Cancelar" en la pantalla de permisos
+   de Google, o cierra la ventanita de Facebook, no hay nada que informar: la
+   persona decidió hacerlo así.
+
+   Antes pasaba esto: `auth/user-cancelled` no estaba en el mapa de arriba, así
+   que caía en el cartel genérico "No se pudo completar — Ocurrió un error",
+   con el texto de Firebase en crudo adentro. El ingreso había funcionado bien
+   y el mensaje le decía que algo había fallado.
+
+   `auth/cancelled-popup-request` NO va acá a propósito: esa no es una
+   cancelación de la persona, es que se abrió una ventanita antes de terminar
+   la anterior, y ahí sí conviene pedirle que espere un segundo. */
+const CANCELADO = new Set([
+  "auth/user-cancelled",
+  "auth/user-cancelled-popup",
+  "auth/popup-closed-by-user",
+]);
+const esCancelacion = (e) => !!(e && CANCELADO.has(e.code));
+
 const err = (e) => {
   if (!me && e.code === "permission-denied") return;
+  /* Si la persona canceló, se sale en silencio: sin cartel, sin error en
+     consola y sin ruido. La pantalla queda como estaba. */
+  if (esCancelacion(e)) return;
   const w = [
     "auth/invalid-credential",
     "auth/email-already-in-use",
@@ -1719,7 +1748,13 @@ const W = {
         R();
       }
     } catch (e) {
-      err(e);
+      /* Cancelar no es fallar. Si la persona cerró la pantalla de permisos de
+         Google o la ventanita de Facebook, no se muestra NADA: `err()` ya
+         devuelve en silencio para esos códigos y acá sólo se repinta, para que
+         la pantalla quede como estaba y el botón vuelva a su estado normal. */
+      if (!esCancelacion(e)) err(e);
+      busy(0);
+      R();
     }
   },
   /* Guarda la contraseña de una cuenta creada con Google o Facebook.
@@ -4251,9 +4286,13 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
   <section id="inicio" class="lb-hero lb-wrap reveal">
     <div class="lb-hero-tx">
       <!-- El eyebrow y la nota de los 20 puntos los sacó el dueño: sobra
-           texto dettes que ya dicen los botones. -->
+           texto de esos que ya dicen los botones.
+           El párrafo sí lleva marca y ciudad. El H1 es del dueño y no se toca,
+           y sin esto el texto visible de la portada no decía ni "Codigo
+           Barber" ni "Puerto Iguazú" hasta llegar al contacto, muy abajo: es lo
+           que Google contrasta cuando alguien busca "barbería puerto iguazú". -->
       <h1>Tu turno,<br><em>sin vueltas.</em></h1>
-      <p class="lb-lead">Reservá en cuatro pasos, sumá ${PTSv} puntos por cada corte y canjealos por descuentos y cortes gratis.</p>
+      <p class="lb-lead">${esc(NOMBRE)}, barbería en ${esc(CIUDAD)}. Reservá en cuatro pasos, sumá ${PTSv} puntos por cada corte y canjealos por descuentos y cortes gratis.</p>
       <div class="lb-hero-cta">${lbCta("lb-btn--lg")}</div>
     </div>
     <div class="lb-hero-wd">${lbReservaCard()}</div>
@@ -6378,6 +6417,13 @@ if (["localhost", "127.0.0.1", ""].includes(location.hostname)) {
     reprogramar: (id) => ACT.reprogramar(id),
     repSalir: () => ACT.repSalir(),
     askCancel: (id) => ACT.askCancel(id),
+    /* El manejador de errores, para probar qué cartel aparece con cada código
+       de Firebase. `tests/seo2.js` lo usa para verificar que una cancelación
+       (`auth/user-cancelled`) NO muestre nada, mientras que un error de verdad
+       (`auth/invalid-credential`) sí avisa. Sin este gancho había que abrir un
+       pop-up real de Google y esperar a que la persona lo cancele. */
+    err,
+    esCancelacion,
   };
 }
 

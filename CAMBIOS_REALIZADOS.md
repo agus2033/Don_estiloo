@@ -108,6 +108,22 @@ El dueño grabó la pantalla pidiendo una mejora. Al capturar el loader cuadro p
 **Archivos:** `src/styles.css` (bloque del loader), `index.html` (medidas y comentario), `tests/loader.js` (11 comprobaciones nuevas: que las tres rutas del logo coincidan, que la capa de abajo esté apagada y **no** recortada, y que la línea no se salga).
 
 **Una trampa que salió en el camino:** dentro de `src/styles.css`, `url("assets/logo-256.png")` se resuelve como `/src/assets/logo-256.png` y da 404, porque las URL de un CSS externo son relativas al CSS, no al documento. Va `../assets/…`. Lo detectaron `landing.barberos` y `politicas`.
+### Favicon, SEO y cancelación del login (12-10)
+
+| Qué | Antes | Ahora |
+|---|---|---|
+| Favicon | no existía `/favicon.ico` | ICO de 16/32/48 px, 8 KB, generado con `tests/favicon.js` |
+| `meta description` | "La mejor barbería y peluquería masculina…" | marca + ciudad + servicios reales, 140 caracteres |
+| Descripción del JSON-LD | "Barbería y peluquería masculina…" | "Barbería en Puerto Iguazú…" |
+| Texto visible del hero | no decía marca ni ciudad | "Codigo Barber, barbería en Puerto Iguazú…" |
+| Login cancelado | cartel rojo con el texto crudo de Firebase | silencio |
+| Loader | "que no gire" sin garantía | `tests/loader.giro.js`: 0,00° en 97 muestras por capa |
+
+**Pruebas nuevas:** `tests/seo2.js` (43 comprobaciones), `tests/loader.giro.js`, `tests/favicon.js`. Las tres están en `tests/run.js`.
+
+**Dos cosas que no se hicieron a propósito:** `meta keywords` (Google la ignora) y `alternateName` con sinónimos (relleno de palabras clave, Google lo detecta y perjudica).
+
+**Y una advertencia:** el mayor peso en "barbería puerto iguazú" lo tiene el **Perfil de Empresa de Google**, que es un alta a mano fuera del código.
 ---
 
 ## Lo que NO se cambió, y por qué

@@ -1329,6 +1329,109 @@ a hacer): la línea recorre de 15 px a 173 px, se queda, se apaga y
 reinicia; el desfase máximo con el borde del recorte es de 3,7 px, que es
 el grosor de la línea misma.
 
+## 21. Cuatro pedidos del dueño (2026-10-12)
+
+### 1. El logo en Google (el favicon)
+
+En los resultados de Google salía el globo genérico al lado del nombre.
+
+**No había `/favicon.ico` en la raíz.** Ese archivo es el que el buscador pide
+primero, y el `<link rel="icon" href="assets/icon-192.png">` que ya estaba
+no lo reemplaza. Se generó con `tests/favicon.js`, que redimensiona el logo
+con el canvas de Chromium (no hay ImageMagick ni ffmpeg en la máquina) y arma
+el `.ico` a mano: cabecera de 6 bytes más 16 por entrada, con el PNG adentro
+(Windows Vista en adelante lo acepta). Quedan tres medidas: **16, 32 y 48**, en
+8 KB. Va declarado primero en el `<head>`.
+
+> OJO: aunque esté perfecto, Google no lo muestra al instante. El buscador
+> tiene su propio caché y puede tardar **varios días**. No es que siga mal.
+
+### 2. Sacar "y peluquería masculina"
+
+Estaba en la meta description y en la descripción del JSON-LD. De paso
+salieron los superlativos ("La mejor", "el mejor estilo"): no se pueden
+verificar y Google los toma como señal de contenido flojo.
+
+La nueva, con marca y ciudad adelante, sin inventar nada:
+
+> Codigo Barber, barbería en Puerto Iguazú, Misiones. Corte de pelo, perfilado
+> de barba y corte + barba. Reservá tu turno online por WhatsApp.
+
+Son los servicios que están cargados de verdad. Mide 140 caracteres, que es
+lo que Google muestra sin recortar.
+
+### 3. Que aparezca al buscar "barbería puerto iguazú"
+
+El problema real no eran las metatags (el título ya tenía marca y ciudad):
+era que **el texto visible de la portada no decía ninguna de las dos**. El H1
+es "Tu turno, sin vueltas", que es del dueño y no se toca, y "Puerto
+Iguazú" aparecía recién en la sección de contacto, muy abajo.
+
+Se agregó marca y ciudad al párrafo del hero, que es lo primero que se lee y
+lo que Google contrasta:
+
+> Codigo Barber, barbería en Puerto Iguazú. Reservá en cuatro pasos, sumá 5
+> puntos por cada corte…
+
+**Lo que NO se hizo, a propósito:**
+
+- `meta keywords`: Google la ignora desde 2009 y hoy es contraproducente.
+- `alternateName` con sinónimos ("barbería en Puerto Iguazú", etc.): es
+  relleno de palabras clave y Google lo detecta. Perjudica el ranking.
+- Repetir la ciudad cada dos líneas: por lo mismo.
+
+Y una advertencia honesta: **el mayor peso en búsquedas como "barbería
+PUERTO IGUAZÚ" no lo tiene el sitio, lo tiene el Perfil de Empresa de
+Google** (el aviso que sale con el mapa en el primer resultado de la captura
+del dueño). Eso es un perfil para dar de alta a mano, con dirección, horarios,
+teléfono y fotos, y es lo que Google contrasta con Maps. El código ayuda, pero
+no alcanza solo.
+
+### 4. Login cancelado: que no avise
+
+En la captura del dueño salía un cartel rojo: "No se pudo completar —
+Ocurrió un error… Firebase: IdP denied access… (`auth/user-cancelled`)".
+
+**`auth/user-cancelled` no estaba en el mapa de errores**, así que caía en el
+mensaje genérico, con el texto crudo de Firebase adentro. Y el ingreso en
+realidad había funcionado: la persona había apretado "Cancelar" en la
+pantalla de permisos de Google.
+
+Ahora hay un `Set` con los códigos que son cancelaciones y NO errores:
+
+- `auth/user-cancelled` (apretó Cancelar en la pantalla de permisos)
+- `auth/user-cancelled-popup`
+- `auth/popup-closed-by-user` (cerró la ventanita de Facebook)
+
+`err()` sale en silencio con esos, y el `catch` del login social repinta la
+pantalla sin mostrar nada. Se borró además el texto "Cerraste la ventana de
+Google o Facebook sin terminar", que además de molestar le decía al usuario
+que había hecho algo mal.
+
+**`auth/cancelled-popup-request` NO entra en la lista a propósito:** esa no es
+una cancelación de la persona, es que se abrió una ventanita antes de
+terminar la anterior, y ahí sí conviene pedirle que espere un segundo.
+
+### 5. El loader no gira (verificado, no supuesto)
+
+El video que mandó el dueño era una vista estática del panel: **el loader no
+aparecía en ningún cuadro**. Así que en vez de suponer, se midió:
+`tests/loader.giro.js` muestrea el `transform` REAL de cada capa (el cuadro,
+el escudo de abajo, la capa que se revela, la línea, el puntito y el loader
+entero) durante dos ciclos completos de 2 s.
+
+> 97 muestras por capa · 1 ángulo distinto por capa · **0,00° máximo**
+
+Y además comprueba que ninguna regla del CSS del loader mencione `rotate()`.
+
+> **Si el dueño vio girar algo, fue en la web publicada**, que todavía tiene
+> el versión vieja (`ldGiro`, el aro dorado girando): el arreglo del loader está
+> en el repositorio pero **nunca se subió**. Por eso, en `PLAN_MEJORAS.md`
+> está publishing `vercel.json` como pendiente: hasta que no se despliegue, lo
+> que se ve en `codigobarber.com.ar` es la versión anterior.
+
+---
+
 ## Lo que ya está hecho y NO hay que romper
 ---
 

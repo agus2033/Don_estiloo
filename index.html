@@ -17,9 +17,12 @@
          lugares en total. Si cambia el dominio, se cambian los cinco. -->
 
     <title>Codigo Barber | Barbería en Puerto Iguazú, Misiones</title>
+    <!-- El título NO se toca: ya tiene marca, qué es y ciudad, que es lo que se
+         busca al escribir "barbería puerto iguazú". Y entra entero en los 60
+         caracteres que Google muestra. -->
     <meta
       name="description"
-      content="La mejor barbería y peluquería masculina en Puerto Iguazú. Cortes de pelo modernos, perfilado de barba y el mejor estilo. ¡Reservá tu turno online en Codigo Barber!"
+      content="Codigo Barber, barbería en Puerto Iguazú, Misiones. Corte de pelo, perfilado de barba y corte + barba. Reservá tu turno online por WhatsApp."
     />
     <link rel="canonical" href="https://codigobarber.com.ar/" />
     <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
@@ -44,7 +47,7 @@
     <meta property="og:title" content="Codigo Barber - Barbería en Puerto Iguazú" />
     <meta
       property="og:description"
-      content="Cortes de pelo y perfilado de barba profesionales en Puerto Iguazú, Misiones."
+      content="Codigo Barber, barbería en Puerto Iguazú, Misiones. Corte de pelo, perfilado de barba y corte + barba. Reservá tu turno online por WhatsApp."
     />
     <meta property="og:url" content="https://codigobarber.com.ar/" />
     <meta property="og:image" content="https://codigobarber.com.ar/assets/logo-256.png" />
@@ -55,7 +58,7 @@
     <meta name="twitter:title" content="Codigo Barber - Barbería en Puerto Iguazú" />
     <meta
       name="twitter:description"
-      content="Cortes de pelo y perfilado de barba profesionales en Puerto Iguazú, Misiones."
+      content="Codigo Barber, barbería en Puerto Iguazú, Misiones. Corte de pelo, perfilado de barba y corte + barba. Reservá tu turno online por WhatsApp."
     />
     <meta name="twitter:image" content="https://codigobarber.com.ar/assets/logo-256.png" />
 
@@ -84,7 +87,7 @@
         "@type": "BarberShop",
         "@id": "https://codigobarber.com.ar/#negocio",
         "name": "Codigo Barber",
-        "description": "Barbería y peluquería masculina en Puerto Iguazú, Misiones. Cortes de pelo, perfilado de barba y reservas online.",
+        "description": "Barbería en Puerto Iguazú, Misiones. Corte de pelo, perfilado de barba y corte + barba, con reserva de turno online.",
         "url": "https://codigobarber.com.ar/",
         "image": ["https://codigobarber.com.ar/assets/logo-256.png"],
         "logo": "https://codigobarber.com.ar/assets/logo-256.png",
@@ -203,7 +206,14 @@
          que sí lo tienen: en el modo claro la barra del navegador salía
          azul oscuro en vez de marfil. Los dos de arriba (con media) son los
          que quedan. -->
-    <link rel="icon" href="assets/icon-192.png" sizes="192x192" />
+    <!-- El favicon. va PRIMERO y sin `sizes`: es la ruta que el buscador pide
+         cuando todavía no cacheó nada, y era la que faltaba (no había ningún
+         favicon.ico en la raíz), por eso Google mostraba el globo genérico al
+         lado del nombre. El PNG de 192 sigue después para los que lo prefieren.
+         `tests\seo.js` comprueba que el archivo exista y que sea un .ico real. -->
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.ico" sizes="16x16" />
+    <link rel="icon" type="image/png" href="assets/icon-192.png" sizes="192x192" />
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />

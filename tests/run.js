@@ -19,6 +19,9 @@ const ESPERA_LOGIN = 20000; /* ms entre pruebas que usan cuenta */
 const TODAS = [
   /* sin red: leen archivos */
   { n: "seo", sesion: false, red: false },
+  { n: "seo2", sesion: false, red: false },
+  { n: "loader.giro", sesion: false, red: false },
+  { n: "favicon", sesion: false, red: false },
   { n: "loader", sesion: false, red: false },
   { n: "css.muerto", sesion: false, red: false },
   { n: "csp.sync", sesion: false, red: false },
