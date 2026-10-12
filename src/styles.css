@@ -103,11 +103,17 @@ header {
    admin: el cliente no tiene secciones de configuración para listar, sólo
    Ajustes / Ver la web / Cerrar sesión.
 
-   Para el cliente los dos botones sueltos del header ("Ver la web" y
-   "Cerrar sesión") se ocultan: pasaron al menú de la foto. El JS también
-   les pone [hidden], pero #web y #lo tienen display:inline-flex y eso le
-   gana al [hidden] del navegador; esta regla lo cierra del todo. */
-body:not(.adm) #web,
+   Para el cliente el botón suelto "Cerrar sesión" (#lo) se oculta: pasó al
+   menú de la foto. El JS también le pone [hidden], pero #lo tenía
+   display:inline-flex y eso le ganaba al [hidden] del navegador; esta regla
+   lo cierra del todo.
+
+   OJO: acá también estaba `body:not(.adm) #web` con `display:none!important`,
+   de cuando el cliente NO tenía la casita en el header. El `!important` le
+   ganaba a la regla nueva de la fila derecha, así que el cliente llevaba meses
+   — desde el lote 23 — sin verla, y las pruebas no lo avisaron porque
+   `tests/panel.shell.js` contaba que el elemento existiera, no que se viera.
+   Sólo queda #lo. */
 body:not(.adm) #lo {
   display: none !important;
 }
@@ -592,7 +598,12 @@ body:not(.adm) #lo {
   color: var(--red);
 }
 .hd {
-  max-width: 1040px;
+  /* 1160 y no 1040: con las 8 secciones del due�o (se agreg� Mensajes) la fila
+     del encabezado midi� 1097 px de contenido contra 1040 disponibles, o sea
+     que desbordaba. Subir el ancho del contenedor abre 120 px de aire para la
+     pr�xima secci�n que se agregue. La alternativa era bajar el padding de los
+     botones de 15 a 10 px, que en "Mis ganancias" queda ilegible. */
+  max-width: 1160px;
   margin: 0 auto;
   padding: 12px 20px;
   display: flex;
@@ -651,7 +662,9 @@ body:not(.adm) #lo {
   }
 }
 #app {
-  max-width: 1040px;
+  /* Va con .hd: si el encabezado es m�s ancho que el contenido, el logo de la
+     izquierda no queda en la misma vertical que la primera tarjeta. */
+  max-width: 1160px;
   margin: 0 auto;
   padding: 24px 20px calc(110px + env(safe-area-inset-bottom, 0px));
 }
@@ -1040,9 +1053,10 @@ nav .on {
    header viejo). Con 1100 px de corte, en cualquier pantalla de escritorio
    Angosta el dueño ve 3 secciones y el botón de tres rayitas, igual que en el
    celular; el barbero y el cliente, que entran justos, no ven bandeja nunca.
-   1060 es el punto medido: a 1060 la fila del due�o entra completa (1007 px de
-   contenido contra 1020 disponibles). */
-@media (max-width: 1059px) {
+   1160 es el punto medido: a 1160 la fila del due�o entra completa (1097 px de
+   contenido contra 1120 disponibles). Antes era 1060, cuando eran 7 secciones
+   y alcanzaban 1007 px. */
+@media (max-width: 1159px) {
   /* El dueño: 3 secciones y el botón de tres rayitas en la cuarta ranura. */
   #nav.nav-mas3 > button:not(.nav-mas):nth-child(n + 4) {
     display: none;
@@ -1100,15 +1114,15 @@ nav .on {
 
 /* La bandeja desaparece cuando la fila entra entera, y por encima de 1100 px
    todas las secciones están en la barra del encabezado. */
-@media (min-width: 1060px) {
+@media (min-width: 1160px) {
   #nmenu {
     display: none !important;
   }
 }
-/* Entre 860 y 1059 px la fila no entra entera y la barra no es fija: no
+/* Entre 860 y 1159 px la fila no entra entera y la barra no es fija: no
    tiene sentido una hoja que sube desde abajo. La bandeja sube como un panel
    desde la esquina inferior derecha, que es de donde está el botón. */
-@media (min-width: 860px) and (max-width: 1059px) {
+@media (min-width: 860px) and (max-width: 1159px) {
   #nmenu {
     left: auto;
     right: 24px;

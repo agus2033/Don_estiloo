@@ -223,3 +223,58 @@ Corrida completa con `node tests/run.js`. Las pruebas que necesitan una cuenta q
 Por qué no lo detectaron las pruebas anteriores: `tests/csp.js` comparaba la
 cabecera con lo esperado, o sea que daba verde porque la CSP era *exactamente*
 la que se había escrito. Nadie la había probado con un login real.
+
+### Lote 25 — Diez cosas del dueño
+
+**`src/main.js`**
+- `auth/cancelled-popup-request` entra en `CANCELADO`: no avisa.
+- `menuPerfil` sin cambios; `miPerfilWeb` reescrita (abría el bloque de la
+  Agenda y dejaba el foco en `#pfNombre`; antes llamaba `verWebOn()` como si
+  fuera función y tiraba ReferenceError).
+- Nueva colección `fotoBarbero/{uid}`: `fotoTomar` escribe ahí en vez de intentar
+  `config/barberos`, que siempre era denegado en silencio. Se escucha con
+  `onSnapshot` y se mergea con `conFotos()`.
+- El `onSnapshot` de `fotoBarbero` lleva **manejador de error**: sin él, mientras
+  las reglas no estén publicadas, cada visitante anónimo deja un
+  `permission-denied` sin capturar en la consola.
+- `cliH` excluye al dueño (`u.id !== OWNER_UID`).
+- `rgPtsRegistro`: el tope pasa de 20 a 50.
+- Se borra la acción `fotoBarbero` (el botón del dueño).
+- Ajustes: se borra `negTab` y `svcTab` se parte en `svcTab` + `ptoTab`. El menú
+  queda Horarios / Servicios / Puntos.
+- Pantalla **Mensajes** para el dueño (`msgH`), con `MSGS`, la suscripción
+  `orderBy("fecha","desc").limit(100)`, la acción `delMsj`, y `mens` en `RT` y en
+  `rtOk`. Imports `orderBy` y `limit` agregados.
+- `window.__test.setFotos()` para poder probar el merge sin subir una foto de
+  verdad (la escritura depende de unas reglas que hay que publicar).
+
+**`FIRESTORE_RULES.txt`**
+- `pt <= 20` -> `pt <= 50`.
+- Nueva `match /fotoBarbero/{uid}`: lectura pública, escritura sólo del propio
+  uid y sólo del campo `foto`.
+
+**`src/styles.css`**
+- **Se borra `body:not(.adm) #web { display:none !important }`.** Esa regla, con
+  su `!important`, le ganaba a la fila nueva y el cliente no veía la casita.
+- `.hd` y `#app` de 1040 a 1160 px: con 8 secciones del dueño la fila pedía
+  1097 px.
+- El corte de la bandeja pasa de 1060 a 1160 px, por lo mismo.
+
+**`index.html`**
+- **Se borra el `<meta http-equiv="Content-Security-Policy">`.** Con dos CSP el
+  navegador aplica la más restrictiva; la del `<meta>` sólo tenía `script-src`.
+  Ahora hay una sola fuente: `vercel.json`.
+
+**Pruebas**
+- Nuevas: `tests/cuentas.js` (las tres cuentas entran), `tests/lote25.js` (34
+  checks), `tests/perf.movil.js`, `tests/optimiza-iconos.js`,
+  `tests/limpia.sondas.js`.
+- `tests/panel.shell.js`: la casita ahora se mide por `getBoundingClientRect()`
+  y no por `count()`.
+- `tests/landing.web.js`: idem, en vez de `offsetParent`.
+- `tests/header.js`: la bandeja del dueño tiene 5 secciones (agregó Mensajes).
+- `tests/run.js`: `cuentas` y `lote25`.
+
+**Borradas**: `tests/sonda.reglas.js` y `tests/sonda.escrituras.js`. Escribían
+datos de verdad en Firestore; no conviene dejarlas en el repo como si fueran
+herramientas.

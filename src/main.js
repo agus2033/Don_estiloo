@@ -23,6 +23,11 @@ import {
   collection,
   query,
   where,
+  /* Necesarios para la pantalla de Mensajes: la lista se pide ordenada
+     por fecha y acotada. Sin índice compuesto hace falta, porque no hay
+     filtros: un solo orderBy no lo requiere. */
+  orderBy,
+  limit,
   writeBatch,
   increment,
   deleteDoc,
@@ -267,6 +272,18 @@ const waNum = (p) => {
     .replace(/^0+/, "");
   return !d ? "" : d.startsWith("54") ? d : "549" + d;
 };
+/* Reescribe una url de Cloudinary para que sirva la imagen liviana.
+   `f_auto` = AVIF/WebP si el navegador lo banca; `q_auto` = la calidad que
+   Cloudinary calcula para esa imagen; `w_` = el ancho que de verdad se pinta.
+
+   Con cualquier otra url (una foto a mano, un data:, un "") devuelve la misma
+   cosa, así que se puede aplicar sin miedo en cualquier <img>. */
+const imgCld = (u, ancho) => {
+  const s = String(u || "");
+  const m = s.match(/^https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/(v\d+)\/(.+)$/);
+  if (!m) return s;
+  return `https://res.cloudinary.com/${s.split("/")[3]}/image/upload/${m[1]}/f_auto,q_auto,w_${Math.max(200, Number(ancho) || 800)}/${m[2]}`;
+};
 const bsnap = () => {
   if (!isOwner() && SB) return { bid: me.uid, bn: SB.n, pd: SB.pd };
   const b = bar(dbi);
@@ -486,6 +503,16 @@ let UA = [],
   agT = null, // formulario de turno agendado por el barbero
   ag = ymd(), // dashboard: cortes hechos, canjes usados, período
   BARS = [], // barberos publicados para que el cliente elija (config/barberos)
+  FOTOS = {}, // uid -> url de la foto, desde la coleccion publica fotoBarbero
+  MSGS = [], // mensajes del formulario de contacto (solo los ve el dueño)
+  /* La foto que gana es la de `fotoBarbero`, que subió el propio barbero. La
+     de la ficha (`config/barberos`) queda de respaldo para las fichas viejas
+     que ya tenían foto puesta a mano. */
+  conFotos = (l) =>
+    (Array.isArray(l) ? l : []).map((b) => ({
+      ...b,
+      foto: (b && b.id && FOTOS[b.id]) || (b && b.foto) || "",
+    })),
   /* Copia de los últimos datos PÚBLICOS recibidos. Va en ESTA declaración
      y no como una línea suelta: fuera de la cadena de `let` sería una
      variable no declarada y en un módulo eso es ReferenceError al cargar
@@ -565,8 +592,11 @@ const ERR = {
   "auth/email-already-in-use": "Ese email ya tiene una cuenta.",
   "auth/weak-password": "La contraseña debe tener al menos 6 caracteres.",
   "auth/invalid-email": "El email no es válido.",
+  /* Este texto era una nota de desarrollo pegada en un cartel de persona:
+     le decía al dueño que abriera un archivo de reglas. Ahora dice qué pasó y
+     qué hacer, sin jerga. */
   "permission-denied":
-    "No tenés permiso para esa acción. Si sos barbero o dueño y estabas cargando un turno, revisá que las reglas de Firestore estén publicadas (FIRESTORE_RULES.txt, el punto 6 del comentario de arriba).",
+    "No se pudo guardar ese cambio. Volvé a intentar; si sigue igual, avisale al dueño.).",
   "auth/network-request-failed":
     "Sin conexión. Revisá tu internet e intentá de nuevo.",
   "auth/too-many-requests":
@@ -588,8 +618,6 @@ const ERR = {
     "",
   "auth/account-exists-with-different-credential":
     "Ese correo ya tiene una cuenta hecha con contraseña. Entrá con contraseña, o usá el mismo botón con el que te registraste.",
-  "auth/cancelled-popup-request":
-    "Se abrió una ventana antes de terminar la anterior. Esperá un segundo e intentá de nuevo.",
   unavailable: "Sin conexión con el servidor. Intentá de nuevo en un momento.",
 };
 
@@ -604,13 +632,18 @@ const ERR = {
    con el texto de Firebase en crudo adentro. El ingreso había funcionado bien
    y el mensaje le decía que algo había fallado.
 
-   `auth/cancelled-popup-request` NO va acá a propósito: esa no es una
-   cancelación de la persona, es que se abrió una ventanita antes de terminar
-   la anterior, y ahí sí conviene pedirle que espere un segundo. */
+   `auth/cancelled-popup-request` también va acá. Estaba aparte con el
+   razonamiento de que no es una cancelación sino "se abrió una ventanita antes
+   de terminar la anterior". Ese razonamiento viene de leer los internals de
+   Firebase, no de algo que se pueda ver: en la pantalla lo que ve la persona es
+   un cartel rojo que dice "esperá un segundo e intentá de nuevo", después de
+   haber apretado un botón. El dueño lo pidió explícitamente: que ese cartel no
+   aparezca. Silencio. */
 const CANCELADO = new Set([
   "auth/user-cancelled",
   "auth/user-cancelled-popup",
   "auth/popup-closed-by-user",
+  "auth/cancelled-popup-request",
 ]);
 const esCancelacion = (e) => !!(e && CANCELADO.has(e.code));
 
@@ -961,13 +994,54 @@ onSnapshot(doc(db, "config", "servicios"), (x) => {
     datosLlegos();
   }
 });
+/* Los mensajes del formulario de la landing. Las reglas sólo dejan leerlos al
+   dueño (FIRESTORE_RULES.txt), así que la consulta se abre únicamente con
+   sesión de dueño: si se pidieran sin sesión, Firestore la rechazaría y el
+   resto de las consultas de la pantalla quedarían colgadas. */
+if (isOwner())
+  onSnapshot(
+    query(collection(db, "mensajes"), orderBy("fecha", "desc"), limit(100)),
+    (x) => {
+      MSGS = x.docs.map((d) => ({ id: d.id, ...d.data() }));
+      R();
+    },
+    () => {
+      MSGS = [];
+      R();
+    },
+  );
 onSnapshot(doc(db, "config", "barberos"), (x) => {
   PUB.barberos = x.exists() && x.data().l ? x.data().l : [];
   if (!me) {
-    BARS = PUB.barberos;
+    BARS = conFotos(PUB.barberos);
     datosLlegos();
   }
 });
+/* Las fotos van aparte de la ficha (ver el bloque de fotoTomar). Es una
+   consulta propia y no se mezcla con la de config/barberos: si vinieran en el
+   mismo onSnapshot, hasta que llegara el primero de los dos la ficha se
+   dibujaría sin foto y después saltaría. */
+onSnapshot(
+  collection(db, "fotoBarbero"),
+  (x) => {
+    FOTOS = {};
+    x.forEach((d) => {
+      if (d.exists() && d.data() && d.data().foto) FOTOS[d.id] = d.data().foto;
+    });
+    if (PUB.barberos) {
+      BARS = conFotos(PUB.barberos);
+      R();
+    }
+  },
+  /* El manejador de error NO es opcional ac�. Esta consulta se abre tambi�n
+     sin sesi�n (la landing la necesita), y mientras la colecci�n no est� en
+     las reglas publicadas, Firestore contesta permission-denied. Sin este
+     segundo argumento el error queda SIN CAPTURAR en la consola del visitante,
+     que es exactamente lo quedaban `tests/landing.barberos` y
+     `tests/politicas` marcan como falla. Con �l, no: la web sigue funcionando
+     y s�lo no hay fotos hasta que se publiquen las reglas. */
+  () => {},
+);
 onSnapshot(doc(db, "config", "horario"), (x) => {
   PUB.horario = x.exists() ? { ...CFD, ...x.data() } : { ...CFD };
   if (!me) {
@@ -1041,13 +1115,17 @@ const RT = {
   priv: "privacidad",
   gal: "galeria",
   rev: "resena",
+  /* "mens" TIENE que estar en esta tabla. Si se agrega a rtOk y se olvida ac�,
+     rtPush("mens") arma "#/undefined" y rtView() nunca la encuentra: la secci�n
+     aparece en la barra del due�o y al tocarla no pasa nada. */
+  mens: "mensajes",
 };
 const rtOk = (v) =>
   !!me &&
   !!rd &&
   (isAdm()
     ? isOwner()
-      ? ["bar", "cli", "bars", "dash", "fin", "cfg", "priv", "gal"]
+      ? ["bar", "cli", "bars", "dash", "fin", "cfg", "priv", "gal", "mens"]
       : ["bar", "cli", "fin", "priv", "gal"]
     : ["home", "res", "tur", "rev", "ajus", "priv"]
   ).includes(v);
@@ -1150,14 +1228,18 @@ const W = {
        tu cuenta…" sin mostrar error. Ahora se recorta en el momento y se le
        avisa, en vez de fallar tres pantallas más abajo. */
     const v = +String(el.value).replace(/\D/g, "") || 0;
-    const t = Math.min(20, v);
+    /* 50 y no 20: lo pidió el dueño. Ojo, el tope NO es arbitrario, está atado
+       a `pt <= 50` de FIRESTORE_RULES.txt. Si se sube acá y no allá, el panel
+       acepta 50, la base rechaza el alta y la cuenta queda creada en Auth pero
+       sin documento: el alta "parece" funcionar y no pasa nada. */
+    const t = Math.min(50, v);
     if (v !== t) {
       PTSRv = t;
       el.value = t;
       M({
         k: "w",
-        h: "Máximo 20 puntos",
-        b: "Se guardaron " + t + ". Las reglas de la base no admiten más en el alta de cuenta.",
+        h: "Máximo 50 puntos",
+        b: "Se guardaron " + t + ".",
       });
     } else PTSRv = t;
   },
@@ -1439,8 +1521,24 @@ const W = {
      exactamente donde ese bloque está. */
   miPerfilWeb() {
     perfilOpen = 0;
-    verWeb = 1;
-    verWebOn();
+    R();
+    /* El bloque ya está en el panel (lo imprime la Agenda del barbero), así
+       que no hay que ir a la web ni voltear ninguna tarjeta. */
+    const d = document.querySelector("details.perfil");
+    if (!d) {
+      /* Si no está dibujado (todavía no llegó la ficha), al menos se avisa,
+         en vez de no hacer nada como antes. */
+      M({
+        k: "w",
+        h: "Todavía no hay nada para editar",
+        b: "Tu perfil en la web aparece en la Agenda, abajo de tu nombre.",
+      });
+      return;
+    }
+    d.open = true;
+    d.scrollIntoView({ block: "center", behavior: "smooth" });
+    const c = d.querySelector("input, textarea");
+    if (c) c.focus();
     /* La landing se pinta recién acá, así que la ficha se busca después. */
     setTimeout(() => {
       const mio = BARS.find((b) => b.id === me.uid);
@@ -1702,18 +1800,12 @@ const W = {
              vuelve a fallar, el aviso tiene que verse. */
           await setDoc(doc(db, "staff", me.uid), { foto: x.url }, { merge: true });
         }
-        const l = BARS.map((b) => ({ ...b, foto: b.id === me.uid ? x.url : b.foto || "" }));
-        if (l.length) await setDoc(doc(db, "config", "barberos"), { l }, { merge: true }).catch(() => {});
-        R();
-      } catch (e) { err(e); }
-    });
-  },
-  async fotoBarbero(bid) {
-    W.pickFoto(async (f) => {
-      try {
-        const x = await W.subirFoto(f, "perfil");
-        const l = BARS.map((b) => ({ ...b, foto: b.id === bid ? x.url : b.foto || "" }));
-        if (l.length) await setDoc(doc(db, "config", "barberos"), { l }, { merge: true });
+        /* La foto pública va a su propia colección, `fotoBarbero/{uid}`.
+           Antes se intentaba meterla dentro de `config/barberos`, que siempre
+           daba permiso denegado (config es del dueño solo) y el error se
+           tragaba con un .catch: la foto se guardaba y la web no la mostraba
+           nunca. Ver el comentario de arriba de este bloque. */
+        await setDoc(doc(db, "fotoBarbero", me.uid), { foto: x.url }, { merge: true }).catch(() => {});
         R();
       } catch (e) { err(e); }
     });
@@ -2976,6 +3068,13 @@ Object.assign(W, {
      validaciones que el alta (registro): 2 a 40 letras de nombre y 8 a 15
      dígitos de teléfono. Las reglas de /users dejan al cliente editar sólo
      nm y ph, así que es exactamente lo que se puede guardar. */
+  async delMsj(id) {
+    try {
+      await deleteDoc(doc(db, "mensajes", id));
+    } catch (e) {
+      err(e);
+    }
+  },
   async guardarPerfilCli() {
     if (!me || !U) return;
     const nm = (($("#ajusNm") || {}).value || "").trim();
@@ -3331,7 +3430,7 @@ const SEC_CLI = [
 const lines = () =>
   S.map(
     (s) =>
-      `<div class="line">${s.img ? `<img class="mini" src="${esc(s.img)}" alt="" loading="lazy" decoding="async">` : ""}<span><b>${esc(s.n)}</b> <small>${esc(s.tx)}</small></span><span class="price">${$$(s.p)}</span></div>`,
+      `<div class="line">${s.img ? `<img class="mini" src="${imgCld(esc(s.img), 800)}" alt="" loading="lazy" decoding="async">` : ""}<span><b>${esc(s.n)}</b> <small>${esc(s.tx)}</small></span><span class="price">${$$(s.p)}</span></div>`,
   ).join("");
 function loginH() {
   const up = tab === "up",
@@ -4063,7 +4162,7 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
         (x) => `<article class="lb-sv">
         ${/* La foto de preview la carga el dueño desde Servicios y premios y
              veníaguardada en el dato (`img`), pero la tarjeta no la
-             pintaba: por eso "las cargo y no se muestran". */ x.img ? `<img class="lb-sv-img" src="${esc(x.img)}" alt="" loading="lazy" decoding="async">` : ""}
+             pintaba: por eso "las cargo y no se muestran". */ x.img ? `<img class="lb-sv-img" src="${imgCld(esc(x.img), 800)}" alt="" loading="lazy" decoding="async">` : ""}
         <div class="lb-sv-bd">
         <h3>${esc(x.n)}</h3>
         ${x.tag ? `<p class="lb-sv-desc">${esc(x.tag)}</p>` : ""}
@@ -4076,7 +4175,7 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
   const svcList = S.length
     ? S.map(
         (x) => `<div class="lb-sv-row">
-        ${x.img ? `<img class="lb-sv-mini" src="${esc(x.img)}" alt="" loading="lazy" decoding="async">` : ""}
+        ${x.img ? `<img class="lb-sv-mini" src="${imgCld(esc(x.img), 300)}" alt="" loading="lazy" decoding="async">` : ""}
         <span class="lb-sv-row-t"><b>${esc(x.n)}</b><small>${esc(x.tx)}</small></span>
         <span class="lb-price">${$$(x.p)}</span></div>`,
       ).join("")
@@ -4094,7 +4193,7 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
   /* ---------- 11. galería: TODAS las fotos, sin tope ---------- */
   const gal = GAL.length
     ? GAL.map(
-        (g) => `<figure><img src="${esc(g.url)}" alt="Trabajo de ${esc(NOMBRE)}" loading="lazy" decoding="async" width="600" height="600"></figure>`,
+        (g) => `<figure><img src="${imgCld(esc(g.url), 800)}" alt="Trabajo de ${esc(NOMBRE)}" loading="lazy" decoding="async" width="600" height="600"></figure>`,
       ).join("")
     : [1, 2, 3, 4, 5]
         .map(
@@ -4200,7 +4299,7 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
       <div class="lb-barber-giro" data-act="lbFlip" data-args="${A(b.id)}" tabindex="0" role="button" aria-expanded="false" aria-label="Ver información de ${esc(b.n)}">
         <div class="lb-barber-int">
           <span class="lb-barber-cara lb-barber-frente">
-            <span class="lb-barber-ph">${b.foto ? `<img src="${esc(b.foto)}" alt="${esc(b.n)}" loading="lazy" decoding="async" width="400" height="400">` : `<span class="lb-barber-falta" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M20 4 8.5 15.5M14.5 14.5 20 20M8.5 15.5 4 20"/></svg><small>[Foto]</small></span>`}</span>
+            <span class="lb-barber-ph">${b.foto ? `<img src="${imgCld(esc(b.foto), 800)}" alt="${esc(b.n)}" loading="lazy" decoding="async" width="400" height="400">` : `<span class="lb-barber-falta" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M20 4 8.5 15.5M14.5 14.5 20 20M8.5 15.5 4 20"/></svg><small>[Foto]</small></span>`}</span>
             <span class="lb-barber-id">
               <b>${esc(b.n)}</b>
               <span class="lb-barber-pill">${esc(ficha.esp || "Barbero")}</span>
@@ -4979,7 +5078,7 @@ const wzServicio = () =>
     ? S.map(
         (x, i) => `<button type="button" class="wz-item wz-item--svc${sel.s === i ? " on" : ""}" aria-pressed="${sel.s === i}" data-act="wzS" data-args="${A(i)}">
       ${/* La foto de preview del servicio, que el dueño carga desde el panel
-           y hasta ahora no se veía ni acá ni en la landing. */ x.img ? `<img class="wz-item-img" src="${esc(x.img)}" alt="" width="72" height="72" loading="lazy" decoding="async">` : ""}
+           y hasta ahora no se veía ni acá ni en la landing. */ x.img ? `<img class="wz-item-img" src="${imgCld(esc(x.img), 200)}" alt="" width="72" height="72" loading="lazy" decoding="async">` : ""}
       <span class="wz-item-t"><b>${esc(x.n)}</b><small>${esc(x.tx)}</small></span>
       <span class="lb-price">${$$(x.p)}</span></button>`,
       ).join("")
@@ -5326,7 +5425,7 @@ function galH() {
     (GAL.length
       ? `<div class="lnd-gal" style="margin-top:14px">${GAL.map(
           (g) =>
-            `<figure style="position:relative;margin:0"><img src="${esc(g.url)}" alt="" loading="lazy" style="width:100%;height:auto;max-height:240px;object-fit:contain;border-radius:10px;display:block;border:1px solid var(--line);background:#10171F"><button data-act="galDel" data-args="${A(g.id, g.ruta || "")}" style="position:absolute;top:6px;right:6px;min-height:0;padding:4px 9px" aria-label="Borrar foto">✕</button></figure>`,
+            `<figure style="position:relative;margin:0"><img src="${imgCld(esc(g.url), 700)}" alt="" loading="lazy" style="width:100%;height:auto;max-height:240px;object-fit:contain;border-radius:10px;display:block;border:1px solid var(--line);background:#10171F"><button data-act="galDel" data-args="${A(g.id, g.ruta || "")}" style="position:absolute;top:6px;right:6px;min-height:0;padding:4px 9px" aria-label="Borrar foto">✕</button></figure>`,
         ).join("")}</div>`
       : "<p><small>Todavía no hay fotos publicadas.</small></p>")
   );
@@ -5920,7 +6019,7 @@ function barsH() {
           const u = UA.find((x) => x.id === b.uid),
             cortes = HA().filter((t) => t.bid === b.id && t.d.startsWith(ymd().slice(0, 7))).length;
           const farmFoto = (BARS.find((x) => x.id === b.id) || {}).foto || "";
-          return `<div class="card" style="text-align:center">${farmFoto ? `<img src="${esc(farmFoto)}" alt="" width="64" height="64" style="border-radius:50%;object-fit:cover;margin:0 auto 12px;display:block">` : `<div class="aval" style="margin:0 auto 12px">${esc(nomBar(b)[0].toUpperCase())}</div>`}<h2 style="margin:0">${esc(nomBar(b))}</h2><small>Dueño ${b.pd}% · Barbero ${100 - b.pd}%</small><div style="margin:12px 0"><span class="pill st-hecho">Activo</span></div><div class="line" style="justify-content:space-around"><span><small>Porcentaje</small><br><b style="color:var(--brass)">${100 - b.pd} %</b></span><span><small>Este mes</small><br><b>${cortes} cortes</b></span></div><div class="chips" style="margin-top:14px"><button style="flex:1" data-act="go" data-args="${A("fin")}">✎ Editar</button><button style="flex:1" data-act="fotoBarbero" data-args="${A(b.id)}">📷 Foto</button>${/* "Quitar" para los dos tipos. Antes sólo se mostraba si el barbero
+          return `<div class="card" style="text-align:center">${farmFoto ? `<img src="${imgCld(esc(farmFoto), 200)}" alt="" width="64" height="64" style="border-radius:50%;object-fit:cover;margin:0 auto 12px;display:block">` : `<div class="aval" style="margin:0 auto 12px">${esc(nomBar(b)[0].toUpperCase())}</div>`}<h2 style="margin:0">${esc(nomBar(b))}</h2><small>Dueño ${b.pd}% · Barbero ${100 - b.pd}%</small><div style="margin:12px 0"><span class="pill st-hecho">Activo</span></div><div class="line" style="justify-content:space-around"><span><small>Porcentaje</small><br><b style="color:var(--brass)">${100 - b.pd} %</b></span><span><small>Este mes</small><br><b>${cortes} cortes</b></span></div><div class="chips" style="margin-top:14px"><button style="flex:1" data-act="go" data-args="${A("fin")}">✎ Editar</button>${/* "Quitar" para los dos tipos. Antes sólo se mostraba si el barbero
         tenía cuenta (b.uid), así que a los agregados a mano con "+ Agregar
         barbero" no se los podía sacar nunca: quedaban publicados en la web
         sin salida. */ `<button style="flex:1" data-act="askQuitBar" data-args="${A(b.uid || b.id)}">Quitar</button>`}</div></div>`;
@@ -5932,10 +6031,15 @@ function barsH() {
 function cliH() {
   const own = isOwner(),
     f = cliQ.trim().toLowerCase(),
+    /* El dueño tampoco es un cliente. Estaba en la lista porque el filtro
+       sólo miraba el rol y los barberos: el documento del dueño en users/ no
+       tiene rol "barbero", así que pasaba. El dueño lo vio aparecer con su
+       propio nombre y sus propios puntos. */
     L = UA.filter(
       (u) =>
         !u.borrado &&
         u.rol !== "barbero" &&
+        u.id !== OWNER_UID &&
         !FN.bs.some((b) => b.uid === u.id),
     )
       .filter((u) => !f || String(u.nm).toLowerCase().includes(f) || String(u.ph).includes(f))
@@ -5975,7 +6079,7 @@ function cliH() {
           hsel = selU ? CH[selU.id] : null;
         if (!selU)
           return `<div class="card"><small>Elegí un cliente de la lista para ver su detalle.</small></div>`;
-        return `<div class="card"><div style="display:flex;gap:14px;align-items:center;margin-bottom:14px">${selU.foto ? `<img src="${esc(selU.foto)}" alt="" width="64" height="64" style="border-radius:50%;object-fit:cover;border:2px solid var(--brass)">` : `<span class="aval">${esc((selU.nm || "?")[0].toUpperCase())}</span>`}<div><b style="font:700 26px 'Barlow Condensed';text-transform:uppercase">${esc(selU.nm)}</b><br><small>${esc(selU.ph || "—")}</small></div></div><div class="grid3"><div class="kv"><small>Puntos</small><b>${selU.pt}</b></div><div class="kv"><small>Cortes</small><b>${(hsel || []).length}</b></div><div class="kv"><small>Faltas</small><b>${selU.ns || 0}</b></div></div><h3 class="lab">Historial</h3>` +
+        return `<div class="card"><div style="display:flex;gap:14px;align-items:center;margin-bottom:14px">${selU.foto ? `<img src="${imgCld(esc(selU.foto), 200)}" alt="" width="64" height="64" style="border-radius:50%;object-fit:cover;border:2px solid var(--brass)">` : `<span class="aval">${esc((selU.nm || "?")[0].toUpperCase())}</span>`}<div><b style="font:700 26px 'Barlow Condensed';text-transform:uppercase">${esc(selU.nm)}</b><br><small>${esc(selU.ph || "—")}</small></div></div><div class="grid3"><div class="kv"><small>Puntos</small><b>${selU.pt}</b></div><div class="kv"><small>Cortes</small><b>${(hsel || []).length}</b></div><div class="kv"><small>Faltas</small><b>${selU.ns || 0}</b></div></div><h3 class="lab">Historial</h3>` +
           (!own
             ? `<small>Este detalle lo administra el dueño.</small>`
             : hsel == null
@@ -6134,14 +6238,35 @@ function cfgH() {
 <h3>Pausa (almuerzo)</h3><div class="chips"><select aria-label="Pausa desde" data-ch="cfgSet" data-args="${A("al", "@v")}">${hrs(c.al, 360, 1380, "Sin pausa")}</select><select aria-label="Pausa hasta" data-ch="cfgSet" data-args="${A("ah", "@v")}">${hrs(c.ah, 360, 1380, "—")}</select></div>
 <h3>Días libres (feriados, vacaciones)</h3><div class="chips"><input id="lb" type="date" aria-label="Día libre" style="width:auto;margin:0"><button data-act="cfgLibre">Agregar</button></div><div class="chips" style="margin-top:10px">${c.libres.map((d) => `<button class="chip on" data-act="cfgQuitar" data-args="${A(d)}" aria-label="Quitar ${d}">${fd(d)} ✕</button>`).join("")}</div>
 <button class="main" data-act="cfgGuardar">Guardar horarios</button></div>`;
-  const svcTab =
-    `<div class="grid b"><div>${svH()}</div><div><h2>Premios</h2><div class="card">${PRv.map(
+  /* "Servicios" sola. Antes estaba en un grid de dos columnas junto con los
+     premios y las reglas; ahora cada pestaña es una sola cosa. */
+  const svcTab = `<div style="max-width:640px">${svH()}</div>`;
+  /* "Puntos": los premios y las reglas, que antes compartían columna con los
+     servicios. */
+  const ptoTab =
+    `<div style="max-width:640px"><h2>Premios</h2><div class="card">${PRv.map(
       (p, i) =>
         `<div class="svr"><input id="prn${i}" aria-label="Nombre del premio" placeholder="Nombre" maxlength="30" value="${esc(p.n)}" data-in="rgPrn" data-args="${A(i, "@el")}"><div class="two"><input id="prp${i}" aria-label="Puntos requeridos" inputmode="numeric" placeholder="Puntos" value="${esc(p.p)}" data-in="rgPrp" data-args="${A(i, "@el")}"></div></div>`,
-    ).join("")}<small>Editá el nombre y los puntos requeridos de cada premio.</small></div><h2>Reglas de puntos</h2><div class="card"><label>Puntos por corte completado</label><input id="ppts" inputmode="numeric" maxlength="4" value="${esc(PTSv)}" data-in="rgPts" data-args="${A("@el")}"><p><small>Se suman cuando el barbero guarda el cobro.</small></p><label style="margin-top:14px">Puntos de bienvenida al registrarse</label><input id="pptsreg" inputmode="numeric" maxlength="4" value="${esc(PTSRv)}" data-in="rgPtsRegistro" data-args="${A("@el")}"><p><small>Se cargan una sola vez, al crear la cuenta. Aparece en el formulario de registro de la web y en la app.</small></p><h3 style="margin-top:14px">Política de cancelación</h3><label>Cancelar sin cargo hasta (horas antes)</label><input id="pcan" inputmode="numeric" maxlength="3" value="${esc(CHSv)}" data-in="rgCan" data-args="${A("@el")}"></div><button class="main" data-act="rgGuardar">Guardar reglas y premios</button></div></div>`;
-  const negTab = `<div class="card" style="max-width:640px"><h2 style="margin-top:0">Negocio</h2><div class="line"><span>Nombre</span><b>${esc(NOMBRE)}</b></div><div class="line"><span>Autor</span><b>${esc(AUTOR)}</b></div><div class="line"><span>WhatsApp</span><b>${esc(WHATSAPP || "—")}</b></div></div>`;
-  return `<h1>Ajustes</h1><div class="tabs"><button class="${tab === "hor" ? "on" : ""}" data-act="cfgTab" data-args="${A("hor")}">Horarios</button><button class="${tab === "svc" ? "on" : ""}" data-act="cfgTab" data-args="${A("svc")}">Servicios y premios</button><button class="${tab === "neg" ? "on" : ""}" data-act="cfgTab" data-args="${A("neg")}">Negocio</button></div>` +
-    (tab === "svc" ? svcTab : tab === "neg" ? negTab : horCard);
+    ).join("")}<small>Editá el nombre y los puntos requeridos de cada premio.</small></div><h2>Reglas de puntos</h2><div class="card"><label>Puntos por corte completado</label><input id="ppts" inputmode="numeric" maxlength="4" value="${esc(PTSv)}" data-in="rgPts" data-args="${A("@el")}"><p><small>Se suman cuando el barbero guarda el cobro.</small></p><label style="margin-top:14px">Puntos de bienvenida al registrarse</label><input id="pptsreg" inputmode="numeric" maxlength="4" value="${esc(PTSRv)}" data-in="rgPtsRegistro" data-args="${A("@el")}"><p><small>Se cargan una sola vez, al crear la cuenta. Aparece en el formulario de registro de la web y en la app.</small></p><h3 style="margin-top:14px">Política de cancelación</h3><label>Cancelar sin cargo hasta (horas antes)</label><input id="pcan" inputmode="numeric" maxlength="3" value="${esc(CHSv)}" data-in="rgCan" data-args="${A("@el")}"></div><button class="main" data-act="rgGuardar">Guardar reglas y premios</button></div>`;
+  /* El menú es "horarios - servicios - puntos", como lo pidió el dueño. */
+  return `<h1>Ajustes</h1><div class="tabs"><button class="${tab === "hor" ? "on" : ""}" data-act="cfgTab" data-args="${A("hor")}">Horarios</button><button class="${tab === "svc" ? "on" : ""}" data-act="cfgTab" data-args="${A("svc")}">Servicios</button><button class="${tab === "pto" ? "on" : ""}" data-act="cfgTab" data-args="${A("pto")}">Puntos</button></div>` +
+    (tab === "svc" ? svcTab : tab === "pto" ? ptoTab : horCard);
+}
+/* Los mensajes que escribió la gente desde el formulario de la landing.
+   No se envía ningún correo: acá están todos, con el nombre, el email y el
+   texto tal cual lo mandaron, para poder responder por WhatsApp o por mail. */
+function msgH() {
+  return (
+    `<div class="head" style="margin-top:0"><div><h1 style="margin-bottom:4px">Mensajes</h1><small>${MSGS.length} ${MSGS.length === 1 ? "mensaje" : "mensajes"} sin responder</small></div></div>` +
+    (MSGS.length
+      ? `<div class="grid">` +
+        MSGS.map(
+          (m) =>
+            `<div class="card"><div style="display:flex;gap:12px;align-items:flex-start;justify-content:space-between"><div style="min-width:0"><b>${esc(m.nombre || "(sin nombre)")}</b><br><a href="mailto:${esc(m.email || "")}" style="color:var(--brass)">${esc(m.email || "—")}</a></div><button data-act="delMsj" data-args="${A(m.id)}" aria-label="Borrar el mensaje de ${esc(m.nombre || "este remitente")}">Borrar</button></div><p style="margin:12px 0 6px;white-space:pre-wrap">${esc(m.mensaje || "")}</p><small>${m.fecha && m.fecha.toDate ? m.fecha.toDate().toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }) : "sin fecha"}</small></div>`,
+        ).join("") +
+        `</div>`
+      : `<p><small>Todavía no mandó nadie un mensaje desde la web.</small></p>`)
+  );
 }
 function footer() {
   const D = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"],
@@ -6262,7 +6387,7 @@ function R() {
   else if (isAdm()) {
     h =
       (isOwner()
-        ? { dash: dashH, cli: cliH, bars: barsH, cfg: cfgH, fin: finH, gal: galH }
+        ? { dash: dashH, cli: cliH, bars: barsH, cfg: cfgH, fin: finH, gal: galH, mens: msgH }
         : { cli: cliH, fin: finH, gal: galH })[view]?.() ?? barH();
     if (view === "priv") h = privH();
     if (view === "gal") h = galH();
@@ -6276,6 +6401,7 @@ function R() {
             ["fin", "Finanzas"],
             ["cfg", "Ajustes"],
             ["gal", "Galería"],
+            ["mens", "Mensajes"],
           ]
         : [
             ["bar", "Agenda"],
@@ -6445,6 +6571,19 @@ if (["localhost", "127.0.0.1", ""].includes(location.hostname)) {
     redPassNo: () => ACT.redPassNo(),
     get bars() {
       return BARS;
+    },
+    /* El merge de la foto del barbero (colección fotoBarbero sobre la ficha
+       de config/barberos). Se expone para poder probarlo sin subir una foto de
+       verdad: la escritura depende de unas reglas de Firestore que hay que
+       publicar en la consola, y hasta que se publiquen no hay forma de tener
+       un documento `fotoBarbero` de verdad. Con esto se prueba la mitad del
+       camino que sí depende del código. */
+    setFotos(m) {
+      FOTOS = m || {};
+      return conFotos(BARS);
+    },
+    get fotos() {
+      return FOTOS;
     },
     voltear: (id) => ACT.lbFlip(id),
     ficha: (id) => lbFichaBarbero(BARS.find((b) => b.id === id) || {}),

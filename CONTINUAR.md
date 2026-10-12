@@ -1708,3 +1708,176 @@ aunque el popup no se abriera nunca, que es exactamente el bug que había.
 
 Verificado también a ojo: la pantalla de Google (914 caracteres) y la de
 Facebook (560) se dibujan completas, con estilos y sin campos en blanco.
+
+---
+
+## 24. Diez cosas del dueño, en un solo lote
+
+Viene con capturas. Cada punto dice qué se veía, cuál fue la causa y cómo se
+comprobó que quedó andando. Donde no se pudo comprobar, está dicho.
+
+### 1. El cartel rojo al apretar Google o Facebook
+
+`auth/cancelled-popup-request` ahora **no avisa**. Estaba aparte, con el
+razonamiento de que "no es una cancelación, es que se abrió una ventanita antes
+de terminar la anterior". Ese razonamiento salía de leer los internos de
+Firebase, no de algo que se pueda ver en la pantalla: lo que ve la persona es un
+cartel rojo que dice "esperá un segundo e intentá de nuevo", después de haber
+apretado un botón. Va a `CANCELADO` y sale en silencio.
+
+### 2. El rendimiento en móvil
+
+Medido con `tests/perf.movil.js` (Chrome, móvil emulado, 390×844). **No** son
+puntajes inventados: son bytes y tiempos de localhost.
+
+| | antes | después |
+|---|---|---|
+| recursos | 3.983 KB | **2.716 KB** |
+| lo más pesado | fotos de Cloudinary (5 × 120-170 KB) | SDK de Firebase |
+
+El arreglo fue `imgCld()`: Cloudinary transforma al servir (`f_auto,q_auto,w_`)
+en vez de servir el archivo original. **-32% medido.** No se sube transformada
+y se guarda la url transformada a propósito: si mañana cambia el tamaño del
+cuadro, el cambio tiene que alcanzar a las fotos de ayer también.
+
+**Lo que NO se hizo, y por qué:**
+
+- **El SDK de Firebase (1,35 MB) se sigue cargando antes del primer pintado.**
+  Es lo único grande que queda. Se arreglaría con `import()` dinámico para no
+  pedirlo hasta que haga falta, pero `main.js` es un archivo de 6.400 líneas que
+  usa Firestore en casi todas las pantallas: cambiar el momento del import es
+  tocar ese archivo entero. Es un trabajo aparte, con su propia prueba.
+- **Los PNG no se pueden mejorar.** Se probó recodificarlos con canvas
+  (`tests/optimiza-iconos.js`): 0 KB de ahorro. El `icon-512.png` pesa 316 KB y
+  el `logo-256.png` 82 KB, pero ya están comprimidos. Bajarlos de resolución sí
+  los aligeraría, a costa de nitidez.
+
+### 3 y 7. La foto del barbero
+
+El "Cambiar foto" del barbero escribía en `users/`, en `staff/` y después
+intentaba `config/barberos`. **Ese último write siempre era denegado**
+(`config` es del dueño solo) y el error se tragaba con un `.catch(() => {})`.
+La foto se guardaba y la web seguía mostrando el cartel `[Foto]`.
+
+Aparte, aunque pasara, la landing lee la ficha de `config/barberos` y
+`staff/{uid}` **no se puede leer sin sesión**: el visitante anónimo nunca la
+vería.
+
+Solución: una colección pública y mínima, `fotoBarbero/{uid}`, que se lee sin
+sesión y solo escribe el propio barbero, y solo el campo `foto`. La ficha sigue
+en `config/barberos`; lo único que sale de la colección nueva es la foto, y la
+web la mergea encima (`conFotos`).
+
+**Y el botón "Foto" del dueño desaparece**, como pidió. Que dos personas
+editen el mismo rostro es invitación a pisarse.
+
+### 4. "Editar perfil" del barbero
+
+Hacía dos cosas mal, una mía del lote 23:
+
+1. Llamaba `verWebOn()` como si fuera una función. No lo es: es una entrada del
+   objeto de acciones. Tiraba `ReferenceError` y no pasaba nada.
+2. El diseño entero sobraba. Yo suponía que el barbero tenía que ir a la web a
+   voltear su tarjeta, pero **el bloque "Mi perfil en la web" ya está dentro de
+   panel**, en su Agenda. Ahora lo abre, lo centra y le deja el foco en el
+   primer campo.
+
+### 5. "No tenés permiso para esa acción"
+
+**No se pudo reproducir.** Se probaron, como dueño y apretando el botón de
+verdad: carga manual, agendar turno con cliente nuevo, agendar turno con cliente
+existente, editar el nombre del barbero. **Ninguno dio permiso denegado.**
+
+Una hipótesis mía que **se-midió-y-resultó-falsa**: pensé que
+`match /activos` rompía los `create` por usar `resource.data` en un
+`allow read, write`. Se comprobó contra la base real: el dueño **sí** puede
+crear en `activos` (HTTP 200). Si se hubiera "arreglado" sin medir, se había
+metido un cambio de reglas sin causa.
+
+Lo que sí se cambió es el **texto** del cartel: decía "revisá que las reglas de
+Firestore estén publicadas (FIRESTORE_RULES.txt, el punto 6 del comentario de
+arriba)". Eso es una nota de desarrollo pegada en un mensaje de persona.
+
+### 6. El dueño aparecía como cliente
+
+El filtro de `cliH` sacaba a los barberos y a los borrados, pero no al dueño:
+su documento en `users/` no tiene rol `barbero`, así que pasaba. Ahora se lo
+excluye por uid.
+
+### 8. "Máximo 20 puntos"
+
+El tope estaba en **dos** lugares atados entre sí: el panel (`Math.min(20)`) y
+la regla de Firestore (`pt <= 20`). Subieron los dos a 50. Si se subiera sólo
+el panel, el dueño escribe 50, la base lo rechaza y la cuenta queda creada en
+Auth sin documento: el alta parece funcionar y no pasa nada.
+
+### 9. Ajustes: "horarios - servicios - puntos"
+
+- **"Negocio" eliminado.** Mostraba nombre, autor y WhatsApp como texto que no
+  se podía editar (eran los valores fijos de `src/config.js`). En una pantalla
+  que se llama *Ajustes* eso hace creer que ahí se cambia algo.
+- **"Servicios y premios" partido** en "Servicios" y "Puntos". Era un botón
+  largo con dos cosas distintas en dos columnas.
+
+### 10. Los mensajes del formulario de contacto
+
+**No se envían a ningún correo.** `enviarContacto` hace un `addDoc` a la
+colección `mensajes` de Firestore. El único "correo" del proyecto es la
+constante `EMAIL` de `src/config.js` (`hola@codigobarber1.com`), y ése es
+**texto que se muestra** en la landing y en las políticas, no una bandeja.
+
+Y había algo peor: las reglas dejan leer `mensajes` sólo al dueño, pero **ninguna
+pantalla los mostraba**. Los mensajes entraban a la base y no había forma de
+verlos sin abrir la consola de Firebase, mientras el formulario prometía "¡Mensaje
+enviado! Te respondemos pronto."
+
+Ahora hay pantalla **Mensajes** en el panel del dueño, con la lista y para
+borrar.
+
+## Dos bugs de pruebas que aparecieron de paso
+
+**La casita no se le veía al cliente.** Estaba `body:not(.adm) #web { display:
+none !important }` en el CSS, un resto del diseño viejo, y el `!important` le
+ganaba a la regla nueva del lote 23. El cliente llevaba desde el lote 23 sin ver
+la casita.
+
+No lo detectaron las pruebas porque **`panel.shell.js` contaba que el elemento
+existiera, no que se viera**: `#web:not([hidden])` con `.count()` da 1 para un
+elemento dibujado en 0×0. Ahora se mide `getBoundingClientRect()`. Y
+`landing.web.js` usaba `offsetParent` para preguntar si algo se ve, que no
+funciona con elementos posicionados (`<header>` es `position: sticky`).
+
+Es la misma trampa que con `nav` en la barra de celular: **contar no es ver.**
+
+**"Mensajes" no abría.** `mens` estaba en `rtOk` pero no en la tabla de rutas
+`RT`, así que el botón armaba `#/undefined`. Ahora hay una prueba que aprieta el
+ botón y mira que llegue a `#/mensajes`.
+
+## La meta CSP del HTML
+
+Estaba `<meta http-equiv="Content-Security-Policy" content="script-src ...">` en
+`index.html`, **además** de la que manda `vercel.json`. Cuando hay dos, el
+navegador aplica la más restrictiva. La del `<meta>` sólo decía `script-src`,
+así que hoy no rompía nada, pero es un segundo lugar que actualizar: es
+exactamente el tipo de cosa que se desincroniza sin que nadie lo note.
+
+Se eliminó. La CSP vive en `vercel.json` (producción) y `tests/srv.js`
+(desarrollo), y `tests/csp.sync.js` verifica que sean idénticas.
+
+## Ojo: los �conos PNG
+
+| archivo | peso | para qué |
+|---|---|---|
+| `icon-512.png` | 316 KB | cuando Android instala la app |
+| `logo-256.png` | 82 KB | el loader, en el primer pintado |
+| `icon-192.png` | 47 KB | el ícono de la pestaña, en cada carga |
+
+Ya están comprimidos (probé recodificarlos: 0 KB de ahorro). Si se quisieran
+aligerar hay que bajarlos de resolución, y eso es una decisión del dueño, no
+mía.
+
+## Dato para que confirme el dueño
+
+`EMAIL` en `src/config.js` es **"hola@codigobarber1.com"**, con un `1` antes
+del punto, y el sitio que se está usando es **codigobarber.com.ar**. Puede estar
+mal. No se tocó: es información del dueño.

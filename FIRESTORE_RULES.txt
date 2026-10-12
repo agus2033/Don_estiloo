@@ -122,7 +122,7 @@ service cloud.firestore {
                      && request.resource.data.keys().hasOnly(['nm', 'ph', 'pt', 'borrado'])
                      && request.resource.data.pt is int
                      && request.resource.data.pt >= 0
-                     && request.resource.data.pt <= 20;
+                     && request.resource.data.pt <= 50;
 
       // El cliente solo edita lo suyo: nombre, teléfono, foto y la baja.
       // Y los puntos SOLO pueden bajar: canjear un premio los descuenta, así
@@ -246,6 +246,24 @@ service cloud.firestore {
       allow read: if true;
       allow create: if isSignedIn() && (request.resource.data.uid == request.auth.uid || isBarberoOrOwner());
       allow update, delete: if isSignedIn() && (resource.data.uid == request.auth.uid || isBarberoOrOwner());
+    }
+
+    // La foto de cada barbero, sola.
+    //
+    // Antes la foto iba adentro de `config/barberos`, que es del dueño solo
+    // (ver arriba). El "Cambiar foto" del barbero hacía un setDoc ahi y se
+    // denegaba siempre: el error se tragaba con un .catch, la foto se guardaba
+    // en `users/` y `staff/`, y la web seguía mostrando el cartel [Foto].
+    //
+    // Acá la foto vive en su propio documento: se LEE sin sesión (la landing
+    // tiene que mostrarla al que no está logueado) y solo la ESCRIBE el propio
+    // barbero, y solo el campo "foto". Nada más de la configuración queda
+    // expuesto.
+    match /fotoBarbero/{uid} {
+      allow read: if true;
+      allow create, update: if isSignedIn() && request.auth.uid == uid
+                            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['foto']);
+      allow delete: if isSignedIn() && request.auth.uid == uid;
     }
 
     match /activos/{id} {

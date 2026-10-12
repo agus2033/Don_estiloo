@@ -62,15 +62,25 @@ function env(){const o={};fs.readFileSync(path.join(__dirname,"..",".env.local")
       await p.click("#mebadge"); await p.waitForTimeout(600);
       await p.click('#pmenu [data-act="verWebOn"]');
     };
+    /* OJO: no se mide la visibilidad con `offsetParent`. Para un elemento con
+       posicionamiento (el <header> es `position: sticky`) offsetParent no
+       sirve para preguntar "esto se ve": hay que mirar el rect�ngulo. Ac� una
+       casita con display:none daba `vis: true` y la prueba pasaba en verde. */
     const wb=await p.evaluate(()=>{const v=document.querySelector("#web");
-      return v?{vis:!v.hidden&&!!v.offsetParent,t:v.textContent.trim()}:null;});
+      if(!v) return null;
+      const r=v.getBoundingClientRect();
+      return {vis:!v.hidden&&r.width>=40&&r.height>=40,
+              w:Math.round(r.width),h:Math.round(r.height),
+              t:v.textContent.trim()};});
     if(rol!=="dueno"){
-      await p.click("#mebadge"); await p.waitForTimeout(600);
-      const enMenu=await p.evaluate(()=>!!document.querySelector('#pmenu [data-act="verWebOn"]'));
-      ck(enMenu,"el cliente llega a 'Ver la web' desde el menu del perfil");
-      await p.keyboard.press("Escape"); await p.waitForTimeout(400);
+      /* Antes el cliente llegaba a "Ver la web" por el menú de la foto. Ya no:
+         el dueño pidió que la fila de la derecha fuera casita - toggle - foto,
+         y la casita ES el botón de "Ver la web" (mismo data-act, sin el texto).
+         El cliente también la ve, para no perderle esa función. */
+      ck(wb&&wb.vis,"el cliente llega a 'Ver la web' con la casita del encabezado",wb?wb.t:"falta");
+      ck(wb&&wb.t==="","la casita no tiene texto al lado (sólo el ícono)",wb?JSON.stringify(wb.t):"falta");
     }else{
-      ck(wb&&wb.vis,"el dueno tiene 'Ver la web' suelto en el encabezado",wb?wb.t:"falta");
+      ck(wb&&wb.vis,"el dueno tiene 'Ver la web' como casita en el encabezado",wb?wb.t:"falta");
     }
     // ir a la web
     await verWeb(); await p.waitForTimeout(1600);

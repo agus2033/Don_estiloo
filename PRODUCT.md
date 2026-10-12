@@ -361,3 +361,30 @@ línea de CSS.
 Con esto queda: **30 pruebas, 661 comprobaciones, 0 en rojo.**
 
 Sin cambiar: el código del login (`red()`) estaba bien. No hizo falta tocarlo.
+
+## Lote 25 — Diez cosas del dueño
+
+| qué pidió | estado |
+|---|---|
+| borrar el cartel de popup cancelado | hecho, en silencio |
+| rendimiento en móvil | 3.983 KB -> 2.716 KB medido (-32%) |
+| que la foto del barbero se vea, y sacar "Foto" del dueño | hecho (colección `fotoBarbero`) |
+| "Editar perfil" del barbero | hecho (abría el bloque y le daba el foco) |
+| el error de permisos | **no se pudo reproducir**; se mejoró el texto |
+| el dueño como cliente | hecho |
+| máximo 50 puntos | hecho, en el panel **y** en las reglas |
+| Ajustes: horarios / servicios / puntos | hecho, "Negocio" eliminado |
+| a qué correo van los mensajes | no va a ningún correo; se agregó la pantalla |
+
+**Suite: 32 pruebas, 748 comprobaciones, 0 en rojo.** Con las tres cuentas
+funcionando por primera vez, `panel.shell.js` pasó a 59/59 y se destrabaron las
+pruebas que estaban en SKIP.
+
+### Dos decisiones de producto
+
+**La foto la sube cada barbero, no el dueño.** El botón del dueño se eliminó: dos
+personas editando el mismo rostro termina en que una pise a la otra.
+
+**Los mensajes del formulario no se envían a ningún correo.** Se guardan en
+Firestore y hasta ahora **nadie los veía**: la pantalla "Mensajes" del dueño es
+nueva. El `EMAIL` de `config.js` es sólo texto que se muestra en la web.

@@ -77,9 +77,26 @@ function envLocal() {
     /* ---------- 2. menú del perfil ---------- */
     chk(await page.locator("#mebadge:not([hidden])").count() > 0, `${tag} · la foto del perfil está`);
     /* "Cerrar sesión" ya no existe como botón suelto (vive en el menú de la
-       foto) y "Ver la web" es ahora la casita de la fila derecha. */
+       foto) y "Ver la web" es ahora la casita de la fila derecha.
+
+       OJO con contar en vez de mirar: esta comprobación antes era
+       `#web:not([hidden])` con `.count()`, y daba verde aunque la casita
+       estuviera dibujada en 0x0. Pasó months así: había un
+       `body:not(.adm) #web { display:none !important }` en el CSS que la
+       borraba, y el elemento existía igual. Ahora se mide el tamaño de
+       verdad. */
     chk(await page.locator("#lo").count() === 0, `${tag} · no queda el botón suelto de "Cerrar sesión"`);
-    chk(await page.locator("#web:not([hidden])").count() === 1, `${tag} · la casita ("Ver la web") está en el header`);
+    const casita = await page.evaluate(() => {
+      const v = document.querySelector("#web");
+      if (!v) return { existe: false };
+      const r = v.getBoundingClientRect();
+      return { existe: true, w: Math.round(r.width), h: Math.round(r.height), oculto: v.hidden };
+    });
+    chk(
+      casita.existe && !casita.oculto && casita.w >= 40 && casita.h >= 40,
+      `${tag} · la casita ("Ver la web") está SE VISTA en el header`,
+      JSON.stringify(casita),
+    );
 
     await page.click("#mebadge");
     await page.waitForTimeout(500);

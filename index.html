@@ -17,10 +17,14 @@
          lugares en total. Si cambia el dominio, se cambian los cinco. -->
 
     <title>Codigo Barber | Barbería en Puerto Iguazú, Misiones</title>
-    <!-- El título NO se toca: ya tiene marca, qué es y ciudad, que es lo que se
-         busca al escribir "barbería puerto iguazú". Y entra entero en los 60
-         caracteres que Google muestra. -->
-         <meta http-equiv="Content-Security-Policy" content="script-src 'self' https://apis.google.com https://www.gstatic.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com;">
+    
+  <!-- NO va una CSP en <meta>. La de verdad la manda vercel.json y la copia
+       de desarrollo la manda tests/srv.js, y tests/csp.sync.js verifica que
+       sean id�nticas. Cuando hay dos (una en el cabecera y otra ac�), el
+       navegador aplica LA M�S RESTRICTIVA de las dos: la del <meta> s�lo
+       dec�a script-src, as� que hoy no romp�a nada, pero cualquier cosa que se
+      tocara en un lado y no en el otro rompe en producci�n sin que nadie lo
+       note. Una sola fuente. -->  
     <meta
       name="description"
       content="Codigo Barber, barbería en Puerto Iguazú, Misiones. Corte de pelo, perfilado de barba y corte + barba. Reservá tu turno online por WhatsApp."

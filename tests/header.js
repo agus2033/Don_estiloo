@@ -188,8 +188,8 @@ const entrar = async (page, email, pass) => {
           });
           ok(b2.abierta, "la bandeja abre");
           ok(
-            b2.items.join(",") === "Barberos,Finanzas,Ajustes,Galería",
-            "la bandeja tiene las 4 que sobran",
+            b2.items.join(",") === "Barberos,Finanzas,Ajustes,Galería,Mensajes",
+            "la bandeja tiene las 5 que sobran",
             b2.items.join(", "),
           );
           await page.screenshot({ path: path.join(DIR, `dueño-390-bandeja.png`) });
