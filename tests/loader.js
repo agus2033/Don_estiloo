@@ -73,11 +73,17 @@ const ok = (c, m) => {
       fondo: cs ? cs.backgroundColor : null,
       role: c ? c.getAttribute("role") : null,
       live: c ? c.getAttribute("aria-live") : null,
-      anim: c && c.querySelector(".lgl") ? getComputedStyle(c.querySelector(".lgl")).animationName : null,
-      barrido: c && c.querySelector(".lgl") ? getComputedStyle(c.querySelector(".lgl")).clipPath : null,
-      anillo: c && c.querySelector(".lgc")
-        ? getComputedStyle(c.querySelector(".lgc"), "::after").animationName
+      /* Capa de ABAJO: el escudo entero, apagado. Nunca se mueve ni se recorta. */
+      opacidad: c && c.querySelector(".lgl") ? getComputedStyle(c.querySelector(".lgl")).opacity : null,
+      recorteAbajo: c && c.querySelector(".lgl")
+        ? getComputedStyle(c.querySelector(".lgl")).clipPath
         : null,
+      /* Capa de ARRIBA: la que se revela. Es un pseudo-elemento. */
+      anim: c ? getComputedStyle(c.querySelector(".lgc"), "::before").animationName : null,
+      /* La línea. */
+      anillo: c ? getComputedStyle(c.querySelector(".lgc"), "::after").animationName : null,
+      lineaIzq: c ? getComputedStyle(c.querySelector(".lgc"), "::after").left : null,
+      lineaDer: c ? getComputedStyle(c.querySelector(".lgc"), "::after").right : null,
       transform: c && c.querySelector(".lgc") ? getComputedStyle(c.querySelector(".lgc")).transform : null,
     };
   });
@@ -90,9 +96,36 @@ const ok = (c, m) => {
   /* El dueño pidió que NO gire y que el logo se revele de arriba hacia abajo.
      Antes eran `ldLatido` (el disco latía) y `ldGiro` (un aro girando); los
      dos tienen que estar ausentes. */
-  ok(ld.anim === "ldBarrido", "el logo se destapa con el barrido", ld.anim);
+  ok(ld.anim === "ldBarrido", "la capa de arriba se destapa con el barrido", ld.anim);
   ok(ld.anillo === "ldLinea", "la línea de luz baja con la línea", ld.anillo);
   ok(ld.transform === "none", "nada gira: el disco no tiene transform", ld.transform);
+
+  /* --- lo que arregla el cuadrado negro --- */
+  /* La capa de abajo tiene que estar APAGADA: si queda en opacidad 1 no se
+     nota la diferencia entre las dos capas y el barrido no se entiende. */
+  const opa = parseFloat(ld.opacidad);
+  ok(
+    opa > 0 && opa < 0.5,
+    "el escudo de abajo está apagado (silueta, no imagen rota)",
+    "opacity=" + ld.opacidad,
+  );
+  /* Y lo más importante: NO puede estar recortada. Si la capa de abajo tuviera
+     un clip-path, la mitad de abajo volvería a quedar en negro y se repetiría
+     exactamente el defecto que el dueño mandó arreglar. */
+  ok(
+    !ld.recorteAbajo || ld.recorteAbajo === "none",
+    "el escudo de abajo NO está recortado (es el hueco que se había arreglado)",
+    ld.recorteAbajo,
+  );
+
+  /* --- la línea no se sale del cuadro --- */
+  const li = parseFloat(ld.lineaIzq),
+    ldDer = parseFloat(ld.lineaDer);
+  ok(
+    Number.isFinite(li) && Number.isFinite(ldDer) && li > 0 && ldDer > 0,
+    "la línea va DENTRO del redondeo, no se sale por los lados",
+    "left=" + ld.lineaIzq + " right=" + ld.lineaDer,
+  );
   /* El barrido tiene que ser un recorte desde abajo (inset inferior 100%),
      que es lo que hace que lo primero que aparezca sea la parte de arriba.
 
@@ -100,11 +133,32 @@ const ok = (c, m) => {
      devuelve el valor interpolado del cuadro en curso, no el de partida, y
      por eso la comprobación va contra el CSS fuente, que es lo que además hay
      que revisar cuando se cambia la animación. */
-  const reglaLgl = (css.match(/\.lgl\s*\{([^}]*)\}/) || [])[1] || "";
+  const reglaBr = (css.match(/\.lgc::before\s*\{([^}]*)\}/) || [])[1] || "";
   ok(
-    /clip-path:\s*inset\([^)]*100%/.test(reglaLgl),
-    "el logo arranca oculto desde abajo (inset inferior 100%)",
-    reglaLgl.replace(/\s+/g, " ").trim().slice(0, 90),
+    /clip-path:\s*inset\([^)]*100%/.test(reglaBr),
+    "la capa de arriba arranca oculta desde abajo (inset inferior 100%)",
+    reglaBr.replace(/\s+/g, " ").trim().slice(0, 90),
+  );
+  /* Y la de abajo, sin clip-path: es la que hace de silueta. */
+  const reglaLgl = (css.match(/\.lgl\s*\{([^}]*)\}/) || [])[1] || "";
+  ok(!/clip-path/.test(reglaLgl), "el escudo de abajo no lleva clip-path", reglaLgl.slice(0, 70));
+  /* La capa de arriba tiene que ser el MISMO archivo que la de abajo: al ser
+     la misma URL, la descarga es una sola. */
+  const deCss = (css.match(/--ld-logo:\s*url\(["']?([^"')]+)/) || [])[1] || "";
+  ok(!!deCss, "el CSS declara --ld-logo", deCss);
+  /* El CSS lleva "../" porque sus URL se resuelven contra la ruta del propio
+     archivo (src/styles.css), no contra la del documento. Se comparan sin
+     ese prefijo: lo que importa es que apunten al mismo PNG. */
+  const limpio = (u) => String(u).replace(/^(\.\.\/)+/, "");
+  ok(
+    limpio(deCss) === limpio(delCfg),
+    "las dos capas usan el mismo archivo (nada de una segunda descarga)",
+    deCss + " vs " + delCfg,
+  );
+  ok(
+    /background:\s*var\(--ld-logo\)/.test(reglaBr),
+    "la capa de arriba se arma con esa variable",
+    reglaBr.replace(/\s+/g, " ").trim().slice(0, 80),
   );
   const kfBarrido = (css.match(/@keyframes ldBarrido\s*\{([\s\S]*?)\n\}/) || [])[1] || "";
   ok(

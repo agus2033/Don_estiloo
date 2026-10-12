@@ -217,9 +217,15 @@
         el primer segundo se vería un disco vacío. El precio de hardcodear la
         ruta es que puede desincronizarse de `LOGO` en config.js, así que
         `tests\loader.js` compara las dos y falla si se separan.
+
+        Esta imagen es la capa de ABAJO: el escudo entero, apagado. Encima, en
+        CSS, `.lgc::before` pone la MISMA imagen como fondo y esa sí se revela
+        de arriba hacia abajo. Al ser la misma URL no hay una segunda descarga.
+        `--ld-logo` en styles.css también tiene que coincidir: el test lo
+        verifica.
       -->
       <span class="lgc">
-        <img class="lgl" src="assets/logo-256.png" alt="" width="168" height="168" />
+        <img class="lgl" src="assets/logo-256.png" alt="" width="176" height="176" />
       </span>
       <span id="ldt">Cargando…</span>
     </div>

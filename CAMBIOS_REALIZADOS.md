@@ -88,6 +88,26 @@ El fallback de red devolvía `index.html` para **cualquier** recurso que fallara
 
 **No se borró nada**: siguen en git, fuera de la carpeta que se publica. Son los originales que el dueño CBA tener; los que se usan son las versiones de 96 px y el `logo-256.png`.
 
+### Rediseño del loader (después del video del dueño)
+
+El dueño grabó la pantalla pidiendo una mejora. Al capturar el loader cuadro por cuadro apareció un defecto que las pruebas no veían: **la mitad de abajo quedaba en negro puro**, porque el `clip-path` iba directo de "nada visible" a "todo visible". Parecía una imagen rota, no un revelado.
+
+**Qué cambió:**
+
+| Antes | Ahora |
+|---|---|
+| Una imagen con `clip-path` animado | Dos capas de la misma imagen |
+| Mitad de abajo en negro (hueco) | El escudo entero, apagado, siempre debajo |
+| Línea saliéndose 10 px por lado | Línea dentro del redondeo (`14px`) |
+| Escudo recortado por el radio | `scale(0.93)` y radio de 26 px |
+| 168 px | 176 px |
+| Sin marca de final | Puntito dorado que se apaga al terminar el barrido |
+
+**No es una segunda descarga:** la capa de arriba es un `background-image` con la misma URL que el `<img>`.
+
+**Archivos:** `src/styles.css` (bloque del loader), `index.html` (medidas y comentario), `tests/loader.js` (11 comprobaciones nuevas: que las tres rutas del logo coincidan, que la capa de abajo esté apagada y **no** recortada, y que la línea no se salga).
+
+**Una trampa que salió en el camino:** dentro de `src/styles.css`, `url("assets/logo-256.png")` se resuelve como `/src/assets/logo-256.png` y da 404, porque las URL de un CSS externo son relativas al CSS, no al documento. Va `../assets/…`. Lo detectaron `landing.barberos` y `politicas`.
 ---
 
 ## Lo que NO se cambió, y por qué

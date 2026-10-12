@@ -1284,6 +1284,50 @@ Las trampas nuevas, todas en `PRUEBAS.md`:
 5. El mail real del barbero, para vincularlo con su cuenta y su agenda.
 
 ---
+### El loader se rediseñó (después del video del dueño)
+
+El dueño grabó la pantalla y pidió mejorar el loader. Al mirarlo con
+capturas appeared **un defecto que las pruebas no veían**:
+
+1. **La mitad de abajo quedaba en NEGRO PURO.** El `clip-path` iba
+   directo de "nada visible" a "todo visible", así que en el medio había
+   un cuadrado vacío que parecía una imagen que no cargó. Eso es lo que
+   más se notaba en el video.
+2. **La línea de luz se salía 10 px a cada lado** (`left/right: -10px`) y
+   no respetaba el redondeo: asomaban dos puntas doradas fuera del marco.
+3. **El escudo iba recortado**: con `border-radius: 34px` sobre 168 px, las
+   hojas de afeitar de los costados quedaban cortadas.
+
+**El arreglo de fondo: el logo completo queda siempre debajo, apagado,**
+**como silueta.** Encima va una segunda capa de la MISMA imagen, con
+opacidad normal, que sí se revela de arriba hacia abajo. Nunca hay un
+hueco vacío: lo que se "carga" es la iluminación, no la imagen.
+
+- `.lgl` (el `<img>`): escudo entero, `opacity: 0.2`, **sin** `clip-path`.
+- `.lgc::before`: la misma imagen como `background-image`, encendida, con el
+  `clip-path` animado. Al ser la misma URL no hay una segunda descarga.
+- `.lgc::after`: la línea, ahora con `left/right: 14px` (dentro del
+  redondeo) y glow más marcado.
+- Las dos capas usan el mismo `transform: scale(0.93)`, así que el escudo
+  entra entero y no se ve desdoblado.
+- Un puntito dorado antes de "Cargando…" que se apaga justo cuando
+  termina el barrido. El texto no cambia, porque si cambiara el `aria-live`
+  lo leería en loop.
+- Cuadro de 168 a 176 px y radio de 34 a 26 px.
+
+**Las tres rutas del logo tienen que coincidir:** el `src` del `<img>` en
+`index.html`, `LOGO` en `config.js` y `--ld-logo` en `styles.css`.
+`tests/loader.js` (31 comprobaciones) compara las tres.
+
+> **Trampa nueva:** la URL de un CSS externo se resuelve contra la ruta del
+> PROPIO CSS, no contra la del documento. Con `url("assets/logo-256.png")`
+> dentro de `src/styles.css` se pedía `/src/assets/logo-256.png` y daba 404.
+> Va `../assets/…`. Lo detectó la batería, en dos pruebas.
+
+**Verificación en movimiento real** (`tests/_ldmov.js`, que se puede volver
+a hacer): la línea recorre de 15 px a 173 px, se queda, se apaga y
+reinicia; el desfase máximo con el borde del recorte es de 3,7 px, que es
+el grosor de la línea misma.
 
 ## Lo que ya está hecho y NO hay que romper
 ---

@@ -1193,20 +1193,36 @@ body[data-theme="light"] header #nav button {
   width: auto;
   flex: 1;
 }
-/* Loader (logo de Codigo Barber)
+/* Loader: el escudo se enciende de arriba hacia abajo.
 
-   Antes era un poste de barbero con franjas rojas, blancas y azules girando
-   (.bp). Después fue el logo con un aro dorado GIRANDO alrededor y el disco
-   latiendo. El dueño pidió las dos cosas fuera: **que no gire** y que la marca
-   **se revele de arriba hacia abajo** (copió el efecto de otra app donde una
-   línea de luz baja y va destapando el ícono).
+   Antes era un poste de barbero con franjas (luego un aro girando). El dueño
+   pidió que no gire y que la marca se revele de arriba hacia abajo.
 
-   El barrido se hace con `clip-path: inset()` sobre la imagen: el inset
-   inferior pasa de 100% (no se ve nada) a 0% (se ve todo), y como crece desde
-   el borde de abajo, lo que aparece primero es la parte de ARRIBA del logo.
-   La línea dorada viaja con el MISMO duration y la MISMA curva, así que
-   siempre queda pegada al borde del recorte: si se le cambia uno de los dos,
-   se desalinean y se nota. */
+   El récente barrido tenía un defecto que se veía a simple vista: la mitad de
+   abajo quedaba en negro puro, porque el `clip-path` iba directamente de
+   "no se ve nada" a "se ve todo". Entre medio había un cuadrado vacío que
+   parecía una imagen que no había cargado. Y la línea se salía 10 px de cada
+   lado, asomando dos puntas doradas fuera del marco.
+
+   Ahora hay DOS capas del mismo logo:
+
+     - la de abajo (.lgl, el <img>) es el escudo ENTERO, apagado. Está siempre
+       ahí, así que nunca se ve un hueco;
+     - la de arriba (.lgc::before, un `background-image` de la MISMA URL, o sea
+       sin segunda descarga) es la que se revela de arriba hacia abajo.
+
+   Lo que se "carga" es la iluminación, no la imagen.
+
+   La línea de luz va DENTRO del redondeo (`left/right: 14px` en vez de -10px)
+   y las dos capas usan el mismo `transform: scale()`, para que el escudo no
+   quede cortado por el `border-radius`. */
+
+:root {
+  /* "../" porque las URL de un CSS externo se resuelven contra la ruta del
+     propio CSS, no contra la del documento: con `assets/...` pedía
+     `/src/assets/logo-256.png` y daba 404 (lo detectó la batería). */
+  --ld-logo: url("../assets/logo-256.png");
+}
 #ld {
   position: fixed;
   inset: 0;
@@ -1215,13 +1231,14 @@ body[data-theme="light"] header #nav button {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 20px;
+  gap: 26px;
   background: #0b0f15;
   color: #8794a5;
   font:
-    600 20px "Barlow Condensed",
+    600 19px "Barlow Condensed",
     sans-serif;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
   transition: opacity 0.25s;
 }
 #ld.soft {
@@ -1232,70 +1249,82 @@ body[data-theme="light"] header #nav button {
   visibility: hidden;
   pointer-events: none;
 }
-/* El logo es un PNG con fondo NEGRO OPACO (medido: 0% de píxeles
-   transparentes, esquina = rgba(0,0,0,255)). Por eso no va pelado sobre el
-   azul del loader —se vería el cuadrado— ni sobre un disco claro, que es lo
-   que se probó primero y tapaba el escudo entero. Va como lo muestra el
-   header (`.lg`): cuadrado redondeado, aro dorado y la imagen filling. */
+/* El PNG tiene fondo NEGRO OPACO (medido: 0% de píxeles transparentes),
+   así que el fondo del cuadro es negro puro y no el #0b0f15 del loader: si
+   fuera distinto se vería un cuadrado ligeramente más claro alrededor. */
 .lgc {
   position: relative;
-  display: grid;
-  place-items: center;
-  width: 168px;
-  height: 168px;
-  border-radius: 34px;
-  /* Negro puro y no el #0b0f16 del loader: el PNG del logo también es negro
-     puro, así que el borde del cuadrado se funde con la imagen y lo único que
-     dibuja la forma es el aro dorado. Con un fondo distinto se veía un
-     cuadrado ligeramente más claro alrededor del escudo. */
+  width: 176px;
+  height: 176px;
+  /* Radio más Chico que antes (26px y no 34px) y con la imagen encogida un
+     7%: con 34px sobre 176 el redondeo se comía las hojas de afeitar de los
+     costados del escudo. */
+  border-radius: 26px;
   background: #000;
   box-shadow:
     0 0 0 2px #c9a24b,
     0 26px 60px -18px #000e,
     0 0 76px -14px #c9a24b4d;
 }
-/* El escudo se destapa de arriba hacia abajo. El inset inferior es el que
-   manda: 100% = nada visible, 0% = todo visible. */
+/* Capa 1: el escudo entero, apagado. Es la silueta que está siempre. */
 .lgl {
-  display: block;
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   border-radius: inherit;
   object-fit: cover;
-  clip-path: inset(0 0 100% 0);
-  animation: ldBarrido 1.75s cubic-bezier(0.66, 0, 0.34, 1) infinite;
+  transform: scale(0.93);
+  opacity: 0.2;
 }
-/* La línea de luz que va bajando y destapa. Usa `::after` y no `::before` a
-   propósito: el `::before` queda libre por si algún día hace falta otra
-   capa sin tocar el keyframe de la línea. */
+/* Capa 2: el mismo escudo, encendido, revelándose de arriba hacia abajo.
+   `inset()` con el borde INFERIOR es el que manda: 100% = nada visible,
+   0% = todo visible. Como crece desde abajo, lo primero que aparece es la
+   parte de ARRIBA. */
+.lgc::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--ld-logo) center / cover no-repeat;
+  transform: scale(0.93);
+  clip-path: inset(0 0 100% 0);
+  animation: ldBarrido 2s cubic-bezier(0.66, 0, 0.34, 1) infinite;
+}
+/* Capa 3: la línea de luz que baja destapando. Va dentro del redondeo y con
+   el MISMO duration y la MISMA curva que el barrido, así que siempre queda
+   pegada al borde del recorte: si se le cambia uno de los dos, se desalinea
+   y se nota. */
 .lgc::after {
   content: "";
   position: absolute;
-  left: -10px;
-  right: -10px;
+  left: 14px;
+  right: 14px;
   top: 0;
   height: 3px;
-  border-radius: 2px;
+  border-radius: 3px;
   background: linear-gradient(
     90deg,
     transparent,
-    #f3dda2 20%,
+    #f6e5b8 18%,
     #c9a24b 50%,
-    #f3dda2 80%,
+    #f6e5b8 82%,
     transparent
   );
-  box-shadow: 0 0 18px 3px #c9a24b80;
+  box-shadow:
+    0 0 10px 1px #c9a24bcc,
+    0 0 26px 6px #c9a24b55;
   opacity: 0;
-  animation: ldLinea 1.75s cubic-bezier(0.66, 0, 0.34, 1) infinite;
+  animation: ldLinea 2s cubic-bezier(0.66, 0, 0.34, 1) infinite;
 }
-/* El barrido termina al 62% del ciclo y después se queda quieto hasta que
-   vuelve a empezar. Sin esa pausa la imagen se reiniciaría de golpe y se lee
+/* El barrido termina al 64% del ciclo y después se queda quieto hasta que
+   vuelve a empezar. Sin esa pausa el logo se reiniciaría de golpe y se lee
    como un parpadeo. */
 @keyframes ldBarrido {
   0% {
     clip-path: inset(0 0 100% 0);
   }
-  62%,
+  64%,
   100% {
     clip-path: inset(0 0 0 0);
   }
@@ -1305,22 +1334,60 @@ body[data-theme="light"] header #nav button {
     top: 0;
     opacity: 0;
   }
-  9% {
+  8% {
     opacity: 1;
   }
-  62% {
+  64% {
     top: calc(100% - 3px);
     opacity: 1;
   }
-  74%,
+  76%,
   100% {
     top: calc(100% - 3px);
     opacity: 0;
   }
 }
-/* Con "reducir movimiento" no hay barrido: el logo se ve entero desde el
-   principio y la palabra "Cargando" sigue diciendo lo mismo, que es lo que
-   importa. La línea se apaga en vez de quedar clavada a mitad de camino. */
+/* Un puntito dorado antes del texto: dice "esto sigue vivo" sin que el
+   texto tenga que cambiar (si cambiara, el aria-live lo leería en loop). */
+#ldt {
+  position: relative;
+  padding-left: 20px;
+}
+#ldt::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: #c9a24b;
+  box-shadow: 0 0 10px 2px #c9a24b99;
+  animation: ldPunto 2s cubic-bezier(0.66, 0, 0.34, 1) infinite;
+}
+/* El puntito se apaga justo cuando termina el barrido y vuelve con el
+   ciclo: hace de remate y marca el final del recorrido. */
+@keyframes ldPunto {
+  0%,
+  6% {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  64%,
+  70% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+  100% {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .lgl {
     animation: none;
