@@ -206,3 +206,20 @@ Corrida completa con `node tests/run.js`. Las pruebas que necesitan una cuenta q
   perfil" / "Cambiar foto" / "Cerrar sesión", y que "Ver la web" **no** esté en
   el menú. **No se pudo correr** (la cuenta de cliente no autentica).
 - `tests/run.js`: se agrega `header`.
+
+### Lote 24 — La CSP rompía el login con Google y Facebook
+
+- `vercel.json` + `tests/srv.js` (CSP): `script-src` suma
+  `https://apis.google.com` y `frame-src` suma `https://*.firebaseapp.com`.
+  Es la corrección mínima: son los dos orígenes que faltaban, comprobados
+  reproduciendo el fallo en local contra el servidor con CSP.
+- Nueva `tests/csp.popup.js`, 10 checks: aprieta Google y Facebook de verdad y
+  exige que la ventana emergente abra, llegue al dominio del proveedor, se
+  dibuje, y que no haya ninguna violación de CSP.
+- `tests/run.js`: se agrega `csp.popup`.
+- `src/main.js`, `index.html` y `src/styles.css`: **sin cambios**. El código
+  del login estaba bien.
+
+Por qué no lo detectaron las pruebas anteriores: `tests/csp.js` comparaba la
+cabecera con lo esperado, o sea que daba verde porque la CSP era *exactamente*
+la que se había escrito. Nadie la había probado con un login real.

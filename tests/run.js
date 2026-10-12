@@ -48,6 +48,7 @@ const TODAS = [
 
   /* necesitan el servidor con CSP */
   { n: "csp", sesion: false, red: true },
+  { n: "csp.popup", sesion: false, red: true },
   { n: "xss", sesion: true, red: false },
   { n: "mapa", sesion: false, red: false },
   { n: "perf", sesion: false, red: false },

@@ -1643,3 +1643,68 @@ dueño y el barbero; para el cliente no dijo nada, pero su menú tenía "Ver la
 web" y si a la vez se sacaba la casita del header y ese item del menú, el
 cliente perdía la función. Queda como estaba, pero es una decisión mía, no
 pedida: si no la querés en el panel del cliente, decime y la oculto.
+
+---
+
+## 23. La CSP rompía el ingreso con Google y con Facebook (corregido)
+
+### El síntoma
+
+Con cualquiera de los dos botones, el login moría al toque con un cartel rojo
+de "No se pudo completar / Intenta de nuevo - Firebase: Error (auth/internal-error)",
+y en la consola cuatro errores de "Content Security Policy" bloqueando
+`https://apis.google.com/js/api.js`.
+
+### Por qué la console decía una cosa y el cartel otra
+
+`auth/internal-error` es lo que devuelve Firebase cuando **no puede abrir la
+ventana emergente**: es genérico y no dice "me bloquearon un script". El
+mensaje de "intenta de nuevo" manda al usuario a tocar de nuevo, y a tocar de
+nuevo pasa lo mismo. La causa real estaba en la consola, y era mia.
+
+### La causa
+
+La CSP del lote 20 (`vercel.json` y `tests/srv.js`) tenía:
+
+```
+script-src 'self' https://www.gstatic.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com
+frame-src  https://www.google.com https://maps.google.com
+```
+
+Faltaban dos orígenes:
+
+| falta | quién lo pide | qué pasaba |
+|---|---|---|
+| `script-src https://apis.google.com` | el popup de Google inyecta ahí su `js/api.js` | **la ventana no abría**, y el login moría con `auth/internal-error` |
+| `frame-src https://*.firebaseapp.com` | el iframe del popup de Firebase | con el popup abierto, el iframe quedaba bloqueado |
+
+Con comodín en `firebaseapp`, no con el id de este proyecto: así el mismo
+`vercel.json` sirve para cualquier proyecto Firebase y nadie queda atado a
+`barberia-taccu`.
+
+### Cómo se encontró sin adivinar
+
+Se reprodujo localmente contra `node tests\srv.js 8766` (el servidor que SÍ
+manda la CSP), apretando Google y Facebook de verdad y leyendo la consola **de
+la ventana emergente**. Iterando: primero apareció `apis.google.com`, después de
+arreglarlo el popup abrió y apareció `*.firebaseapp.com`. Recién después de la
+segunda corrección, cero violaciones.
+
+**Esto es una trampa nueva y general:** una CSP se prueba yendo a buscar lo que
+se bloquea, no leyendo la lista de hosts y pensando "faltará alguno".
+
+### La prueba de regresión: `tests/csp.popup.js` (10 checks)
+
+Además de leer la CSP, aprieta los dos botones y exige:
+
+1. que la ventana emergente **se abra**,
+2. que **llegue al dominio del proveedor** (`accounts.google.com` /
+   `facebook.com`),
+3. que la pantalla **se dibuje** (texto no vacío),
+4. **cero** violaciones de CSP en la página y en el popup.
+
+El punto 2 es el que importa: sin él, "cero violaciones" pasaría por verde
+aunque el popup no se abriera nunca, que es exactamente el bug que había.
+
+Verificado también a ojo: la pantalla de Google (914 caracteres) y la de
+Facebook (560) se dibujan completas, con estilos y sin campos en blanco.

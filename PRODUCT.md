@@ -347,3 +347,17 @@ fila de controles con dos botones de texto era lo que apretó el header.
 La **casita en el panel del cliente** no la pidió el dueño: se le dejó para no
 perderle el "Ver la web" que tenía en su menú. Si sobra, se oculta con una
 línea de CSS.
+
+## Lote 24 — La CSP rompía el login con Google y Facebook
+
+**Origen del bug:** este repo. La CSP del lote 20 quedó incompleta.
+
+- `vercel.json` y `tests/srv.js`: `+ https://apis.google.com` en `script-src`
+  y `+ https://*.firebaseapp.com` en `frame-src`. Con comodín, no con el id del
+  proyecto. **Los dos archivos tienen que quedar idénticos** (`tests/csp.sync.js`
+  lo verifica).
+- Nueva `tests/csp.popup.js` (10 checks) ysumada al runner.
+
+Con esto queda: **30 pruebas, 661 comprobaciones, 0 en rojo.**
+
+Sin cambiar: el código del login (`red()`) estaba bien. No hizo falta tocarlo.

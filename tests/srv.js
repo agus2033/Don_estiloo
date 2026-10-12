@@ -33,7 +33,7 @@ const CSP = [
   "font-src 'self' https://fonts.gstatic.com data:",
   // Firebase se carga desde gstatic; la autenticación habla con
   // identitytoolkit y securetoken.
-  "script-src 'self' https://www.gstatic.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com",
+  "script-src 'self' https://www.gstatic.com https://apis.google.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com",
   // OJO: los tres hosts de `OK` (sw.js) tienen que estar TAMBIÉN en connect-src.
   // El service worker intercepta esos pedidos y los reintenta con fetch() desde
   // el worker, y esa llamada se mide contra connect-src, no contra script-src
@@ -42,7 +42,7 @@ const CSP = [
   // fonts.googleapis.com" y "Expected a JavaScript module script but the server
   // responded with a MIME type of text/html").
   "connect-src 'self' https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://api.cloudinary.com https://accounts.google.com https://www.gstatic.com https://fonts.googleapis.com https://fonts.gstatic.com",
-  "frame-src https://www.google.com https://maps.google.com",
+  "frame-src https://www.google.com https://maps.google.com https://*.firebaseapp.com",
   "form-action 'self'",
   "upgrade-insecure-requests",
 ].join("; ");
