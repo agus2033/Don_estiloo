@@ -234,8 +234,27 @@ Contenido real y verificado en el código (fuente de verdad):
 - **Dirección y horarios**: el código actual tiene un placeholder literal `[DIRECCIÓN]` y un mapa de ejemplo (`MAP_IFRAME` con coordenadas de muestra). Reemplazar con datos reales.
 - No hay carpeta `referencia/` con capturas del mockup; la descripción textual del prompt es la fuente de verdad visual.
 
-## Product Principles
+### La base se puede volver a sembrar (2026-10-11)
 
+El dueño borró la base entera. `tests/sembrar.js` la reconstruct y se puede
+volver a correr. La regla que salió de eso:
+
+- **Firebase Authentication y Firestore son dos bases distintas.** Al borrar
+  Firestore no se cae ninguna cuenta: sobreviven dueño y barbero. Por eso
+  una limpieza de Firestore no obliga a volver a crear usuarios.
+- **El documento `users/{uid}` lo crea el propio usuario, y sólo si todavía
+  no es barbero.** Ni el dueño puede crearlo por otro (las reglas piden
+  `request.auth.uid == uid`). Por eso el orden importa: el barbero tiene que
+  entrar una vez **antes** de que exista su documento de `staff`.
+- **Lo que no se puede sembrar son las imágenes.** Las fotos vivían en
+  Cloudinary con URLs que se perdieron con la base. Se recargan desde la app.
+
+Un negocio recién sembrado no tiene fotos, ni galería, ni reseñas. Eso está
+bien: son datos del negocio, no del software. Lo único que no se inventa es
+el nombre del barbero, el horario y los precios, que salen de `config.js` y
+de lo que el dueño decide.
+
+## Product Principles
 1. **Reservar es la única acción principal.** Un solo llamado a la acción en toda la landing. Nada de "Crear cuenta" como CTA en la landing: el registro ocurre dentro del flujo de reserva.
 2. **El contenido real manda sobre el diseño.** Servicios, barberos, precios, horarios y galería salen de Firestore. Si falta, se muestra un marcador, nunca un relleno inventado.
 3. **Los puntos se entienden en un vistazo.** El programa de puntos es un objetivo de producto, no decoración: la tarjeta de progreso tiene que mostrar el balance real del cliente.

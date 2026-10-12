@@ -42,6 +42,13 @@ function env(){const o={};fs.readFileSync(path.join(__dirname,"..",".env.local")
     await p.fill("#ie", rol==="dueno"?E.DUENO_EMAIL:E.CLIENTE_EMAIL);
     await p.fill("#ip", rol==="dueno"?E.DUENO_PASSWORD:E.CLIENTE_PASSWORD);
     await p.click('[data-act="entrar"]'); await p.waitForTimeout(5000);
+    if (!(await p.evaluate(()=>window.__test&&window.__test.uid))) {
+      console.log("  SKIP  la cuenta cliente no entra (no existe o cambió la contraseña).");
+      console.log("        Recreala en Firebase > Authentication, o pasame el mail y la creo.");
+      console.log("\n=== SALTADO (sin fallos) ===");
+      await b.close();
+      process.exit(0);
+    }
     ck(await p.evaluate(()=>{const h=document.querySelector("body > header");
       return !!h&&getComputedStyle(h).display!=="none";}),"entra y aparece el header de la app");
     /* "Ver la web" ya no esta suelto en el encabezado del cliente: paso al

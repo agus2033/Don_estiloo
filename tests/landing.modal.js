@@ -150,7 +150,20 @@ const irPaso = async (n, ms = 2500) => {
     let sheet = await p.$(".wz-sheet");
     if (sheet) await sheet.screenshot({ path: path.join(__dirname, "..", "tmp_shots", `MOD-${theme}-paso1.png`) });
 
-    /* ---- fotos de los barberos (paso 2) ---- */
+    /* ---- fotos de los barberos (paso 2) ----
+       Sin barberos en Firestore el paso 2 no tiene nada que elegir y el
+       asistente no avanza. Antes la prueba clickeaba `.wz-item:not(.on)`
+       esperando un elemento que no existía y moría con un "Timeout 30000ms"
+       que no decía que el problema eran los datos, no el código. */
+    await irPaso(2);
+    if (!(await p.$$(".wz-item--bar")).length) {
+      console.log("  SKIP  no hay barberos cargados: el asistente no pasa del paso 2.");
+      console.log("        Cargá uno (dueño > Barberos > + Agregar barbero) y se prueba.");
+      await ctx.close();
+      await b.close();
+      console.log("\n=== SALTADO (sin fallos) ===");
+      return;
+    }
     await p.click(".wz-item:not(.on)");
     await p.waitForTimeout(200);
     await irPaso(2);

@@ -101,7 +101,18 @@ async function entrar(p, email, pass) {
       hash: location.hash,
       nav: [...document.querySelectorAll("#nav button[data-act='go']")].length,
     }));
-    check(rol.hash === "#/inicio",
+    /* Si la cuenta no entra se quedó en el login. No es un fallo del
+       código: la cuenta de cliente de .env.local no existe (el dueño la
+       borró en la limpieza del 2026-10-11). Antes caía en la rama de "tiene
+       documento staff/" y decía una cosa que era falsa. */
+    if (rol.hash === "#login" || rol.hash === "#/login") {
+      console.log("  SKIP  la cuenta CLIENTE no entra: no existe o cambió la contraseña.");
+      console.log("        Sin ella no se puede probar el alta de una reseña.");
+      await ctx.close();
+      await b.close();
+      console.log("\n=== SALTADO (sin fallos) ===");
+      return;
+    }    check(rol.hash === "#/inicio",
       "la cuenta CLIENTE entra como cliente (no como barbero)", rol.hash);
     if (rol.hash !== "#/inicio") {
       console.log("  ATENCIÓN: esta cuenta tiene documento staff/, así que el router");

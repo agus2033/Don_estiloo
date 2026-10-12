@@ -1196,9 +1196,17 @@ body[data-theme="light"] header #nav button {
 /* Loader (logo de Codigo Barber)
 
    Antes era un poste de barbero con franjas rojas, blancas y azules girando
-   (.bp). El dueño lo pidió cambiado por el logo. El poste y sus keyframes
-   (.bp, .bp i, @keyframes bp) se fueron con él: si algún día vuelve, no
-   reciclar estas reglas. */
+   (.bp). Después fue el logo con un aro dorado GIRANDO alrededor y el disco
+   latiendo. El dueño pidió las dos cosas fuera: **que no gire** y que la marca
+   **se revele de arriba hacia abajo** (copió el efecto de otra app donde una
+   línea de luz baja y va destapando el ícono).
+
+   El barrido se hace con `clip-path: inset()` sobre la imagen: el inset
+   inferior pasa de 100% (no se ve nada) a 0% (se ve todo), y como crece desde
+   el borde de abajo, lo que aparece primero es la parte de ARRIBA del logo.
+   La línea dorada viaja con el MISMO duration y la MISMA curva, así que
+   siempre queda pegada al borde del recorte: si se le cambia uno de los dos,
+   se desalinean y se nota. */
 #ld {
   position: fixed;
   inset: 0;
@@ -1245,55 +1253,82 @@ body[data-theme="light"] header #nav button {
     0 0 0 2px #c9a24b,
     0 26px 60px -18px #000e,
     0 0 76px -14px #c9a24b4d;
-  animation: ldLatido 2.1s ease-in-out infinite;
 }
+/* El escudo se destapa de arriba hacia abajo. El inset inferior es el que
+   manda: 100% = nada visible, 0% = todo visible. */
 .lgl {
   display: block;
   width: 100%;
   height: 100%;
   border-radius: inherit;
   object-fit: cover;
+  clip-path: inset(0 0 100% 0);
+  animation: ldBarrido 1.75s cubic-bezier(0.66, 0, 0.34, 1) infinite;
 }
-/* El arco dorado que da vuelta: es lo que dice "está trabajando" sin
-   inventar una barra de progreso que no puede saber cuánto falta. */
+/* La línea de luz que va bajando y destapa. Usa `::after` y no `::before` a
+   propósito: el `::before` queda libre por si algún día hace falta otra
+   capa sin tocar el keyframe de la línea. */
 .lgc::after {
   content: "";
   position: absolute;
-  inset: -13px;
-  /* El radio tiene que crecer lo mismo que el inset (34 + 13) para que el
-     arco sea concéntrico con las esquinas del cuadrado y no se vea torcido
-     al girar. */
-  border-radius: 47px;
-  border: 2px solid transparent;
-  border-top-color: #c9a24b;
-  border-right-color: #c9a24b55;
-  animation: ldGiro 1.15s linear infinite;
+  left: -10px;
+  right: -10px;
+  top: 0;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    #f3dda2 20%,
+    #c9a24b 50%,
+    #f3dda2 80%,
+    transparent
+  );
+  box-shadow: 0 0 18px 3px #c9a24b80;
+  opacity: 0;
+  animation: ldLinea 1.75s cubic-bezier(0.66, 0, 0.34, 1) infinite;
 }
-@keyframes ldLatido {
-  0%,
+/* El barrido termina al 62% del ciclo y después se queda quieto hasta que
+   vuelve a empezar. Sin esa pausa la imagen se reiniciaría de golpe y se lee
+   como un parpadeo. */
+@keyframes ldBarrido {
+  0% {
+    clip-path: inset(0 0 100% 0);
+  }
+  62%,
   100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.03);
+    clip-path: inset(0 0 0 0);
   }
 }
-@keyframes ldGiro {
-  to {
-    transform: rotate(360deg);
+@keyframes ldLinea {
+  0% {
+    top: 0;
+    opacity: 0;
+  }
+  9% {
+    opacity: 1;
+  }
+  62% {
+    top: calc(100% - 3px);
+    opacity: 1;
+  }
+  74%,
+  100% {
+    top: calc(100% - 3px);
+    opacity: 0;
   }
 }
-/* Con "reducir movimiento" no hay giro ni latido: el logo queda quieto y la
-   palabra "Cargando" sigue diciendo lo mismo, que es lo que importa. */
+/* Con "reducir movimiento" no hay barrido: el logo se ve entero desde el
+   principio y la palabra "Cargando" sigue diciendo lo mismo, que es lo que
+   importa. La línea se apaga en vez de quedar clavada a mitad de camino. */
 @media (prefers-reduced-motion: reduce) {
-  .lgc,
+  .lgl {
+    animation: none;
+    clip-path: none;
+  }
   .lgc::after {
     animation: none;
-  }
-  .lgc::after {
-    border-top-color: #c9a24b;
-    border-right-color: #c9a24b;
-    opacity: 0.5;
+    opacity: 0;
   }
 }
 /* Ventanas modales */

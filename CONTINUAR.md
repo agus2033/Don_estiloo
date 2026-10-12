@@ -808,8 +808,6 @@ digan sólo "WhatsApp"/"Instagram" (antes iban con el número pegado).
 Con capturas: `tests/_shot.js <nombre>` saca frente y dorso en escritorio y
 celular a `tests/tmp_shots/`.
 
----
-
 ## 17. SEO local - **HECHO**
 
 Dominio: **codigobarber.com.ar** (lo confirmó el dueño; antes el head apuntaba
@@ -1015,6 +1013,171 @@ nombró:
   roja, marfil y azul, 6 px.
 
 Ninguna se toca sin que lo pidas.
+
+---
+
+## 18. Siembra de la base después de la limpieza del dueño - **HECHO**
+
+El 2026-10-11 el dueño borró la base de Firestore **entera**. Firebase
+Authentication sobrevivió (son dos bases distintas), así que las dos cuentas
+siguen existiendo; lo que faltaba eran los documentos.
+
+Se dejó con `tests\sembrar.js`, que se puede volver a correr las veces que
+haga falta. Pregunta antes de escribir, salvo que se le pase `--si`.
+
+### Qué se cargó
+
+| Documento | Contenido |
+|---|---|
+| `config/servicios` | los 3 servicios con id, precio y duración |
+| `config/horario` | Lun a Sáb, 09:00 a 17:00, sin pausa |
+| `config/reglas` | 5 puntos por corte |
+| `config/finanzas` | reparto 40% dueño / 60% barbero, con el equipo |
+| `staff/{uid}` | el documento que hace que el barbero sea barbero |
+| `users/{uid}.rol` | `"barbero"` |
+| `config/barberos` | lo publica solo el sincronizador del dueño |
+
+Datos que decidió el dueño: nombre **Roman**, horario **Lun a Sáb
+09:00-17:00** (el mismo que dice el JSON-LD del SEO, para que Google y la
+web no se contradigan) y **un solo barbero**, el de la cuenta.
+
+### Lo que NO se cargó, y por qué
+
+- **Fotos del barbero y de los servicios**: estaban en Cloudinary y las URLs
+  se perdieron con la base. No hay forma de recuperarlas desde el repo.
+  Se recargan desde la app: *Mi perfil en la web > Cambiar foto* y
+  *Ajustes > Servicios y premios*.
+- **Galería**: 0 fotos. Se recargan desde *Ajustes > Galería*.
+- **Reseñas**: 0. Para el `aggregateRating` del SEO **no se ponen** hasta
+  que sean reales.
+
+### La trampa que costó la primera corrida: `users/{uid}`
+
+El primer intento falló entero con **"Missing or insufficient
+permissions"**, y no era una regla sin publicar. Eran dos cosas del mismo
+problema:
+
+1. La regla de `create` de `users/{uid}` pide `request.auth.uid == uid`.
+   O sea que **el dueño no puede crear el documento de otro**, y un
+   `setDoc` con `merge` sobre un documento que no existe **es un create**.
+   Ahí moría el lote completo, porque el lote se va a la primera falla.
+2. La app sólo crea ese documento si el usuario **todavía no es admin**
+   (`setup()`: `if (!x.exists() && me && !isAdm())`).
+
+Las dos juntas cierran el círculo: el barbero tiene que entrar **una vez
+antes** de que exista `staff/{uid}`: en ese momento todavía no es barbero y
+la app le arma el perfil sola. Después el dueño ya puede hacer `update`, que
+sí lo permite `isBarberoOrOwner()`.
+
+Por eso `tests\sembrar.js` **arranca entrando como barbero**, y antes de
+escribir chequea que `users/{uid}` exista: si no, dice exactamente qué hacer
+en vez de fallar con un error de permisos.
+
+### El perfil del barbero quedó con el nombre del email
+
+`users/{uid}.nm` quedó como **"agustin ibarra"** (lo saca de Firebase Auth
+automáticamente la primera vez que entra). El nombre que se ve en la web y
+en el panel es el de `config/barberos`, que quedó **"Roman"**. Para
+cambiar el del perfil: *Ajustes* dentro del panel del barbero.
+
+### Lo que se rompió de paso
+
+`landing.barberos.js` comprobaba que **todos** los botones de redes del dorso
+dijieran "WhatsApp" o "Instagram". Con un solo barbero en Firestore el test
+mide con los datos sintéticos, que traen un TikTok, y empezó a fallar. La
+comprobación ahora exige eso sólo para los dos primeros: las redes extra que
+carga el barbero van después, con el nombre que él puso. 153 comprobaciones.
+
+---
+
+## 19. El loader deja de girar y aparece donde faltaba - **HECHO**
+
+### La animación
+
+El dueño vio el loader con el aro dorado girando y pidió dos cosas: **que no
+gire** y que **el logo se cargue de arriba hacia abajo** (copió el efecto de
+otra app donde una línea de luz baja destapando el ícono).
+
+Se fue el aro girando (`ldGiro`) y el latido del disco (`ldLatido`). Ahora:
+
+- `.lgl` lleva `clip-path: inset(0 0 100% 0)` y la animación `ldBarrido` lo
+  lleva a `inset(0 0 0 0)`. El inset inferior es el que manda: 100% = nada
+  visible, 0% = todo. Como crece desde abajo, lo primero que aparece es la
+  parte de ARRIBA del escudo.
+- `.lgc::after` es la línea de luz, con la animación `ldLinea`.
+- **Los dos keyframes tienen el MISMO `duration` y la MISMA curva**
+  (`1.75s cubic-bezier(0.66, 0, 0.34, 1)`), y los dos terminan al 62% del
+  ciclo. Si se le cambia uno de los dos, la línea se desalinea del recorte y
+  se nota. Medido con valores puestos a mano: la diferencia entre el borde
+  del recorte y la línea va de 0 a 3 px, que es el grosor de la línea misma.
+- El barrido se detiene al 62% y queda quieto hasta el ciclo siguiente. Sin
+  esa pausa la imagen se reiniciaría de golpe y se lee como un parpadeo.
+- Con `prefers-reduced-motion` no hay barrido: el logo se ve entero desde el
+  principio y la línea se apaga.
+
+`tests\loader.js` comprueba que el nombre del logo con tilde no aparezca en
+ningún archivo publicado y que el corte sea desde abajo. OJO: **el
+`clipPath` computado no sirve** para esa comprobación: con la animación
+corriendo devuelve el valor interpolado del cuadro en curso, no el de
+partida. Hay que leer el CSS fuente.
+
+### Dónde faltaba el loader
+
+Las escrituras ya pasaban por `wait()`, que lo muestra y apaga solo. Los
+huecos eran dos, y uno era un bug de verdad:
+
+1. **Las consultas en vivo de `ocupados`** (el calendario del asistente y la
+   grilla del panel) no mostraban nada mientras llegaban. Con red lenta, el
+   que avanzaba de mes veía todos los días del mes anterior, y el que
+   reservaba veía los horarios como libres. Ahora `ldEspera()` / `ldListo()`
+   avisan, **pero sólo de la primera respuesta de cada consulta**: como es
+     un `onSnapshot` que no "termina", mostrar el loader en cada llegada
+     haría parpadear la pantalla cada vez que alguien reserva en el medio.
+   El mínimo de 420 ms en pantalla evita el extremo contrario, que es el
+     fogonazo con respuesta rápida.
+2. **El asistente se quedaba TRANCADO para siempre.** `R()` repinta la
+   página pero **no** el modal del asistente: eso lo hace `WZ.pintar()`. Si
+   el usuario aprieta "Reservar" antes de que lleguen los servicios y los
+   barberos (primera visita, sin caché), el paso 2 se pintaba con la lista
+   vacía y el botón "Siguiente" deshabilitado, y **nunca más se repintaba**:
+   sin error, sin mensaje, sin salida. Ahora los tres `onSnapshot` públicos
+   llaman a `datosLlegos()`, que repinta el modal si está abierto y la página
+   si no.
+
+El loader del asistente se apaga con los **servicios**, que es lo que
+bloquea el primer paso. Si la lista de barberos viene vacía, lo dice el
+propio asistente con su cartel: dejarlo prendido tapaba ese mensaje para
+siempre.
+
+### El sincronizador vaciaba la web entera
+
+El bloque que publica `config/barberos` corre **cada vez que el dueño entra
+al panel**, y armaba la lista con `FN.bs.map(...)`. Si `config/finanzas` no
+existe todavía (base recién limpiada) o se lee un instante sin datos,
+`FN.bs` queda `[]`, la lista pública queda `[]` y **la web se queda sin
+barberos enteros**. Pasó de verdad: tras la limpieza, varias entradas del
+dueño publicaron una lista vacía.
+
+Ahora: `if (pub.length)`. Con el equipo vacío de verdad no se escribe nada;
+la lista vacía en la web tiene que venir de que el dueño la vació a
+propósito, desde Finanzas.
+
+### Limpieza del 2026-10-11: cuentas de prueba
+
+El dueño borró las cuentas de Firebase del **barbero** y del **cliente** de
+prueba (sólo quedó la del dueño). Como consecuencia:
+
+- `tests\sembrar.js` ahora **no corta** si la cuenta del barbero no entra:
+  siembra todo lo demás y avisa que falta el barbero. Un uid no se puede
+  inventar.
+- `tests\agregar-barbero.js` carga un barbero **sin cuenta** desde el
+  botón real "+ Agregar barbero", para que el sitio pueda volver a tomar
+  turnos. Un barbero sin cuenta es ficha pública: aparece en la web pero no
+  entra al panel.
+- Las pruebas que necesitan esas cuentas ahora hacen **SKIP** en vez de
+  morir con un "Timeout 30000ms" esperando un elemento que no existe.
+  Antes el síntoma no decía nada del motivo real y hacía pensar que el
+  código estaba roto.
 
 ---
 

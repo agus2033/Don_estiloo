@@ -73,10 +73,12 @@ const ok = (c, m) => {
       fondo: cs ? cs.backgroundColor : null,
       role: c ? c.getAttribute("role") : null,
       live: c ? c.getAttribute("aria-live") : null,
-      anim: c && c.querySelector(".lgc") ? getComputedStyle(c.querySelector(".lgc")).animationName : null,
+      anim: c && c.querySelector(".lgl") ? getComputedStyle(c.querySelector(".lgl")).animationName : null,
+      barrido: c && c.querySelector(".lgl") ? getComputedStyle(c.querySelector(".lgl")).clipPath : null,
       anillo: c && c.querySelector(".lgc")
         ? getComputedStyle(c.querySelector(".lgc"), "::after").animationName
         : null,
+      transform: c && c.querySelector(".lgc") ? getComputedStyle(c.querySelector(".lgc")).transform : null,
     };
   });
   ok(ld.existe, "el loader está en pantalla");
@@ -84,8 +86,44 @@ const ok = (c, m) => {
   ok(ld.ancho > 80 && ld.alto > 80, "el logo tiene tamaño real, no collapsed", `${ld.ancho}x${ld.alto}`);
   ok(!!ld.texto, "dice algo abajo", ld.texto);
   ok(ld.role === "status" && ld.live === "polite", "anuncia el estado a lectores de pantalla", `${ld.role}/${ld.live}`);
-  ok(ld.anim === "ldLatido", "el disco late", ld.anim);
-  ok(ld.anillo === "ldGiro", "el anillo dorado gira", ld.anillo);
+
+  /* El dueño pidió que NO gire y que el logo se revele de arriba hacia abajo.
+     Antes eran `ldLatido` (el disco latía) y `ldGiro` (un aro girando); los
+     dos tienen que estar ausentes. */
+  ok(ld.anim === "ldBarrido", "el logo se destapa con el barrido", ld.anim);
+  ok(ld.anillo === "ldLinea", "la línea de luz baja con la línea", ld.anillo);
+  ok(ld.transform === "none", "nada gira: el disco no tiene transform", ld.transform);
+  /* El barrido tiene que ser un recorte desde abajo (inset inferior 100%),
+     que es lo que hace que lo primero que aparezca sea la parte de arriba.
+
+     NO se puede mirar `getComputedStyle().clipPath` con la animación corriendo:
+     devuelve el valor interpolado del cuadro en curso, no el de partida, y
+     por eso la comprobación va contra el CSS fuente, que es lo que además hay
+     que revisar cuando se cambia la animación. */
+  const reglaLgl = (css.match(/\.lgl\s*\{([^}]*)\}/) || [])[1] || "";
+  ok(
+    /clip-path:\s*inset\([^)]*100%/.test(reglaLgl),
+    "el logo arranca oculto desde abajo (inset inferior 100%)",
+    reglaLgl.replace(/\s+/g, " ").trim().slice(0, 90),
+  );
+  const kfBarrido = (css.match(/@keyframes ldBarrido\s*\{([\s\S]*?)\n\}/) || [])[1] || "";
+  ok(
+    /0%\s*\{[^}]*100%/.test(kfBarrido),
+    "el keyframe arranca en 100% (nada visible)",
+    kfBarrido.replace(/\s+/g, " ").trim().slice(0, 70),
+  );
+  ok(
+    /100%\s*\{[^}]*inset\([^)]*0[^)]*\)/.test(kfBarrido),
+    "y termina en 0% (logo entero)",
+    kfBarrido.replace(/\s+/g, " ").trim().slice(0, 90),
+  );
+  /* Ni el disco ni la imagen pueden tener rotación en ninguna regla. */
+  const cssTxt = css;
+  ok(
+    !/\.(lgc|lgl)[^{]*\{[^}]*rotate/.test(cssTxt),
+    "ninguna regla del loader rota (no hay rotate)",
+  );
+  ok(!/ldGiro|ldLatido/.test(cssTxt), "no quedaron las animaciones viejas (giro/latido)");
 
   await p.screenshot({ path: path.join(__dirname, "tmp_shots", "loader-logo.png") });
   await ctx.close();
@@ -108,11 +146,18 @@ const ok = (c, m) => {
   await p3.waitForTimeout(2000);
   const rm = await p3.evaluate(() => {
     const c = document.querySelector(".lgc");
-    return c
-      ? { anim: getComputedStyle(c).animationName, alto: c.offsetHeight }
-      : { anim: "sin disco", alto: 0 };
+    const img = document.querySelector(".lgl");
+    return c && img
+      ? {
+          disco: getComputedStyle(c).animationName,
+          logo: getComputedStyle(img).animationName,
+          recorte: getComputedStyle(img).clipPath,
+          alto: c.offsetHeight,
+        }
+      : { disco: "sin disco", alto: 0 };
   });
-  ok(rm.anim === "none", "con reducir movimiento el disco no late", rm.anim);
+  ok(rm.logo === "none", "con reducir movimiento el logo no se barre", rm.logo);
+  ok(rm.recorte === "none", "y se ve entero desde el principio", rm.recorte);
   ok(rm.alto > 80, "pero el logo sigue mostrándose", `${rm.alto}px`);
 
   console.log(fallos ? "\nFALLARON " + fallos : "\nTODO VERDE");

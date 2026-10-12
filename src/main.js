@@ -308,6 +308,54 @@ const busy = (on, t, soft) => {
   }
 };
 bt = setTimeout(() => busy(0), 15000); // si algo falla, el loader inicial no queda para siempre
+
+/* Loader para las consultas en VIVO (los onSnapshot de `ocupados`).
+
+   Las escrituras ya pasan por `wait()`, que lo muestra y lo apaga solo. Pero
+   las lecturas con `onSnapshot` son distintas: no "terminan", se quedan
+   escuchando. Si se pusiera el loader en cada llegada, aparecería y
+   desaparecería cada vez que alguien reserva en el medio y se leería como un
+   parpadeo constante. Por eso estos dos avisos son sólo para la PRIMERA
+   respuesta de cada consulta: mientras no hay datos no se muestran huecos
+   como si estuvieran libres.
+
+   El mínimo de 420 ms en pantalla evita el otro extremo: con una respuesta
+   rápida el loader se vería menos de un cuadro y parecería un fogonazo. */
+let ldT0 = 0,
+  ldFin = 0;
+const ldEspera = (t) => {
+  clearTimeout(ldFin);
+  ldT0 = Date.now();
+  busy(1, t || "Consultando horarios…", 1);
+};
+const ldListo = () => {
+  const queda = 420 - (Date.now() - ldT0);
+  clearTimeout(ldFin);
+  ldFin = setTimeout(() => busy(0), queda > 0 ? queda : 0);
+};
+
+/* Llegaron los datos públicos (servicios, barberos, horario).
+
+   `R()` repinta la página pero NO el modal del asistente (#wzm): sólo lo hace
+   `WZ.pintar()`. Con red lenta —o en la primera visita, sin caché— el usuario
+   aprieta "Reservar" antes de que lleguen y el paso 2 se le pintaba con la
+   lista de barberos vacía y el botón "Siguiente" deshabilitado, porque `sel.b`
+   no tenía nada elegido. Como el modal no se volvía a pintar nunca más, el
+   asistente quedaba trancado para siempre: sin error y sin salida. */
+function datosLlegos() {
+  const z = document.getElementById("wzm");
+  if (z && !z.hidden) {
+    WZ.pintar();
+    /* El loader se apaga con los SERVICIOS, que es lo que el primer paso
+       necesita para no arrancar vacío. La lista de barberos se repinta igual
+       (arriba) y, si viene vacía, el asistente lo dice con su propio cartel:
+       dejarlo prendido iba a tapar ese mensaje para siempre. */
+    if (S.length) ldListo();
+    return;
+  }
+  R();
+}
+
 const wait = async (t, fn) => {
   if (!navigator.onLine)
     return M({
@@ -576,6 +624,10 @@ function unsub() {
 function occ() {
   ou && ou();
   OC = {};
+  /* La grilla se vacía arriba y abajo se vuelve a pintar: sin este aviso, con
+     la red lenta, el que reservaba veía los horarios como libres hasta que
+     llegaba la respuesta. */
+  ldEspera("Consultando horarios…");
   ou = onSnapshot(
     query(collection(db, "ocupados"), where("d", "==", sel.d), where("bid", "==", sel.b)),
     (s) => {
@@ -589,9 +641,13 @@ function occ() {
           for (let k = GRID; k < 30; k += GRID) OC[hhmm(+h * 60 + +m + k)] = 1;
         }
       });
+      ldListo();
       R();
     },
-    err,
+    (e) => {
+      ldListo();
+      err(e);
+    },
   );
 }
 const pStart = () => {
@@ -806,7 +862,14 @@ function setup(a) {
               foto: prev.foto || (b.uid === me.uid && SB && SB.foto) || "",
             };
           });
-          setDoc(doc(db, "config", "barberos"), { l: pub }).catch(() => {});
+          /* Nunca publicar una lista VACÍA. Este bloque corre cada vez que el
+             dueño entra al panel, y `config/finanzas` puede no existir todavía
+             (base recién limpiada) o leerse un instante sin datos: en ese
+             caso `FN.bs` queda `[]`, `pub` queda `[]` y esta línea BORRABA la
+             lista pública de barberos de la web entera. Con el equipo vacío
+             de verdad no se escribe nada: la lista vacía en la web tiene que
+             venir de que el dueño vació la lista a propósito, desde Finanzas. */
+          if (pub.length) setDoc(doc(db, "config", "barberos"), { l: pub }).catch(() => {});
         },
         () => {},
       );
@@ -833,21 +896,21 @@ onSnapshot(doc(db, "config", "servicios"), (x) => {
   PUB.servicios = x.exists() && x.data().l && x.data().l.length ? x.data().l.map(nsv) : S0.map(nsv);
   if (!me) {
     S = PUB.servicios;
-    R();
+    datosLlegos();
   }
 });
 onSnapshot(doc(db, "config", "barberos"), (x) => {
   PUB.barberos = x.exists() && x.data().l ? x.data().l : [];
   if (!me) {
     BARS = PUB.barberos;
-    R();
+    datosLlegos();
   }
 });
 onSnapshot(doc(db, "config", "horario"), (x) => {
   PUB.horario = x.exists() ? { ...CFD, ...x.data() } : { ...CFD };
   if (!me) {
     CF = PUB.horario;
-    R();
+    datosLlegos();
   }
 });
 onSnapshot(collection(db, "galeria"), (x) => {
@@ -4623,6 +4686,10 @@ function wzOcc() {
   const ym = WZ.mes || ymd().slice(0, 7);
   const ultimo = new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0).getDate();
   wzOcc.unsubscribe();
+  /* El calendario del asistente se pinta con los datos del mes anterior
+     mientras llega el nuevo: el que avanzaba de mes veía todos los días en
+     rojo o en verde según el mes viejo. Este aviso tapa eso. */
+  ldEspera("Consultando horarios…");
   WZ.unsub = onSnapshot(
     query(
       collection(db, "ocupados"),
@@ -4643,9 +4710,10 @@ function wzOcc() {
             WZ.occ.get(k)[hhmm(+h * 60 + +m + j)] = 1;
         }
       });
+      ldListo();
       wzPaint();
     },
-    () => {},
+    () => ldListo(),
   );
 }
 wzOcc.unsubscribe = () => {
@@ -6214,6 +6282,11 @@ Object.assign(ACT, {
     WZ.mes = ymd().slice(0, 7);
     const p = document.getElementById("wzm");
     if (p) { p.innerHTML = wzModal(); p.hidden = false; document.body.classList.add("wz-abierto"); }
+    /* Si se abre antes de que lleguen los servicios, el asistente se pinta
+       con la lista vacía. Se levanta el loader y lo apaga `datosLlegos()` en
+       cuanto los datos entran; esa función además repinta el modal. Sin las
+       dos cosas, el paso 2 quedaba trancado. */
+    if (!S.length) ldEspera("Cargando servicios…");
     WZ.pintar();
   },
   wzCerrar() {

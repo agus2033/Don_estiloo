@@ -386,12 +386,22 @@ const completaBarberos = async (page, out, tag) => {
       JSON.stringify(nuevo.servicios.slice(0, 2)),
     );
     chk(nuevo.giroEsBoton === "BUTTON", `${tag} · el botón de volver a girar es un <button>`, nuevo.giroEsBoton);
-    chk(/^Volver a la foto/.test(nuevo.giroEtiqueta || ""), `${tag} · y tiene etiqueta para lector de pantalla`, nuevo.giroEtiqueta);
-    chk(
-      nuevo.redes.every((x) => /^(WhatsApp|Instagram)$/.test(x)),
-      `${tag} · los botones de redes dicen sólo el nombre, sin el número pegado`,
-      JSON.stringify(nuevo.redes),
-    );
+      chk(
+        nuevo.redes.slice(0, 2).every((x) => /^(WhatsApp|Instagram)$/.test(x)),
+        `${tag} · WhatsApp e Instagram dicen sólo el nombre, sin el número pegado`,
+        JSON.stringify(nuevo.redes),
+      );
+      /* A partir del tercero van las redes extra que cargue el barbero
+         ("Otra red social" en su ficha), que se muestran con el nombre que
+         él puso. Antes la comprobación exigía que TODAS fueran WhatsApp o
+         Instagram y fallaba en cuanto había una tercera, que es un caso
+         perfectamente válido: lo que no puede ser es que esas dos lleven el
+         número de teléfono pegado, como hacían antes. */
+      chk(
+        nuevo.redes.slice(2).every((x) => x.length > 0 && x.length <= 30),
+        `${tag} · las redes extra salen con el nombre que puso el barbero`,
+        JSON.stringify(nuevo.redes.slice(2)),
+      );
 
     /* El botón de la flecha tiene que devolver la tarjeta al frente. */
     await page.locator(".lb-barber--abierta .lb-bd-giro").first().click();

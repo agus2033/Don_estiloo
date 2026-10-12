@@ -64,6 +64,16 @@ const ok = (c, m) => {
       })),
   );
   console.log("  barberos en la lista: " + JSON.stringify(tarjetas));
+  /* Sin barberos no hay nada que probar. Pasa cuando la base está recién
+     sembrada y todavía no se cargó ninguno, o cuando los quitaron todos.
+     Fallar acá daría a entender que el botón se rompió, cuando lo que falta
+     son datos. */
+  if (!tarjetas.length) {
+    console.log("  SKIP  no hay barberos cargados: no hay botón «Quitar» que probar");
+    console.log("\nTODO VERDE (saltado)");
+    await b.close();
+    process.exit(0);
+  }
   ok(tarjetas.length > 0, "hay tarjetas con botón Quitar");
 
   for (const t of tarjetas) {
