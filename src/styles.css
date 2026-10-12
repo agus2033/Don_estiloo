@@ -3500,4 +3500,8 @@ body.wz-abierto {
 #thm:hover{transform:translateY(-1px)}
 #thm:active{transform:scale(.97)}
 body[data-theme="light"]{background:var(--bg)}
-img[src*="assets/logo.png"]{border-radius:18px}
+/* Antes estaba aquí `img[src*="assets/logo.png"]{border-radius:18px}`. Ese
+   selector no lo agarraba nada: el logo que se muestra es el logo-256.png (el
+   PNG de 1,6 MB quedó guardado en fuentes/ y ya no se publica), así que la
+   imagen del encabezado nunca tuvo ese redondeo. El `.lg` de arriba ya lo
+   resuelve. Borrado con css.muerto.js como regla que no matchea. */

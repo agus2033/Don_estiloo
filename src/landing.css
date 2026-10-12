@@ -234,8 +234,10 @@ body[data-theme="light"] {
   box-shadow: 0 0 0 2px var(--lb-brass);
 }
 .lb-brand img {
-  width: 42px;
-  height: 42px;
+  /* 44 px y no 42: medido por tests/visual.js, el área del enlace quedaba en
+     42 px de alto, apenas por debajo del mínimo cómodo para el dedo. */
+  width: 44px;
+  height: 44px;
   flex: 0 0 auto;
 }
 .lb-brand b {
@@ -1375,7 +1377,8 @@ body[data-theme="light"] .lb-btn--pri:hover {
   border-radius: 999px;
   background: var(--lb-brass-solid);
   color: #141c26;
-  font-size: 0.72rem;
+  /* 0.72 rem daba 11,5 px (medido). */
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1626,7 +1629,7 @@ body[data-theme="light"] .lb-btn--pri:hover {
 .lb-bd-sobre {
   margin: 16px 0 2px;
   color: var(--lb-mut);
-  font-size: 0.74rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -1660,7 +1663,8 @@ body[data-theme="light"] .lb-btn--pri:hover {
 }
 .lb-bd-atiende small {
   color: var(--lb-mut);
-  font-size: 0.72rem;
+  /* 0.72 rem daba 11,5 px (medido con tests/visual.js). */
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -1684,7 +1688,7 @@ body[data-theme="light"] .lb-btn--pri:hover {
   padding-bottom: 8px;
   border-bottom: 1px solid var(--lb-line);
   color: var(--lb-mut);
-  font-size: 0.74rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -3205,7 +3209,8 @@ body[data-theme="light"] .wz-btn--pri:hover {
 /* Etiqueta en versalitas dorada, como las del resto de la landing. */
 .lb-etq {
   display: block;
-  font-size: 0.72rem;
+  /* 0.72 rem daba 11,5 px (medido). */
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -3251,6 +3256,11 @@ body[data-theme="light"] .wz-btn--pri:hover {
   align-items: center;
   gap: 6px;
   padding: 7px 12px;
+  /* Medía 35 px de alto: por debajo del mínimo de 44 px que se supone para el
+     dedo. Es el botón que abre Google Maps, así que es el que más se toca en
+     un teléfono. El alto mínimo no agranda el ícono, sólo el área que
+     responde al toque. */
+  min-height: 44px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--lb-card) 92%, transparent);
   backdrop-filter: blur(6px);
@@ -3352,6 +3362,8 @@ body[data-theme="light"] .wz-btn--pri:hover {
 }
 .lb-hr small {
   color: var(--lb-mut);
+  /* No fijaba tamaño y heredaba el del body, que en este bloque daba 11,5 px. */
+  font-size: 0.75rem;
 }
 .lb-hr strong {
   font-family: "Barlow Condensed", sans-serif;
@@ -3368,7 +3380,8 @@ body[data-theme="light"] .wz-btn--pri:hover {
   padding: 4px 12px;
   border-radius: 999px;
   border: 1px solid var(--lb-line);
-  font-size: 0.72rem;
+  /* 0.72 rem daba 11,5 px (medido). */
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;

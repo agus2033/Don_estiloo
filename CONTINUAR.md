@@ -1181,6 +1181,110 @@ prueba (sólo quedó la del dueño). Como consecuencia:
 
 ---
 
+## 20. Auditoría integral - **HECHO** (2026-10-11)
+
+Detalle en `AUDITORIA.md`, `PLAN_MEJORAS.md`, `CAMBIOS_REALIZADOS.md` y `PRUEBAS.md`.
+Punto de recuperación: commit `3ed5cc0`.
+
+### Seguridad: lo que estaba abierto y se cerró
+
+- **XSS almacenado, confirmado y explotado.** Un cliente podía escribir un
+  turno con la hora como `<img onerror=...>` y ese código **corría en el panel
+  del dueño**. Medido antes del arreglo: `window.__pwn = 1`. Ahora `pwn = 0` y
+  el payload queda como texto. La prueba es `tests/xss.js`; sin ella esto
+  parecía un theory.
+- **`$$()` no transformaba texto.** `String.prototype.toLocaleString()`
+  devuelve la cadena tal cual, así que un `precio` con HTML llegaba crudo al
+  Dashboard. Ahora convierte a número.
+- **Los enlaces del barbero aceptaban `javascript:`.** `esc()` escapa comillas
+  pero no valida el esquema. Nuevo `urlSegura()`.
+- **Reglas de Firestore**: un barbero podía escribir `config/finanzas` (o sea
+  quedarse con el 100% de cada corte), editarse su propio `pd`, y un cliente
+  podía editar cualquier campo de su turno o borrar uno ya cobrado.
+
+> **OJO, lo más importante de esta sesión:** las reglas del archivo **NO**
+> están en producción hasta que se peguen en Firebase Console > Firestore >
+> Reglas. Y conviene probarlas en el Rules Playground con un usuario de
+> `staff` antes de dar por bueno.
+
+### La CSP: un bug que habría roto producción
+
+Al agregar las cabeceras, la web **perdió las tipografías y los tres módulos de
+Firebase**. La causa: el service worker intercepta esos hosts y los reintenta
+con `fetch()` desde el worker, y esa llamada se mide contra `connect-src`, que
+no los tenía. Al fallar, el fallback del worker devolvía `index.html` con
+`Content-Type: text/html`, y el navegador decía "Expected a JavaScript module
+script…", que no señala la causa.
+
+Dos arreglos: los tres hosts de `OK` (sw.js) están ahora en `connect-src`, y
+el fallback devuelve `index.html` **sólo para navegaciones**.
+
+`style-src` lleva `'unsafe-inline'` y no es opcional: la app arma el HTML con
+**220 atributos `style="..."`**. Endurecerlo exige sacarlos antes a clases.
+
+**Regla para el futuro:** toda CSP se prueba con la web levantada y las
+cabeceras puestas (`node tests\srv.js 8766` + `node tests\csp.js`). Leer el
+archivo no dice si algo se rompe: el navegador descarta en silencio.
+`tests\csp.sync.js` obliga a que `vercel.json` y `tests\srv.js` digan lo
+mismo, porque si no, las pruebas dan verde contra una CSP que no es la real.
+
+### Rendimiento: lo medido y lo que NO se puede afirmar
+
+- **2,5 MB de assets sin usar** (`logo.png`, `instagram.png`, `whatsapp.png`):
+  sólo aparecían en comentarios y en una regla CSS muerta. Movidos a
+  `fuentes/`: no se borran, salen de la publicación.
+- **`tmp_pdf/` con 76 MB** y las pruebas también se subían en cada deploy.
+  Ahora hay `.vercelignore`.
+- **`FIRESTORE_RULES.txt` estaba publicado en la raíz**: cualquiera podía
+  leer el modelo de seguridad y el UID del dueño. Sólo estaba excluido por
+  `robots.txt`, que no es control de acceso.
+- **El mapa**: se pidió cambiar y se cambió. PERO el ahorro medido en localhost
+  es **0 KB**: con `loading="lazy"` el navegador ya lo difería, y mi primera
+  medición de 360 KB **no se reprodujo**. Lo que queda garantizado es que el
+  mapa no se pide hasta que su bloque está a 300 px de la pantalla, en
+  cualquier conexión. La prueba es `tests\mapa.js`, que compara los dos
+  estados sin tocar git.
+- **`main.js` sigue siendo un archivo de 6.400 líneas.** Es el pendiente de
+  velocidad más grande y queda documentado, no escondido.
+
+### Diseño y accesibilidad
+
+Medido en 4 anchos × 2 temas con `tests\visual.js`, no a ojo:
+
+- `.lb-map-btn` medía 35 px de alto (ahora 44). Es el botón que abre Google
+  Maps: el que más se toca con el dedo.
+- `.lb-brand` 42 px (ahora 44).
+- Cinco etiquetas a 11,5-11,8 px (ahora 12).
+- Sin scroll horizontal, la barra fija no tapa nada, CLS = 0.
+
+**Esto NO es conformidad WCAG 2.2 AA.** Faltan lector de pantalla real y
+gente probándolo.
+
+### Pruebas
+
+`node tests\run.js` corre todo: **25 pruebas, 567 comprobaciones, 0 en rojo**.
+
+Las trampas nuevas, todas en `PRUEBAS.md`:
+
+1. `*> archivo.txt` en PowerShell 5.1 escribe **UTF-16**, no UTF-8. Leído
+   como utf8, todo patrón falla y el cuadro sale vacío sin decir por qué.
+2. Un SKIP puede ser un fallo disfrazado: la guarda de `landing.modal.js`
+   llamaba a `irPaso(2)` sin elegir servicio, nunca llegaba, contaba 0
+   barberos y saltaba. La prueba pasaba en verde sin medir nada.
+3. En el asistente de reserva **nunca uses handles de Playwright**: el modal
+   se repinta entero en cada paso y a veces solo. Click con `p.evaluate` y
+   captura con `page.screenshot({ clip })`.
+
+### Lo que quedó pendiente y es del dueño
+
+1. Pegar las reglas en Firebase Console.
+2. Probar esas reglas en el Rules Playground con un usuario de `staff`.
+3. App de Facebook en modo Live.
+4. `codigobarber.com.ar` en Authentication > Authorized domains.
+5. El mail real del barbero, para vincularlo con su cuenta y su agenda.
+
+---
+
 ## Lo que ya está hecho y NO hay que romper
 ---
 

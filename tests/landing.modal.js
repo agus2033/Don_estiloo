@@ -147,26 +147,68 @@ const irPaso = async (n, ms = 2500) => {
   return false;
 };
 
-    let sheet = await p.$(".wz-sheet");
-    if (sheet) await sheet.screenshot({ path: path.join(__dirname, "..", "tmp_shots", `MOD-${theme}-paso1.png`) });
+    /* Captura por recorte de página y NO con screenshot de elemento.
+
+       El asistente se repinta entero en cada paso (y a veces solo, por un
+       snapshot o por el avance automático en celular). Cualquier captura que
+       dependa del nodo —`elementHandle.screenshot()` o `locator.screenshot()`—
+       falla con "Element is not attached to the DOM" en el momento justo en
+       que se está sustituyendo. Midiendo la caja y recortando la página no
+       hay ningún nodo que pueda quedar viejo. */
+    const shot = async (sel, nombre) => {
+      const caja = await p.evaluate((s) => {
+        const e = document.querySelector(s);
+        if (!e) return null;
+        const r = e.getBoundingClientRect();
+        return { x: r.x, y: r.y, width: r.width, height: r.height };
+      }, sel);
+      if (!caja || caja.width < 2 || caja.height < 2) return false;
+      await p.screenshot({
+        path: path.join(__dirname, "..", "tmp_shots", nombre),
+        clip: caja,
+      });
+      return true;
+    };
+
+    await shot(".wz-sheet", `MOD-${theme}-paso1.png`);
 
     /* ---- fotos de los barberos (paso 2) ----
-       Sin barberos en Firestore el paso 2 no tiene nada que elegir y el
+       Para LLEGAR al paso 2 hay que elegir un servicio primero: en escritorio
+       el asistente no avanza solo y el botón "Siguiente" arranca deshabilitado
+       hasta que hay algo elegido en el paso 1. La primera versión de este
+       bloque llamaba a irPaso(2) directo, nunca llegaba, y la cuenta de
+       barberos daba 0: eso producía un SKIP falso que tapaba toda la
+       cobertura de la prueba. */
+    await p.evaluate(() => {
+      const s = document.querySelector(".wz-item--svc");
+      if (s) s.click();
+    });
+    await p.waitForTimeout(350);
+    await p.evaluate(() => {
+      const b = document.querySelector('[data-act="wzNext"]');
+      if (b && !b.disabled) b.click();
+    });
+    const llego = await irPaso(2);
+    const cuantos = await p.$$(".wz-item--bar");
+
+    /* Sin barberos en Firestore el paso 2 no tiene nada que elegir y el
        asistente no avanza. Antes la prueba clickeaba `.wz-item:not(.on)`
        esperando un elemento que no existía y moría con un "Timeout 30000ms"
        que no decía que el problema eran los datos, no el código. */
-    await irPaso(2);
-    if (!(await p.$$(".wz-item--bar")).length) {
-      console.log("  SKIP  no hay barberos cargados: el asistente no pasa del paso 2.");
-      console.log("        Cargá uno (dueño > Barberos > + Agregar barbero) y se prueba.");
+    if (!llego || !cuantos.length) {
+      console.log(
+        "  SKIP  el asistente no llegó al paso 2" +
+          (llego ? " y la lista de barberos vino vacía" : "") +
+          ":",
+      );
+      console.log("        hay " + cuantos.length + " barberos. Cargá uno desde el panel.");
       await ctx.close();
       await b.close();
       console.log("\n=== SALTADO (sin fallos) ===");
       return;
     }
-    await p.click(".wz-item:not(.on)");
-    await p.waitForTimeout(200);
-    await irPaso(2);
+    await p.click(".wz-item--bar");
+    await p.waitForTimeout(250);
 
     const bars = await p.evaluate(() => {
       const items = [...document.querySelectorAll(".wz-item--bar")];
@@ -195,13 +237,32 @@ const irPaso = async (n, ms = 2500) => {
       console.log("         " + f.nombre + " · " + f.esp + " · " + estado);
       if (f.fotoCarga === false) fallos++;
     });
-    if (sheet) sheet = await p.$(".wz-sheet");
-    if (sheet) await sheet.screenshot({ path: path.join(__dirname, "..", "tmp_shots", `MOD-${theme}-paso2.png`) });
+    await shot(".wz-sheet", `MOD-${theme}-paso2.png`);
 
-    /* ---- el modal no debe tapar el login al continuar ---- */
-    await p.click(".wz-item:not(.on)");
-    await p.waitForTimeout(200);
+    /* ---- el modal no debe tapar el login al continuar ----
+
+       Aquí se elige barbero para pasar al paso 3 (el día). El selector
+       `.wz-item:not(.on)` asumía que había más de un barbero en la lista: con
+       un solo barbero, después de elegirlo NO queda ninguno sin marcar y el
+       click esperaba 30 segundos a un elemento que no iba a aparecer. Ahora se
+       elige el que haya, tenga marcados todos los que tenga. */
+    await p.evaluate(() => {
+      const z = document.getElementById("wzm");
+      const on = z && z.querySelector(".wz-item--bar.on");
+      const otro = z && z.querySelector(".wz-item--bar");
+      const a = otro || on;
+      if (a) a.click();
+    });
+    await p.waitForTimeout(250);
     await irPaso(3);
+    if ((await p.$(".wz-cel.libre")) == null) {
+      /* Sin días libres no hay nada que seguir recorriendo. */
+      console.log("  SKIP  no hay días libres para seguir con el recorrido del asistente.");
+      await ctx.close();
+      await b.close();
+      console.log("\n=== SALTADO (sin fallos) ===");
+      return;
+    }
     await p.click(".wz-cel.libre");
     await p.waitForTimeout(250);
     await irPaso(4);

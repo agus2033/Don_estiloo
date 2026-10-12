@@ -1,0 +1,48 @@
+# Qué NO se sube al deploy.
+#
+# Sin este archivo Vercel sube TODO el repositorio, y el repositorio tiene
+# cosas que no son la web: una carpeta de 76 MB de PDF temporales, las
+# pruebas, los archivos de trabajo y las herramientas de los agentes.
+#
+# Medido antes de escribir este archivo (2026-10-11):
+#   tmp_pdf/             76,0 MB   node_modules de un PDF
+#   assets/logo.png       1,6 MB   el logo original, sin usar por nadie
+#   assets/instagram.png  0,7 MB   el original, sin usar
+#   assets/whatsapp.png   0,2 MB   el original, sin usar
+#   tests/                0,3 MB   scripts de prueba (no son parte del sitio)
+
+# Herramientas de agentes: traen node_modules adentro.
+.opencode/
+.agents/
+.venv/
+node_modules/
+
+# PDF temporal que se usó para armar la documentación.
+tmp_pdf/
+
+# Pruebas: corren contra el servidor local, no forman parte del sitio. Además
+# al leerlas se ve la estructura interna (nombres de funciones, colecciones,
+# reglas de negocio con sus valores), así que tampoco tiene sentido que queden
+# a la vista.
+tests/
+
+# Documentación de trabajo.
+CONTINUAR.md
+PRODUCT.md
+AUDITORIA.md
+PLAN_MEJORAS.md
+CAMBIOS_REALIZADOS.md
+PRUEBAS.md
+README.md
+
+# Las reglas de Firestore se publican A MANO en la consola de Firebase.
+# Este archivo es una copia para no perderlas al trabajar, no para servirlas:
+# estaba quedándose en la raíz pública, así que cualquiera podía leer el modelo
+# de seguridad entero y el UID del dueño. Para que las reglas nuevas sirvan de
+# algo hay que pegarlas en Firebase Console > Firestore > Reglas.
+FIRESTORE_RULES.txt
+
+# Archivos sueltos de trabajo.
+*.log
+Thumbs.db
+desktop.ini

@@ -264,3 +264,47 @@ de lo que el dueño decide.
 ## Accessibility & Inclusion
 
 Objetivo: WCAG 2.1 AA en claro y oscuro. Contraste mínimo 4.5:1 en texto de cuerpo y 3:1 en texto grande y bordes de componente. Navegación por teclado en todos los controles, foco visible, `aria-pressed` en chips seleccionables, `aria-expanded` en el menú móvil, `role="status"` + `aria-live="polite"` en los mensajes de estado del formulario. Todo input con `font-size` mínimo 16px para evitar zoom automático en iOS. Respetar `prefers-reduced-motion`.
+
+## Decisiones de la auditoría (2026-10-11)
+
+Cada punto es una decisión de producto, no una nota técnica. El detalle técnico está en `AUDITORIA.md`.
+
+### Los datos que escriben los usuarios se escapan siempre
+
+Se confirmó que un cliente podía inyectar HTML en el panel del dueño a través de la hora del turno, y que el código corría con los permisos de esa sesión. La decisión no es "parchar dos campos": es que **ningún dato que venga de Firestore se dibuja sin pasar por `esc()`**, y que las reglas de la base le exijan **formato** a los campos que luego se dibujan (la hora tiene que parecer una hora). Así, aunque alguien olvide escapar, el dato que llega no puede ser marcado.
+
+Consecuencia aceptada: `esc()` es obligatorio en cada `innerHTML` nuevo. Se prefirió eso a una lista de campos permitidos, porque la lista se desactualiza sola.
+
+### Las reglas de la base son la frontera real, no la interfaz
+
+El dueño no puede tocar la configuración financiera: hoy se lo llama `config/finanzas`, y en el código aparece como un documento más de `config`. La separación real es por **qué se escribe**, no por dónde: el barbero puede tocar su propia ficha, el dueño puede tocar todo, el cliente sólo lo suyo.
+
+Esto significa que **ocultar un botón no es una medida de seguridad**. Nunca se oculta un control que las reglas no impidan.
+
+### Las reglas se publican a mano, y eso es un riesgo asumido
+
+Hoy viven en `FIRESTORE_RULES.txt`, que el dueño copia a la consola de Firebase. Es un punto de desincronización real: el archivo puede no ser lo que está en producción, y no hay forma de enterarse salvo que alguien mire. Está anotado como P2 en `PLAN_MEJORAS.md`: lo sano es `firestore.rules` + `firebase.json` en el repo y deploy desde CI, que además deja registro de qué se publicó y cuándo.
+
+### `style-src` con `'unsafe-inline'` es una deuda, no una decisión
+
+La app genera 220 atributos `style="…"`. Sin `'unsafe-inline'` el navegador los descarta **en silencio**: no hay error, la página queda sin formato y parece un problema de diseño. Se aceptó `'unsafe-inline'` para poder publicar la CSP hoy, y quedó anotado que endurecerlo exige antes sacar esos estilos a clases.
+
+Lo que NO se aceptó fue no medir: la CSP se prueba levantando la web con las cabeceras reales. Ese proceso encontró que con la CSP puesta la web perdía tipografías y módulos de Firebase, por el service worker. Sin esa verificación se habría publicado una web rota.
+
+### El mapa se pide cuando se llega, no antes
+
+Son unos 360 KB de terceros que se piden en la sección de contacto, varios scrolls más abajo en un celular. Se decide que el recurso se pida cerca de la pantalla. **Importante ser honesto con la medición:** en local el ahorro medido es 0 KB, porque `loading="lazy"` ya lo difería. Lo que se gana es determinismo: no depende del umbral del navegador ni de la velocidad de la conexión.
+
+Se dejó siempre el botón "[MAPA · Google Maps]", que abre Maps en otra pestaña: nadie pierde el acceso por no tener el iframe embebido.
+
+### No se inventa nada, ni siquiera en un placeholder
+
+Cuando falta un dato —el nombre real del barbero, su foto, una dirección— se muestra un marcador visible o se avisa. No se rellena con un nombre plausible. Cuando en la limpieza no quedó ningún barbero y la web no podía tomar turnos, se preguntó en vez de fabricar uno, y se cargó con el botón real del panel en lugar de escribir a mano en la base.
+
+### Mínimo de 44 px y mínimo de 12 px
+
+Se fijan como regla, no como excepción: todo lo que responde al toque mide 44 px o más de alto, y ningún texto baja de 12 px. El segundo no lo exige WCAG (que no fija mínimo), pero a 11,5 px en un teléfono con mayúsculas y espaciado abierto se lee justo.
+
+### Lo que no se va a prometer
+
+El sitio **no** es AA en accesibilidad: hay 48 comprobaciones propias y 25 de contraste, y eso es un buen piso, no una certificación. Tampoco se midió con Lighthouse (no está instalado) ni en Safari o Firefox (todo se probó con Chrome). `AUDITORIA.md` §7 lista lo pendiente con esa honestidad.

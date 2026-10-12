@@ -39,7 +39,33 @@ const { chromium } = require("../.opencode/skills/playwright-skill/node_modules/
   await p.goto("http://127.0.0.1:8765/index.html", { waitUntil: "domcontentloaded" });
   await p.waitForSelector(".lb-wcard"); await p.waitForTimeout(1500);
 
-  console.log("hero tiene tarjeta:", await p.$$eval(".lb-wcard", (e) => e.length));
+  console.log("hero tiene tarjeta:", (await p.$$(".lb-wcard")).length);
+
+  /* Click dentro de la página: busca el elemento en el momento del click, no
+     con un handle guardado antes. El asistente se repinta entero en cada paso
+     (y a veces solo, por un snapshot), así que un handle guardado queda
+     desconectado y el click falla con "Element is not attached to the DOM". */
+  const picar = (sel) =>
+    p.evaluate((s) => {
+      const e = document.querySelector(s);
+      if (!e) return false;
+      e.click();
+      return true;
+    }, sel);
+
+  /* Captura por recorte de página: mide la caja y recorta. Así no depende de
+     ningún nodo que pueda quedar viejo entre la medida y la foto. */
+  const foto = async (sel, nombre) => {
+    const caja = await p.evaluate((s) => {
+      const e = document.querySelector(s);
+      if (!e) return null;
+      const r = e.getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height };
+    }, sel);
+    if (!caja || caja.width < 2) return false;
+    await p.screenshot({ path: "tmp_shots/" + nombre, clip: caja });
+    return true;
+  };
   await p.click('[data-act="wzAbrir"]');
   await p.waitForTimeout(500);
   console.log("modal abierto:", await p.isVisible("#wzm"), "| dialog:", await p.isVisible(".wz-sheet"));
@@ -50,15 +76,16 @@ const { chromium } = require("../.opencode/skills/playwright-skill/node_modules/
   console.log("  celular SIN boton atras en el paso 1:", !p1.hayAtras ? "OK" : "FALLA");
 
   // 1 servicio -> avanza solo
-  const svcs = await p.$$(".wz-item");
+  const svcs = await p.$$(".wz-item--svc");
   console.log("servicios:", svcs.length);
-  if (svcs.length) await svcs[0].click();
+  await picar(".wz-item--svc:not(.on)");
   console.log("paso 2 (auto):", JSON.stringify(await esperarPaso(2)));
 
   // 2 barbero -> avanza solo
-  const bars = await p.$$(".wz-item");
+  const bars = await p.$$(".wz-item--bar");
   console.log("barberos:", bars.length);
-  if (bars.length) await bars[0].click();
+  /* Con un solo barbero no queda ninguno sin marcar: se elige el que haya. */
+  await picar(".wz-item--bar");
   console.log("paso 3 (auto):", JSON.stringify(await esperarPaso(3)));
 
   const cal = await p.evaluate(() => {
@@ -71,29 +98,26 @@ const { chromium } = require("../.opencode/skills/playwright-skill/node_modules/
       aviso: document.querySelector(".wz-aviso")?.textContent.trim() || null };
   });
   console.log("calendario:", JSON.stringify(cal));
-  const wiz = await p.$("#wiz"); await wiz.screenshot({ path: "tmp_shots/WZ-3-calendario.png" });
+  await foto("#wiz", "WZ-3-calendario.png");
 
-  const libre = await p.$(".wz-cel.libre:not(.on)");
-  if (libre) await libre.click();
+  await picar(".wz-cel.libre:not(.on)");
   console.log("paso 4 (auto):", JSON.stringify(await esperarPaso(4)));
   console.log("turnos:", JSON.stringify(await p.evaluate(() => [...document.querySelectorAll(".wz-turno")].map((t) => ({
     txt: t.querySelector("b").textContent, rango: t.querySelector("small").textContent,
     n: t.querySelector("em").textContent, off: t.classList.contains("off"), disabled: t.disabled })))));
-  const w4 = await p.$("#wiz"); await w4.screenshot({ path: "tmp_shots/WZ-4-turno.png" });
+  await foto("#wiz", "WZ-4-turno.png");
 
-  const turnoOn = await p.$(".wz-turno:not(.off)");
-  if (turnoOn) await turnoOn.click();
+  await picar(".wz-turno:not(.off)");
   console.log("paso 5 (auto):", JSON.stringify(await esperarPaso(5)));
   console.log("horas:", JSON.stringify(await p.evaluate(() => ({
     n: document.querySelectorAll(".wz-hora").length,
     opacos: [...document.querySelectorAll(".wz-hora")].filter((h) => h.disabled).length,
     nota: document.querySelector(".wz-ocupadas")?.textContent.trim() }))));
-  const w5 = await p.$("#wiz"); await w5.screenshot({ path: "tmp_shots/WZ-5-horas.png" });
+  await foto("#wiz", "WZ-5-horas.png");
 
   /* "Atrás" tiene que seguir funcionando y no quedar un salto automático
      pendiente que teletransporte al usuario de vuelta al resumen. */
-  const hora = await p.$(".wz-hora:not([disabled])");
-  if (hora) await hora.click();
+  await picar(".wz-hora:not([disabled])");
   const p6 = await esperarPaso(6);
   console.log("paso 6 (auto desde el horario):", JSON.stringify(p6));
   console.log("  vuelve al resumen solo:", p6.n === 6 ? "OK" : "FALLA");
@@ -110,10 +134,11 @@ const { chromium } = require("../.opencode/skills/playwright-skill/node_modules/
     politica: document.querySelector(".wz-pol")?.textContent.trim() || null,
     cta: [...document.querySelectorAll(".wz-body .wz-btn")].map((x) => x.textContent.trim()),
     aviso: document.querySelector(".wz-body .wz-aviso")?.textContent.trim() || null }))));
-  const w6 = await p.$("#wiz"); await w6.screenshot({ path: "tmp_shots/WZ-6-resumen.png" });
+  await foto("#wiz", "WZ-6-resumen.png");
 
   // gate de login
-  await p.click(".wz-body .wz-btn--pri"); await p.waitForTimeout(700);
+  await picar(".wz-body .wz-btn--pri");
+  await p.waitForTimeout(900);
   console.log("tras Ingresar y confirmar:", JSON.stringify(await p.evaluate(() => ({
     hash: location.hash, login: !!document.querySelector("#ingresar:not([hidden])") }))));
 

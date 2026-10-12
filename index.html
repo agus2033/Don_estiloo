@@ -185,9 +185,17 @@
       href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
-    <!-- CSP (opcional): ahora que no hay onclick= ni scripts en línea se puede activar. Probala primero con la consola abierta.
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://www.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com; frame-src https://www.google.com https://*.firebaseapp.com; base-uri 'self'; form-action 'self'; object-src 'none'" />
-    -->
+    <!-- La CSP ya NO va como <meta> en el HTML: ahora la manda la cabecera del
+         servidor (vercel.json), que es lo único que cubre también las
+         peticiones que no pasan por este documento (el service worker, los
+         módulos de Firebase, las fuentes).
+
+         Ojo con esto: las dos se aplican a la vez si existen las dos, y el
+         navegador se queda con la más restrictiva. Con el <meta> viejo, la
+         web perdía las tipografías de Google porque ese <meta> no incluía
+         fonts.googleapis.com en style-src. Para cambiarla ahora hay que editar
+         vercel.json Y tests/srv.js (que manda la misma cadena para poder
+         probarla en local), y después correr `node tests/csp.js`. -->
     <link rel="stylesheet" href="src/styles.css?v=3" />
     <link rel="stylesheet" href="src/landing.css?v=1" />
     <link rel="manifest" href="manifest.json" />

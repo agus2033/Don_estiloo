@@ -58,7 +58,22 @@ self.addEventListener("fetch", (e) => {
         return res;
       })
       .catch(() =>
-        caches.match(r).then((m) => m || caches.match("index.html")),
+        caches.match(r).then((m) => {
+          /* El index como último recurso es SÓLO para las navegaciones: si el
+             usuario está sin conexión y pide una página, se le muestra la app
+             en vez del error del navegador.
+
+             Antes caía para CUALQUIER pedido que fallara, y eso rompía la web
+             de una forma muy difícil de ver: un módulo de Firebase o una hoja de
+             estilos de Google que no cargaban recibían el index.html, y el
+             navegador decía "Expected a JavaScript module script but the server
+             responded with a MIME type of text/html" o "Refused to apply
+             style", en vez de un error claro. Para un recurso que no es la
+             página, lo correcto es dejar que falle. */
+          if (m) return m;
+          if (r.mode === "navigate") return caches.match("index.html");
+          throw new Error("sin red y sin copia en caché: " + r.url);
+        }),
       ),
   );
 });

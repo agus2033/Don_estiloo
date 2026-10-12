@@ -125,7 +125,27 @@ const $ = (s) => document.querySelector(s),
         })[c],
     );
 const A = (...a) => esc(JSON.stringify(a)); // argumentos de data-act (delegación de eventos)
-const $$ = (n) => "$" + n.toLocaleString("es-AR");
+
+  /* `esc()` no alcanza para un href: escapa las comillas y nicely, pero un
+     `javascript:alert(...)` no tiene comillas que escapar y sigue siendo un
+     href válido que se ejecuta al hacer clic. Las redes del barbero salen de
+     `#pfRedes`, que el propio barbero escribe, y antes iban tal cual:
+     cualquiera que fuera barbero podía dejar un enlace que, al clickearlo,
+     corría código en la web pública. Sólo se aceptan http(s). */
+  const urlSegura = (u) => {
+    const s = String(u == null ? "" : u).trim();
+    return /^https?:\/\//i.test(s) ? esc(s) : "#";
+  };
+/* Formatea un importe. Antes: "$" + n.toLocaleString("es-AR"). El problema es
+   que String.prototype.toLocaleString() devuelve la CADENA TAL CUAL, así que
+   si el valor no era un número (por ejemplo el "precio" de un turno escrito a
+   mano con HTML adentro) pasaba entero al innerHTML del Dashboard y del
+   historial de clientes: XSS almacenado. Ahora convierte a número y, si no
+   sale algo numérico, muestra $0 en vez de inyectar nada. */
+const $$ = (n) => {
+  const v = Number(n);
+  return "$" + (Number.isFinite(v) ? v.toLocaleString("es-AR") : "0");
+};
 
 /* Cómo se ve un cliente en las listas del panel.
    esc() hace String(s), así que un usuario sin nombre o sin teléfono
@@ -786,7 +806,15 @@ function setup(a) {
          de cuenta y el texto del formulario de registro); ahora salen de
          acá, para que el dueño los cambie desde Servicios/Premios y se
          reflejen en todos los paneles. */
-      if (d.ptsRegistro !== undefined && +d.ptsRegistro >= 0) PTSRv = +d.ptsRegistro;
+      /* Acotado a 20 porque las reglas de Firestore piden `pt <= 20` al crear
+         el documento del usuario. El campo del panel acepta 4 dígitos, así
+         que un Dueño que escribiera 25 dejaba la cuenta creada en Auth pero
+         con el setDoc de `users/{uid}` rechazado: el alta parecía funcionar,
+         la promesa no, y el panel se quedaba en "Cargando tu cuenta…" para
+         siempre, sin error. Ahora el tope se aplica acá y el dueño se entera
+         al guardar. */
+      if (d.ptsRegistro !== undefined && +d.ptsRegistro >= 0)
+        PTSRv = Math.min(20, Math.max(0, Math.floor(+d.ptsRegistro) || 0));
       if (+d.cancelHs >= 0 && d.cancelHs !== undefined) CHSv = +d.cancelHs;
       if (Array.isArray(d.premios) && d.premios.length)
         PRv = d.premios.map((p) => ({ n: p.n, p: +p.p || 0 }));
@@ -1082,7 +1110,22 @@ const W = {
     PTSv = +String(el.value).replace(/\D/g, "") || 0;
   },
   rgPtsRegistro(el) {
-    PTSRv = +String(el.value).replace(/\D/g, "") || 0;
+    /* El tope de 20 no es un tope arbitrario: lo exigen las reglas de
+       Firestore para `users/{uid}.pt`. Si el dueño escribe más, antes se
+       guardaba igual y el alta de cuenta nueva quedaba colgada en "Cargando
+       tu cuenta…" sin mostrar error. Ahora se recorta en el momento y se le
+       avisa, en vez de fallar tres pantallas más abajo. */
+    const v = +String(el.value).replace(/\D/g, "") || 0;
+    const t = Math.min(20, v);
+    if (v !== t) {
+      PTSRv = t;
+      el.value = t;
+      M({
+        k: "w",
+        h: "Máximo 20 puntos",
+        b: "Se guardaron " + t + ". Las reglas de la base no admiten más en el alta de cuenta.",
+      });
+    } else PTSRv = t;
   },
   rgCan(el) {
     CHSv = +String(el.value).replace(/\D/g, "") || 0;
@@ -1446,10 +1489,22 @@ const W = {
     i.click();
   },
   async subirFoto(f, carpeta) {
+    /* `i.accept = "image/*"` es una SUGERENCIA, no una validación: el selector
+       de archivos deja escribir otra cosa, y esta función se puede llamar desde
+       la consola. Acá se chequea de verdad.
+       12 MB es un techo generoso para una foto de celular, y evita que
+       cualquiera llene la cuota de Cloudinary con archivos enormes. */
+    if (!/^image\//.test(f.type || ""))
+      throw Object.assign(new Error("Ese archivo no es una imagen."), { suave: 1 });
+    if (f.size > 12 * 1024 * 1024)
+      throw Object.assign(
+        new Error("La imagen pesa más de 12 MB. Bajala o sacale calidad."),
+        { suave: 1 },
+      );
     busy(1, "Subiendo imagen…");
     try {
       const toWebp = (file) =>
-        new Promise((resolve) => {
+        new Promise((resolve, reject) => {
           const img = new Image();
           img.src = URL.createObjectURL(file);
           img.onload = () => {
@@ -1467,7 +1522,17 @@ const W = {
               0.85,
             );
           };
-          img.onerror = () => resolve(file);
+          /* Antes: img.onerror = () => resolve(file), o sea que si el
+             navegador no lograba decodificar el archivo se subía IGUAL y sin
+             transformar: un PDF renombrado a .jpg llegaba entero a Cloudinary.
+             Ahora se rechaza con error, que es lo que recoge el catch de cada
+             pantalla que llama a pickFoto. */
+          img.onerror = () =>
+            reject(
+              Object.assign(new Error("No se pudo abrir el archivo como imagen."), {
+                suave: 1,
+              }),
+            );
         });
       const newFile = await toWebp(f);
       const fd = new FormData();
@@ -3306,6 +3371,43 @@ const lbLimpio = (n) =>
     .trim()
     .toLowerCase();
 
+/* Cambia el data-src de los iframes de mapa por el src real, cuando el bloque
+   entra en pantalla (o ya está, al abrir la página).
+
+   El mapa de Google pesa alrededor de 360 KB y la sección de contacto queda
+   varios scrolls más abajo en el celular: pedirlo en la primera carga es
+   ancho de banda tirado a la basura para quien nunca llega hasta ahí.
+
+   Una vez puesto el src, el observer se desconecta: el mapa ya está y no
+   tiene sentido seguir mirando. */
+function lbCargarMapas() {
+  const marcos = document.querySelectorAll("iframe[data-src]");
+  if (!marcos.length) return;
+  const poner = (el) => {
+    el.src = el.dataset.src;
+    el.removeAttribute("data-src");
+  };
+  if (!("IntersectionObserver" in window)) {
+    /* Sin observer (navegador muy viejo) se cargan todos: peor, pero
+       funcional. */
+    marcos.forEach(poner);
+    return;
+  }
+  const ob = new IntersectionObserver(
+    (entradas) => {
+      for (const e of entradas) {
+        if (!e.isIntersecting) continue;
+        poner(e.target);
+        ob.unobserve(e.target);
+      }
+    },
+    /* rootMargin generous: se pide un poco antes de que se vea, para que al
+       llegar ya esté, sin esperar. */
+    { rootMargin: "300px 0px" },
+  );
+  marcos.forEach((m) => ob.observe(m));
+}
+
 /* Horarios libres de HOY para una duración dada. Replica la lógica de
    slots() del flujo real, sin escribir nada. */
 function lbSlots(dur) {
@@ -4000,8 +4102,8 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
                 : ""
             }${f.redes
               .map(
-                (r) => `<a class="lb-bd-red" href="${esc(r.url)}" target="_blank" rel="noopener">
-                ${r.ic ? `<img src="${esc(r.ic)}" alt="" width="20" height="20">` : ""} ${esc(r.n || r.url)}</a>`,
+                (r) => `<a class="lb-bd-red" href="${urlSegura(r.url)}" target="_blank" rel="noopener">
+                ${r.ic ? `<img src="${urlSegura(r.ic)}" alt="" width="20" height="20">` : ""} ${esc(r.n || r.url)}</a>`,
               )
               .join("")}</div>`
           : '<p class="lb-bd-vacio">Todavía no cargó su información de contacto.</p>'}`;
@@ -4286,7 +4388,7 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
               [MAPA · Google Maps]</a>
             <iframe
               title="Ubicación de ${esc(NOMBRE)}"
-              src="${esc(MAP_IFRAME)}"
+              data-src="${esc(MAP_IFRAME)}"
               loading="lazy"
               referrerpolicy="no-referrer-when-downgrade"
               allowfullscreen></iframe>
@@ -4586,7 +4688,7 @@ function homeH() {
   const nomBar = prox ? bn(prox) : "";
   const nom = esc((U.nm || "").split(" ")[0]).toUpperCase();
   /* Las estrellas del último corte, para la franja de abajo. */
-  const estrellas = `<span class="ini-est" role="img" aria-label="${ult ? ult.estrellas || 5 : 0} de 5 estrellas">` +
+  const estrellas = `<span class="ini-est" role="img" aria-label="${esc(ult ? ult.estrellas || 5 : 0)} de 5 estrellas">` +
     [1, 2, 3, 4, 5].map((i) => (ult && i <= (ult.estrellas || 5) ? "★" : "☆")).join("") +
     `</span>`;
 
@@ -5469,7 +5571,7 @@ function turH() {
   const card = (t) => {
     const x = cx === t.id,
       pr = t.st === "hecho" && t.precio != null ? t.precio : sv(t).p;
-    return `<div class="card" style="margin-bottom:12px"><div class="appt" style="border:0;background:none;padding:0;margin:0"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font:700 34px 'Barlow Condensed'">${t.t}</b><span class="pill ${t.st === "hecho" ? "st-hecho" : t.st === "cancel" ? "st-cancel" : "st-pend"}">${ST[t.st]}</span></div><small style="color:var(--mut)">${fd(t.d)}</small><br><b>${esc(sv(t).n)}</b><br><small>con ${esc(bn(t) || "—")} · ${esc(sv(t).tx)} · ${$$(pr)}</small></div>${t.st === "pend" && !x ? `<div class="chips" style="margin-top:12px"><button class="pillb" style="flex:1;padding:11px" data-act="reprogramar" data-args="${A(t.id)}">Reprogramar</button><button class="pillb" style="flex:1;padding:11px" data-act="askCancel" data-args="${A(t.id)}">Cancelar</button></div>` : ""}${x ? cxForm(t) : ""}</div>`;
+    return `<div class="card" style="margin-bottom:12px"><div class="appt" style="border:0;background:none;padding:0;margin:0"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font:700 34px 'Barlow Condensed'">${esc(t.t)}</b><span class="pill ${t.st === "hecho" ? "st-hecho" : t.st === "cancel" ? "st-cancel" : "st-pend"}">${ST[t.st]}</span></div><small style="color:var(--mut)">${esc(fd(t.d))}</small><br><b>${esc(sv(t).n)}</b><br><small>con ${esc(bn(t) || "—")} · ${esc(sv(t).tx)} · ${$$(pr)}</small></div>${t.st === "pend" && !x ? `<div class="chips" style="margin-top:12px"><button class="pillb" style="flex:1;padding:11px" data-act="reprogramar" data-args="${A(t.id)}">Reprogramar</button><button class="pillb" style="flex:1;padding:11px" data-act="askCancel" data-args="${A(t.id)}">Cancelar</button></div>` : ""}${x ? cxForm(t) : ""}</div>`;
   };
   return (
     `<h1>MIS TURNOS</h1>` +
@@ -5495,7 +5597,7 @@ const recH = () => {
     (R1.length
       ? R1.map(
           (t) =>
-            `<div class="row"><div><b>${esc(t.nm)}</b><br><small>${esc(sv(t).n)} · ${t.t}</small></div>${wal((UA.find((u) => u.id === t.uid) || {}).ph, `Hola ${t.nm}, te recordamos tu turno de mañana a las ${t.t} en ${NOMBRE}. Si no podés venir, avisanos. ¡Gracias!`)}</div>`,
+            `<div class="row"><div><b>${esc(t.nm)}</b><br><small>${esc(sv(t).n)} · ${esc(t.t)}</small></div>${wal((UA.find((u) => u.id === t.uid) || {}).ph, `Hola ${t.nm}, te recordamos tu turno de mañana a las ${esc(t.t)} en ${NOMBRE}. Si no podés venir, avisanos. ¡Gracias!`)}</div>`,
         ).join("")
       : "<p><small>No hay turnos para mañana.</small></p>") +
     (E.length
@@ -5604,7 +5706,7 @@ function barH() {
             ? tt
                 .map(
                   (t) =>
-                    `<div class="appt"><div style="display:flex;justify-content:space-between;align-items:center"><div class="h">${t.t}</div><span class="pill ${t.st === "hecho" ? "st-hecho" : t.st === "cancel" ? "st-cancel" : "st-pend"}">${ST[t.st]}</span></div><b>${esc(t.nm)}</b><br><small>${esc(sv(t).n)} · ${esc(sv(t).tx)}</small>${t.st === "pend" ? `<div class="chips" style="margin-top:8px"><button data-act="askDone" data-args="${A(t.id)}">Completó</button><button data-act="askCancel" data-args="${A(t.id)}">Cancelar</button></div>` : ""}${dn === t.id ? dnForm(t) : ""}${cx === t.id ? cxForm(t) : ""}</div>`,
+                    `<div class="appt"><div style="display:flex;justify-content:space-between;align-items:center"><div class="h">${esc(t.t)}</div><span class="pill ${t.st === "hecho" ? "st-hecho" : t.st === "cancel" ? "st-cancel" : "st-pend"}">${ST[t.st]}</span></div><b>${esc(t.nm)}</b><br><small>${esc(sv(t).n)} · ${esc(sv(t).tx)}</small>${t.st === "pend" ? `<div class="chips" style="margin-top:8px"><button data-act="askDone" data-args="${A(t.id)}">Completó</button><button data-act="askCancel" data-args="${A(t.id)}">Cancelar</button></div>` : ""}${dn === t.id ? dnForm(t) : ""}${cx === t.id ? cxForm(t) : ""}</div>`,
                 )
                 .join("")
             : `<p><small>Sin turnos este día.</small></p>`) +
@@ -5712,7 +5814,7 @@ function dashH() {
       ? '<div class="scr">' +
         L.map(
           (t) =>
-            `<div class="row"><div><b>${esc(t.nm)}</b><br><small>${esc(t.serv || sv(t).n)} · ${fd(t.d)} · ${t.t}${t.medio ? " · " + esc(t.medio) : ""}${t.bn ? " · " + esc(t.bn) : ""}${t.man ? " · Manual" : ""}</small></div><div class="rt"><span class="price">${$$(t.precio || 0)}</span>${t.man ? `<button class="x" aria-label="Editar carga" data-act="askEditV" data-args="${A(t.id)}">✎</button>` : ""}</div></div>`,
+            `<div class="row"><div><b>${esc(t.nm)}</b><br><small>${esc(t.serv || sv(t).n)} · ${esc(fd(t.d))} · ${esc(t.t)}${t.medio ? " · " + esc(t.medio) : ""}${t.bn ? " · " + esc(t.bn) : ""}${t.man ? " · Manual" : ""}</small></div><div class="rt"><span class="price">${$$(t.precio || 0)}</span>${t.man ? `<button class="x" aria-label="Editar carga" data-act="askEditV" data-args="${A(t.id)}">✎</button>` : ""}</div></div>`,
         ).join("") +
         "</div>"
       : "<p><small>Cuando marques “Completó” en un turno, aparece acá.</small></p>") +
@@ -5721,7 +5823,7 @@ function dashH() {
       ? '<div class="scr">' +
         CL.map(
           (t) =>
-            `<div class="row no"><div><b>${esc(t.nm)}</b><br><small>${esc(sv(t).n)} · ${fd(t.d)} · ${t.t}<br>${quien(t)} · ${esc(t.mot || "Sin motivo registrado")}</small></div></div>`,
+            `<div class="row no"><div><b>${esc(t.nm)}</b><br><small>${esc(sv(t).n)} · ${esc(fd(t.d))} · ${esc(t.t)}<br>${quien(t)} · ${esc(t.mot || "Sin motivo registrado")}</small></div></div>`,
         ).join("") +
         "</div>"
       : "<p><small>No hubo cancelaciones en este período.</small></p>") +
@@ -5783,7 +5885,7 @@ function cliH() {
                     h
                       .map(
                         (t) =>
-                          `<div class="line"><span>${esc(t.serv || sv(t).n)} <small>${fd(t.d)} · ${t.t}</small></span><b>${$$(t.precio || 0)}</b></div>`,
+                          `<div class="line"><span>${esc(t.serv || sv(t).n)} <small>${esc(fd(t.d))} · ${esc(t.t)}</small></span><b>${$$(t.precio || 0)}</b></div>`,
                       )
                       .join("") +
                     "</div>"
@@ -5809,7 +5911,7 @@ function cliH() {
               ? hsel
                   .map(
                     (t) =>
-                      `<div class="line"><span><b>${esc(t.serv || sv(t).n)}</b> · ${esc(bn(t) || "—")}<br><small>${fd(t.d)}</small></span><span style="text-align:right"><b>${$$(t.precio || 0)}</b><br><span class="pill st-hecho" style="font-size:11px">Completado</span></span></div>`,
+                      `<div class="line"><span><b>${esc(t.serv || sv(t).n)}</b> · ${esc(bn(t) || "—")}<br><small>${esc(fd(t.d))}</small></span><span style="text-align:right"><b>${$$(t.precio || 0)}</b><br><span class="pill st-hecho" style="font-size:11px">Completado</span></span></div>`,
                   )
                   .join("")
               : "<small>Todavía no tiene cortes.</small>") +
@@ -6004,6 +6106,8 @@ function R() {
     appE.style.maxWidth = ancho ? "" : "100%";
     appE.style.padding = ancho ? "" : "0";
   }
+  /* El mapa se pide recién cuando el bloque está cerca de la pantalla. La
+     llamada va al final de R(), después de escribir el HTML. */
   $("#lo").hidden = !me;
   /* "Ver la web" tiene sentido siempre que haya sesión: es la forma de
      mirar la landing sin cerrar sesión. */
@@ -6145,6 +6249,11 @@ function R() {
     if (el) el.hidden = !me || esCli;
   });
   $("#app").innerHTML = (msg ? `<p class="msg">${esc(msg)}</p>` : "") + h;
+  /* El mapa se pide recién cuando su bloque está cerca de la pantalla.
+     Tiene que ir ACÁ, después de escribir el innerHTML: antes de esa línea el
+     iframe todavía no existe, el observer no encontraba nada y el mapa no
+     cargaba nunca ni al scrollear hasta la sección. */
+  lbCargarMapas();
   setupReveal();
   footer();
   msg = "";
