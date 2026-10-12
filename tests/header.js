@@ -200,7 +200,43 @@ const entrar = async (page, email, pass) => {
         }
       }
 
-      /* El menú de la foto, en todos los casos. */
+      /* El popup cancelado NO debe abrir ningún cartel.
+       El dueño lo vio en producción con el texto "Se abrió una ventana antes de
+       terminar la anterior... (auth/cancelled-popup-request)". Se comprueba
+      Se llama a err() a mano con ese código y mirando si aparece el modal: es la
+       misma función que dispara el catch del login, así que lo que se mide acá
+       es exactamente lo que se veía en pantalla. */
+    const cancelado = await page.evaluate(() => {
+      window.__test.err({ code: "auth/cancelled-popup-request", message: "Firebase: Error (auth/cancelled-popup-request)." });
+      window.__test.err({ code: "auth/user-cancelled", message: "Firebase: Error (auth/user-cancelled)." });
+      window.__test.err({ code: "auth/popup-closed-by-user", message: "Firebase: Error (auth/popup-closed-by-user)." });
+      return new Promise((r) =>
+        setTimeout(() => {
+          const m = document.querySelector("#mo");
+          const v = m && !m.hidden ? (m.innerText || "").replace(/\s+/g, " ").slice(0, 200) : null;
+          r(v);
+        }, 900),
+      );
+    });
+    ok(!cancelado, "el popup cancelado no abre ningún cartel", String(cancelado));
+
+    /* Y un error de VERDAD sí tiene que avisar, o si no el cartel quedó inútil. */
+    const real = await page.evaluate(() => {
+      window.__test.err({ code: "auth/wrong-password", message: "Firebase: Error (auth/wrong-password)." });
+      return new Promise((r) =>
+        setTimeout(() => {
+          const m = document.querySelector("#mo");
+          r(m && !m.hidden ? (m.innerText || "").replace(/\s+/g, " ").slice(0, 200) : null);
+        }, 900),
+      );
+    });
+    ok(!!real, "un error que SÍ es error abre cartel igual", String(real));
+    /* Este cartel queda abierto y #mo se lleva los clics, así que hay que
+       cerrarlo antes de seguir probando. */
+    await page.locator("#mok").click();
+    await page.waitForTimeout(500);
+
+    /* El menú de la foto, en todos los casos. */
       await page.locator("#mebadge").click();
       await page.waitForTimeout(600);
       const pm = await page.evaluate(() => {

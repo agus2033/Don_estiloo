@@ -278,3 +278,33 @@ la que se había escrito. Nadie la había probado con un login real.
 **Borradas**: `tests/sonda.reglas.js` y `tests/sonda.escrituras.js`. Escribían
 datos de verdad en Firestore; no conviene dejarlas en el repo como si fueran
 herramientas.
+
+### Lote 26 — Publicar: limpieza y dos agujeros
+
+- `src/main.js`: se borran los tres `console.error`. **Quedan cero llamadas a
+  `console.*` en todo lo que se publica.** Uno volcaba el turno entero a la
+  consola del visitante.
+- `.vercelignore`: se agregan `.env*` (`.env.local` NO estaba, sólo estaba en
+  `.gitignore`, que no frena a Vercel), `ACTIVAR_GOOGLE_FACEBOOK.md` (estaba
+  **publicado**, con un 200), `DESIGN.md`, `skills-lock.json`, `plan/`,
+  `tmp_shots/` y `fuentes/`.
+- `.env.example`: **tenía las contraseñas reales de las tres cuentas**
+  (`Agus203.`), commiteadas desde el 8 de octubre. Ahora está vacío y
+ se saca la excepción de `.gitignore`.
+- `.gitignore`: se saca la excepción de `.env.example`.
+- `src/logic.js`: borrado (no lo usaba nadie salvo la precarga del SW).
+- `sw.js`: `src/logic.js` saca de la lista `SHELL`.
+- `tests/deploy.carga.js` (nueva): simula qué se sube, y comprueba que no suba
+  nada indebido, que todo lo que precachea el SW exista y se suba, y que el
+  shell tenga los archivos esenciales.
+- `tests/lote25.js`: comprobaciones de que no queden `console.*` ni caracteres
+  U+FFFD en lo publicado.
+- `tests/header.js`: **el popup cancelado no abre cartel** y **un error real sí
+  lo abre**. Ese segundo check es el queHace válido el primero.
+- `tests/run.js`: se agrega `deploy.carga`.
+
+Suite: **33 pruebas, 787 comprobaciones, 0 en rojo**.
+
+**Pendiente del dueño**: cambiar la contraseña de las tres cuentas de prueba
+(la limpieza del archivo no las cambia) y subir `V` en `sw.js` a `barberia-v8`
+antes de desplegar.

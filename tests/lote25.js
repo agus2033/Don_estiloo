@@ -51,6 +51,20 @@ async function entrar(b, email, pass, ancho = 1400) {
   const src = fs.readFileSync(path.join(__dirname, "..", "src", "main.js"), "utf8");
   const reglas = fs.readFileSync(path.join(__dirname, "..", "FIRESTORE_RULES.txt"), "utf8");
 
+  /* Lo que se publica no debe imprimir nada en la consola. Antes quedaban tres
+     console.error, y uno volcaba el turno entero (uid, nombre, barbero, fecha,
+     hora, cupos) en el navegador de quien lo aborted. */
+  const llamadas = src.match(/^\s*console\.\w+\s*\(/gm) || [];
+  ok(llamadas.length === 0, "main.js no llama a console.*", JSON.stringify(llamadas));
+  ok(!/[\uFFFD]/.test(src), "main.js no tiene caracteres rotos (U+FFFD)");
+  for (const [F, t] of [
+    ["styles.css", fs.readFileSync(path.join(__dirname, "..", "src", "styles.css"), "utf8")],
+    ["landing.css", fs.readFileSync(path.join(__dirname, "..", "src", "landing.css"), "utf8")],
+    ["index.html", fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8")],
+  ]) {
+    ok(!/[\uFFFD]/.test(t), `${F} no tiene caracteres rotos`);
+  }
+
   ok(
     /"auth\/cancelled-popup-request",/.test(
       src.match(/const CANCELADO = new Set\(\[[\s\S]*?\]\)/)[0],

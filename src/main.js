@@ -1033,13 +1033,13 @@ onSnapshot(
       R();
     }
   },
-  /* El manejador de error NO es opcional ac�. Esta consulta se abre tambi�n
-     sin sesi�n (la landing la necesita), y mientras la colecci�n no est� en
+  /* El manejador de error NO es opcional acá. Esta consulta se abre también
+     sin sesión (la landing la necesita), y mientras la colección no esté en
      las reglas publicadas, Firestore contesta permission-denied. Sin este
      segundo argumento el error queda SIN CAPTURAR en la consola del visitante,
      que es exactamente lo quedaban `tests/landing.barberos` y
-     `tests/politicas` marcan como falla. Con �l, no: la web sigue funcionando
-     y s�lo no hay fotos hasta que se publiquen las reglas. */
+     `tests/politicas` marcan como falla. Con él, no: la web sigue funcionando
+     y sólo no hay fotos hasta que se publiquen las reglas. */
   () => {},
 );
 onSnapshot(doc(db, "config", "horario"), (x) => {
@@ -1115,9 +1115,9 @@ const RT = {
   priv: "privacidad",
   gal: "galeria",
   rev: "resena",
-  /* "mens" TIENE que estar en esta tabla. Si se agrega a rtOk y se olvida ac�,
-     rtPush("mens") arma "#/undefined" y rtView() nunca la encuentra: la secci�n
-     aparece en la barra del due�o y al tocarla no pasa nada. */
+  /* "mens" TIENE que estar en esta tabla. Si se agrega a rtOk y se olvida acá,
+     rtPush("mens") arma "#/undefined" y rtView() nunca la encuentra: la sección
+     aparece en la barra del dueño y al tocarla no pasa nada. */
   mens: "mensajes",
 };
 const rtOk = (v) =>
@@ -1310,7 +1310,8 @@ const W = {
       if (n2) n2.value = "";
       if (n3) n3.value = "";
     } catch (e) {
-      console.error(e);
+      /* Sin console.error: el motivo va en el texto de al lado, que es lo que
+         lee la persona. En la consola sólo quedaba una copia del error. */
       if (st) st.textContent = "No se pudo enviar el mensaje. Probá de nuevo.";
     } finally {
       W.enviarContacto.estado = "";
@@ -2674,7 +2675,9 @@ Object.assign(W, {
       msg = "Turno agendado para " + nm + " el " + fd(dat) + ".";
       R();
     } catch (e) {
-      console.error("agSave", e, JSON.stringify({uid, nm, propio, dat, t: agT.t, sl, ids}));
+      /* Antes: console.error con un volcado del turno (uid, nombre, barbero,
+         fecha, hora,cupos) y después el mismo error pasado a err(). O sea, la
+         consola repetía lo que ya se le iba a mostrar a la persona. */
       err(Object.assign(e, { code: e.code, message: e.message }));
     }
   },
@@ -6463,7 +6466,6 @@ function R() {
     claseNav = "nav-todo";
   }
   } catch (e) {
-    console.error("render", e);
     h = `<p class="msg">No se pudo mostrar esta vista: ${esc(e && e.message ? e.message : e)}</p>`;
   }
   const ae = document.activeElement,

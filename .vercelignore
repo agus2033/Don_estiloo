@@ -42,7 +42,39 @@ README.md
 # algo hay que pegarlas en Firebase Console > Firestore > Reglas.
 FIRESTORE_RULES.txt
 
+# ---------------------------------------------------------------------------
+# Credenciales. ESTO ERA UN AGUERO REAL.
+#
+# .env.local tiene las CONTRASEÑAS de las tres cuentas de prueba. Está en
+# .gitignore (no se commitea), pero .gitignore no frena a Vercel: si el deploy
+# se hace con la CLI desde esta carpeta, lo que no está en .vercelignore se
+# sube. Se comprobó contra el sitio en vivo el 2026-10-12 y .env.local daba
+# 404, o sea que hoy está a salvo — pero por suerte, no porque este archivo lo
+# dijera. Se agrega explícitamente para no depender de la suerte.
+.env
+.env.*
+# Tambien .env.example. Hoy ya no trae contrasenas (esta vacio a proposito),
+# pero es una plantilla de credenciales y no tiene nada que hacer publico.
+.env.example
+
 # Archivos sueltos de trabajo.
 *.log
 Thumbs.db
 desktop.ini
+
+# ---------------------------------------------------------------------------
+# Lo que se encontró mirando el sitio YA publicado (2026-10-12), antes de que
+# existieran estas líneas: ACTIVAR_GOOGLE_FACEBOOK.md se podía leer en
+# codigobarber.com.ar/ACTIVAR_GOOGLE_FACEBOOK.md con un 200. No tiene
+# contraseñas, pero es una guía interna de la consola de Firebase y no
+# pertenece al público.
+ACTIVAR_GOOGLE_FACEBOOK.md
+DESIGN.md
+skills-lock.json
+
+# Carpetas de trabajo (ya se excluía tmp_pdf/ y tests/).
+plan/
+tmp_shots/
+# fuentes/ tiene los originales de las imágenes (2,5 MB) que ya están
+# recortadas y comprimidas en assets/.
+fuentes/

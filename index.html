@@ -20,10 +20,10 @@
     
   <!-- NO va una CSP en <meta>. La de verdad la manda vercel.json y la copia
        de desarrollo la manda tests/srv.js, y tests/csp.sync.js verifica que
-       sean id�nticas. Cuando hay dos (una en el cabecera y otra ac�), el
-       navegador aplica LA M�S RESTRICTIVA de las dos: la del <meta> s�lo
-       dec�a script-src, as� que hoy no romp�a nada, pero cualquier cosa que se
-      tocara en un lado y no en el otro rompe en producci�n sin que nadie lo
+       sean idénticas. Cuando hay dos (una en el encabezado y otra acá), el
+       navegador aplica LA MÁS RESTRICTIVA de las dos: la del <meta> sólo
+       decía script-src, así que hoy no rompe nada, pero cualquier cosa que se
+      tocara en un lado y no en el otro rompe en producción sin que nadie lo
        note. Una sola fuente. -->  
     <meta
       name="description"

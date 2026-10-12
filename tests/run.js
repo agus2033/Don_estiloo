@@ -25,6 +25,7 @@ const TODAS = [
   { n: "loader", sesion: false, red: false },
   { n: "css.muerto", sesion: false, red: false },
   { n: "csp.sync", sesion: false, red: false },
+  { n: "deploy.carga", sesion: false, red: false },
   { n: "visual", sesion: false, red: false },
 
   /* red, sin cuenta */

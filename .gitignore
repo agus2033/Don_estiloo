@@ -1,7 +1,8 @@
 # Credenciales de pruebas (NUNCA commitear)
 .env
 .env.*
-!.env.example
+# Sin excepcion para .env.example: una plantilla de credenciales no aporta
+# mucho en el repo y el riesgo de que alguien la complete y la commitee es real.
 
 # Entorno de Python (no se usa: el proyecto es HTML/CSS/JS estático)
 .venv/

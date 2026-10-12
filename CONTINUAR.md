@@ -1881,3 +1881,102 @@ mía.
 `EMAIL` en `src/config.js` es **"hola@codigobarber1.com"**, con un `1` antes
 del punto, y el sitio que se está usando es **codigobarber.com.ar**. Puede estar
 mal. No se tocó: es información del dueño.
+
+---
+
+## 25. Publicar: limpiar lo que no va, y dos agujeros de seguridad
+
+### El cartel de "Se abrió una ventana antes de terminar la anterior"
+
+Ese texto **no existe más en el código**. Lo que se ve en
+`codigobarber.com.ar` es la versión vieja, porque el arreglo del lote 24 todavía
+no se desplegó. Para que no quede en el aire la duda de si funciona, ahora hay
+una prueba que llama `err()` con ese código y comprueba que **no** aparece
+ningún cartel, y al lado que un error de verdad (`auth/wrong-password`) **sí**
+aparece.
+
+Escribir esa prueba dio una lección:
+
+- El primer borrador usaba `#mf` para preguntar por el modal. `#mf` no existe:
+  el modal es `#mo`. Con un selector que no existe, `querySelector` devuelve
+  `null`, `!null.hidden` da error... y el chequeo "no hay cartel" daba **verde
+  por falso**. Recién cuando se agregó el caso contrario —"un error de verdad SÍ
+  abre cartel"— se descubrió que el selector estaba mal.
+- **Una comprobación negativa necesita una positiva que la contradiga.** Si sólo
+  preguntás "¿no aparece el cartel?", un selector roto responde lo mismo que un
+  sistema que anda bien.
+
+### Los `console.log`
+
+No queda ninguno: **cero llamadas a `console.*` en todo lo que se publica**
+(`main.js`, `styles.css`, `landing.css`, `config.js`, `boot.js`, `index.html`,
+`sw.js`). Eran tres `console.error`, y los tres ya informaban por otra vía (el
+texto del estado, `err(e)` o el mensaje de error de la vista), así que eran
+duplicado. Uno volcaba el turno entero —uid, nombre, barbero, fecha, hora,
+cupos— en la consola del navegador.
+
+**Lo que NO se tocó y por qué:**
+
+- `window.__test`: sigue, encerrado por `location.hostname`
+  (localhost/127.0.0.1). En producción no se activa y son 40 líneas de un
+  archivo de 6.500. Sacarlas dejaría sin pruebas la mitad del panel.
+- Los comentarios `TODO` de `main.js` y `config.js`: no son trabajo a medias, son
+  la nota de "esto sale del campo X" y de "sin reseñas reales no se inventa
+  ninguna". Borrarlos perdería el criterio.
+- `src/boot.js` mide 0 KB y queda: se carga.
+
+### Dos agujeros que aparecieron revisando qué se publica
+
+**1. `.env.example` tenía las contraseñas reales.** Las tres cuentas de prueba
+comparten `Agus203.`, y ese archivo, commiteado desde el 8 de octubre, lo tenía
+escrito. No se veía en el sitio publicado (Vercel daba 404 en `.env*`), pero
+**queda en el historial de git**, que es lo que importa si el repositorio es
+público.
+
+Ahora el archivo está vacío y con la advertencia, se excluye del deploy y se
+sacó la excepción de `.gitignore`.
+
+> **Esto no cambia las contraseñas de las cuentas.** Hay que cambiarlas a mano en
+> Firebase Console > Authentication, aunque el archivo ya esté limpio.
+
+**2. `ACTIVAR_GOOGLE_FACEBOOK.md` estaba público.** Confirmado con un 200 en
+`codigobarber.com.ar/ACTIVAR_GOOGLE_FACEBOOK.md`. No tiene contraseñas, pero es
+una guía interna de la consola de Firebase. Ahora está en `.vercelignore`.
+
+Y de paso, `.env.local` (las contraseñas de verdad) **no estaba en
+`.vercelignore`**: estaba en `.gitignore`, que no frena a Vercel. Daba 404, pero
+por suerte y no por configuración. Se agregó explícitamente.
+
+### `src/logic.js` estaba muerto
+
+No lo referenciaba nadie **salvo la precarga del service worker**. Helpers
+duplicados que ya están en `main.js`. Borrado, y saca de `SHELL`.
+
+### `tests/deploy.carga.js`: no desplegar para enterarse
+
+Aplica `.vercelignore` al listado del repo y dice qué se subiría. Resultado
+actual: **27 archivos, 1,2 MB**. Y comprueba tres cosas que antes nadie miraba:
+
+1. que no se suba nada indebido (`.env`, reglas de Firestore, pruebas, docs,
+   mapas de fuentes),
+2. que **todo lo que el service worker precachea exista** y se suba de verdad —
+   `src/logic.js` estaba en esa lista siendo un archivo muerto; `install` tiene
+   un `catch` por archivo, así que no rompía nada, pero el worker cacheaba un
+   shell incompleto,
+3. que el shell tenga `index.html`, `main.js` y los dos CSS.
+
+### Un detalle
+
+`sw.js` sigue en `barberia-v7`. Cuando se despliegue, hay que **subir el número
+de versión**: si no, los visitantes que ya tienen la versión 7 cacheada no se
+ven actualizando.
+
+## Antes de publicar
+
+- [ ] Desplegar (`vercel` desde esta carpeta).
+- [ ] **Subir `V` en `sw.js` a `barberia-v8`**, si no los visitantes no ven la
+      versión nueva.
+- [ ] Pegar `FIRESTORE_RULES.txt` en Firebase Console > Firestore > Reglas
+      (trae `fotoBarbero` y el tope de 50).
+- [ ] **Cambiar la contraseña de las tres cuentas de prueba.**
+- [ ] Verificar que `codigobarber.com.ar/ACTIVAR_GOOGLE_FACEBOOK.md` da 404.
