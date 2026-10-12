@@ -13,8 +13,16 @@ __pycache__/
 node_modules/
 .npm/
 
-# Capturas de verificación
+# Restos de trabajo. Se limpian el 12/10 (con copia de seguridad hecha):
+#   tmp_pdf/         74 MB  era el node_modules de una herramienta de PDF
+#   tmp_shots/       22 MB  capturas de verificación
+#   tests/tmp_shots/ 73 MB  lo mismo, en una segunda carpeta
+#   fuentes/          2,5 MB los PNG originales sin recortar
+# Las pruebas siguen generando tmp_shots/, por eso sigue ignorada.
+tmp_pdf/
 tmp_shots/
+tests/tmp_shots/
+fuentes/
 tmp_*.js
 tmp_*.html
 tmp_*.json

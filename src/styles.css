@@ -3696,6 +3696,7 @@ body.wz-abierto {
 body[data-theme="light"]{background:var(--bg)}
 /* Antes estaba aquí `img[src*="assets/logo.png"]{border-radius:18px}`. Ese
    selector no lo agarraba nada: el logo que se muestra es el logo-256.png (el
-   PNG de 1,6 MB quedó guardado en fuentes/ y ya no se publica), así que la
+   PNG de 1,6 MB; ya no existe ni el original ni la carpeta fuentes/, borrados
+   en la limpieza del 12/10 con la copia de seguridad hecha), así que la
    imagen del encabezado nunca tuvo ese redondeo. El `.lg` de arriba ya lo
    resuelve. Borrado con css.muerto.js como regla que no matchea. */

@@ -75,6 +75,10 @@ skills-lock.json
 # Carpetas de trabajo (ya se excluía tmp_pdf/ y tests/).
 plan/
 tmp_shots/
-# fuentes/ tiene los originales de las imágenes (2,5 MB) que ya están
-# recortadas y comprimidas en assets/.
+# fuentes/ (los PNG originales sin recortar, 2,5 MB) se borraron el 12/10 con
+# la copia de seguridad hecha; los derivados recortados están en assets/.
+# La línea queda como guardia, por si vuelven.
 fuentes/
+# tmp_pdf/ era el node_modules de una herramienta de PDF (74 MB), ya borrado.
+# También queda como guardia.
+tmp_pdf/
