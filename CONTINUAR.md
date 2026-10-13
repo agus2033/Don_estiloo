@@ -1864,7 +1864,7 @@ exactamente el tipo de cosa que se desincroniza sin que nadie lo note.
 Se eliminó. La CSP vive en `vercel.json` (producción) y `tests/srv.js`
 (desarrollo), y `tests/csp.sync.js` verifica que sean idénticas.
 
-## Ojo: los �conos PNG
+## Ojo: los íconos PNG
 
 | archivo | peso | para qué |
 |---|---|---|
@@ -2071,3 +2071,125 @@ seguía reportando un `<h3>` que en el archivo ya era `<h2>`: el `main.js` salí
 de la caché del worker. Ahora la prueba desregistra el worker y vacía las cachés
 antes de medir. **Ojo: cualquier prueba que mida algo visual debería hacerlo,
 o puede estar midiendo la corrida anterior.**
+
+---
+
+## 28. Se rompio la seccion de servicios, y las reglas de Firestore
+
+### Lo que se rompio (y era mio)
+
+En la landing se veian **las dos listas de servicios a la vez**: la de
+escritorio bien, y la de celular sin acotar, con fotos de 1158 y 1438 px de ancho
+en vez de 48. Ademas el resto de las secciones quedaban colgando fuera del
+contenedor principal.
+
+**Causa: commit `997346b`.** La tarjeta de servicio abria
+`<article class="lb-sv">` y cerraba con `</div>`.
+
+El navegador no se queja de un cierre desbalanceado. Lo que hace es cerrar de
+mas el contenedor y "colgar" el resto del HTML afuera de `div.lb`. Entonces:
+
+- `div.lb` terminaba despues de la seccion de servicios
+- `.lb-sv-list-m` quedaba como hija directa de `<main>`, fuera de `.lb`
+- y el selector `.lb .lb-sv-list-m { display: none }` dejaba de alcanzarla,
+  asi que se veian las dos listas
+
+Salio de un reemplazo a ciegas: `String.replace` con una cadena cambia **solo
+la primera** ocurrencia, y en un archivo de 6.500 lineas la primera no era la que
+yo creia.
+
+**Por que rompio recién ahora y no antes:** el bug de estructura estaba desde
+hacia rato, pero las fotos devolvian 404 y no se veian. El arreglo de `imgCld`
+(que si funcionaba) las trajo de vuelta, y recien ahi se noto el desborde.
+
+En el mismo commit habia otros dos desajustes:
+
+- El carrusel de resenas: al cambiar `<article>` por `<div>` (por
+  `role="group"`, que `article` no admite) cambie la apertura y no el cierre.
+  Quedo `<div class="lb-tst">` cerrando con `</article>`.
+- `<h3 class="lab">` paso a `<h2 class="lab">` en nueve lugares y el cierre se
+  quedo en `</h3>`.
+
+Medido despues del arreglo:
+
+| | escritorio | movil |
+|---|---|---|
+| hijos de `<main>` | `[DIV.lb]` | `[DIV.lb]` |
+| imagenes | 373x466 x3 | 48x48 x3 |
+| grilla | `grid` | `none` |
+| lista de celular | `none` | `block` |
+
+### La guarda que faltaba: tests/html.valido.js
+
+**Por que ninguna prueba lo agarro:** todas miran el DOM ya parseado, y el
+parser de HTML *repara* los cierres desbalanceados en silencio. No hay forma de
+detectar el error mirando el resultado; hay que mirar la entrada.
+
+La prueba intercepta el setter de `innerHTML` de `#app` **antes** de que corra
+la app (`addInitScript`), se queda con la CADENA que genera y valida el balance
+de etiquetas de la landing y de las ocho pantallas del panel. Ademas comprueba
+que en la landing `#app` tenga una sola raiz `.lb` y que las dos listas de
+servicios sigan DENTRO de `.lb`, que es justo lo que se habia roto.
+
+### FIRESTORE_RULES.txt: lo reescribiste y casi se pierde el endurecimiento
+
+El 13/10 a las 01:56 el archivo de reglas fue modificado a mano y quedo con una
+version **anterior a la auditoria**: sin `fotoBarbero`, con el tope de puntos en
+20, y con los agujeros abiertos de `config`, `ventas`, `gastos`, `turnos` y
+el campo `pd` de `staff`.
+
+**Lo importante: las reglas que estan publicadas en Firebase NO son las de ese
+archivo.** Se comprobo contra la base real: `fotoBarbero` se lee (HTTP 200) y
+`config/finanzas` da 403, dos cosas que solo existen en la version endurecida.
+O sea: el archivo y la consola se separaron.
+
+Decidiste mezclar: **tu version como base, con el endurecimiento de vuelta.**
+
+Se hizo mezclando, no reemplazando. De tu version se conserva todo lo que ya
+estaba bien (la rama de clientes en `resenas`, la validacion de `mensajes`,
+los bloques de `ocupados`/`espera`/`activos`) y se le vuelven a cerrar los
+agujeros.
+
+**Verificado: el codigo de las reglas quedo identico linea por linea al que ya
+esta publicado y compila** (126 lineas de codigo, cero diferencias). Solo
+cambian los comentarios, que ahora explican el porque de cada cierre.
+
+Un detalle que casi se cuela: la primera version de la mezcla traia un bloque
+`config/barberos` con `.slice(...).concat(...)` y `.where(...).index` que
+yo habia inventado, distinto del publicado y con sintaxis que no se puede
+compilar desde aca. Se volvio al que ya se probo y funciona.
+
+### Las pruebas que faltan para que no vuelva a pasar
+
+La app **no falla visible** cuando Firestore deniega un write: el error se traga
+con un `.catch`. Por eso la regresion de las reglas paso desapercibida y solo
+se vio por el cartel de "Maximo 20 puntos". tests/lote25.js ahora chequea los
+ocho cierres, y **se comprobo que muerden**: se debuted cada regla una por una
+con un archivo alterado y las ocho lo detectaron.
+
+Dos correcciones sobre la marcha:
+
+- `ventas`: la primera versión del chequeo contaba dos apariciones de
+  `resource.data.bid == request.auth.uid`, pero ese texto va **dentro** de
+  `request.resource.data.bid` del create. Contaba una de más y seguía dando
+  verde con una venta abierta al equipo entero. Ahora se exige que en el bloque
+  no aparezca ni un `isBarberoOrOwner()` y que cada linea con `isStaff()`
+  lleve además el filtro por `bid`.
+- Endurecer de más también rompe: si el `create` de `ventas` pierde la rama
+  del barbero, un barbero que cobra un corte no puede registrar la venta y la
+  plata se pierde. Ese caso tiene su propio chequeo.
+
+### prueba de accesibilidad: el CDN se cae
+
+`tests/accesibilidad.js` baja `axe-core` de cdnjs. En la suite murió con un
+`Error` a secas, sin decir que lo que habia fallado era bajar la libreria y no
+la accesibilidad. Ahora reintenta tres veces y, si sigue sin bajar, dice
+exactamente que el informe de ese intento no es valido.
+
+Medido por separado, en las tres pantallas y a 390x844:
+**0 violaciones** (47 reglas en la landing, 36 en el ingreso, 40 en el panel).
+
+### Estado de la suite
+
+36 pruebas · 832 comprobaciones · 1 en rojo durante la corrida
+(`accesibilidad`, por el CDN; pasa sola con 0 violaciones).

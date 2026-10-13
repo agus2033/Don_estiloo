@@ -5,16 +5,30 @@
 // consola. Cambiarlo acá no cambia nada en Firestore: hay que copiar y
 // pegar en Firebase Console > Firestore Database > Reglas y publicar.
 //
-// Lo que cambió en esta versión:
-//   1. users/{uid}: el alta ya no acepta puntos inventados (se clavan 0..20).
-//   2. users/{uid}: el cliente solo puede BAJAR sus puntos, nunca subirlos.
-//      Antes podía editar su documento entero y cargarse el saldo a dedo.
-//   3. config/finanzas: deja de ser legible sin sesión (lleva porcentajes y
-//      los uid del equipo).
-//   4. mensajes: se validan los campos del contacto en vez de "if true".
-//   5. resenas: sigue siendo pública para el carrusel de la landing.
-//   6. turnos: el create acepta también a barbero y dueño. Con la versión 2
-//      anterior el panel de Agenda del barbero no podía guardar ningún turno.
+// Esta versión parte de la que escribiste el 13/10 y le vuelve a cerrar los
+// agujeros que la auditoría había cerrado. Lo que ya estaba bien en tu versión
+// se deja tal cual: la validación de reseñas para que los clientes puedan
+// dejar reseña, la de mensajes, las ramas de occupied/espera/activos.
+//
+// Lo que cambió respecto de tu versión, y por qué:
+//
+//   1. config: escribir pasa a ser SÓLO del dueño. Con `isBarberoOrOwner()`
+//      cualquier barbero podía, desde la consola del navegador, reescribir
+//      precios, horarios o el reparto de ganancias.
+//   2. config/finanzas: deja de ser legible con sólo estar registrado. Lleva
+//      los porcentajes y los uid del equipo, y con `isSignedIn()` cualquier
+//      cuenta creada lo leía.
+//   3. config/barberos: regla aparte para que un barbero, en el caso de que
+//      haga falta, sólo pueda tocar SU PROPIA entrada de la lista.
+//   4. users: el tope del alta pasa de 20 a 50 puntos.
+//   5. staff: un barbero ya NO puede tocar su campo `pd` (el porcentaje que se
+//      queda el dueño). Con `pd` permitido, `updateDoc(doc(db,"staff",miUid),
+//      {pd: 0})` le dejaba quedarse con el 100% de cada corte.
+//   6. turnos: el alta valida el formato de la fecha y la hora; el cliente no
+//      puede marcar su turno como "hecho", ponerle el precio, cambiar el barbero
+//      ni borrar uno ya cobrado; y borrar un turno es sólo del equipo.
+//   7. fotoBarbero: colección nueva para la foto de cada barbero.
+//   8. ventas y gastos: un barbero sólo toca los suyos, no los del dueño.
 //
 // OJO: rules_version SÓLO admite '1' y '2'. No hay una versión 3: si ponés 3, la
 // consola y los linters la rechazan ("Unsupported rules version 3"). El "número de
@@ -31,7 +45,7 @@ service cloud.firestore {
       // La landing lee sin sesión: servicios/precios (servicios), equipo
       // (barberos), horarios (horario) y las reglas de puntos (reglas).
       //
-      // "finanzas" no se lee sin sesión: lleva los porcentajes de ganancia y el
+      // "finanzas" sí pide sesión: lleva los porcentajes de ganancia y los
       // uid de cada barbero. Con "allow read: if true" para todo /config esos
       // datos quedaban públicos en la web, y con "isSignedIn()" tampoco
       // alcanzaba: con sólo registrarse, cualquiera leía cuánto se lleva el
@@ -40,32 +54,27 @@ service cloud.firestore {
 
       // SÓLO el dueño escribe la configuración.
       //
-      // Antes era `isBarberoOrOwner()`, o sea que cualquier barbero podía, desde
-      // la consola del navegador, llamar al SDK y hacer:
+      // Antes (y en tu versión) era `isBarberoOrOwner()`, o sea que cualquier
+      // barbero podía, desde la consola del navegador:
       //
-      //     setDoc(doc(db, "config", "finanzas"), { pd: 100, bs: [...] })
+      //     setDoc(doc(db, "config", "finanzas"), { pd: 100 })
+      //     setDoc(doc(db, "config", "horario"), { a: 540, c: 1380 })
       //
-      // y quedarse con el 100% de cada corte. También podía vaciar
-      // config/horario (barbería cerrada), inflar config/reglas o borrar la
-      // lista pública de barberos. La UI nunca le ofrece nada de eso, pero las
-      // reglas son las que deciden, y no lo impedían.
-      //
-      // El barbero sí necesita escribir UNA cosa acá: su propia ficha dentro del
-      // array `l` de config/barberos, cuando guarda el perfil desde la web. Ese
-      // caso tiene su regla propia, más abajo, y sólo le deja tocar SU objeto.
+      // y a partir de ese momento se quedaba con el 100% de cada corte o
+      // abría la barbería a la medianoche. La UI nunca habilitaba eso; el
+      // problema es que las reglas son las que tienen que frenarlo.
       allow write: if isOwner();
     }
 
-    // La lista pública del equipo. El barbero puede guardar SU ficha (nombre,
-    // oficio, foto, descripción, WhatsApp, Instagram, redes) pero no la de nadie
-    // más ni el tamaño de la lista.
+    // La lista pública de equipo, separada del resto de /config porque acá sí
+    // escribe el barbero: cuando carga su perfil en la web tiene que poder
+    // guardar su nombre, su foto, su teléfono, su Instagram y su descripción.
     //
-    // La comparación es de la lista completa MENOS su entrada, antes y después:
-    // si no modificó, agregó ni quitó a otro barbero, las dos listas dan igual.
-    //
-    // Si esta regla llegara a rechazar el guardado del perfil del barbero (por
-    // ejemplo porque su ficha todavía no estuviera en `l`), el arreglo es una
-    // línea: cambiar el "allow write" de arriba a "if isOwner() || isStaff()".
+    // Cómo funciona: `l` es la lista de barberos. El `where(b, b.id !=
+    // request.auth.uid)` saca la entrada del propio barbero y compara el resto
+    // de la lista, nueva contra vieja. Si da igual, lo único que cambió fue su
+    // propia ficha. No puede agregar barberos ni tocar los de los demás: para
+    // eso el dueño.
     match /config/barberos {
       allow write: if isOwner()
                     || (isStaff()
@@ -114,9 +123,14 @@ service cloud.firestore {
       allow read: if isSignedIn() && (request.auth.uid == uid || isStaff() || isOwner());
 
       // Alta del perfil. Se acota qué se puede escribir y se clavan los
-      // puntos entre 0 y 20 (los 20 de bienvenida, o 0 si el cliente se da
+      // puntos entre 0 y 50 (los de bienvenida, o 0 si el cliente se da
       // de baja). Antes, con "create: if isSignedIn() && uid == uid",
       // cualquiera creaba su propio documento con el saldo que quisiera.
+      //
+      // El 20 era el tope de la versión anterior; el dueño pidió poder dar
+      // hasta 50 puntos de bienvenida. OJO: los dos topes están atados. Si
+      // acá va 50 y en el panel va 20, el dueño escribe 50, la base lo
+      // rechaza y la cuenta queda creada en Auth sin documento.
       allow create: if isSignedIn()
                      && request.auth.uid == uid
                      && request.resource.data.keys().hasOnly(['nm', 'ph', 'pt', 'borrado'])
@@ -161,28 +175,43 @@ service cloud.firestore {
       allow read: if isSignedIn() && (request.auth.uid == uid || isStaff() || isOwner());
       // El dueño puede escribir cualquier ficha de barbero.
       allow create, delete: if isOwner();
-      // Un barbero sólo puede tocar SU propia ficha, y sólo los campos que
-      // escribe desde "Mi perfil en la web": nombre (que usa en la tarjeta de la
-      // landing), foto, teléfono, Instagram y descripción.
+      // Un barbero sólo puede tocar SU propia ficha, y sólo el campo "foto"
+      // (y el nombre, que usa en la tarjeta de la landing). Antes era
+      // "if isOwner()" a secas, así que cuando un barbero subía su foto el
+      // write se denegaba, el error se tragaba un .catch y al recargar la
+      // página volvía la inicial: la foto nunca se guardaba.
       //
-      // "pd" NO va acá, aunque antes sí estaba. "pd" es el porcentaje que se
-      // queda el DUEÑO, y el barbero lo copiava en cada cobro (bsnap()), así
-      // que podía hacer, desde la consola del navegador:
+      // OJO: "pd" NO va acá, aunque en tu versión sí estaba. "pd" es el
+      // porcentaje que se queda el DUEÑO, y el barbero lo copiaba en cada
+      // cobro (bsnap()), así que podía hacer, desde la consola del navegador:
       //
       //     updateDoc(doc(db, "staff", miUid), { pd: 0 })
       //
-      // y a partir de ese momento todos sus cortes le quedaban íntegros: en el
-      // reparto del dueño figuraba 0% y la plata no aparecía. El reparto se
+      // y a partir de ese momento todos sus cortes le quedaban íntegros: en
+      // el reparto del dueño figuraba 0% y la plata no aparecía. El reparto se
       // cambia sólo desde Finanzas, que es una pantalla del dueño.
-      //
-      // (Antes era "if isOwner()" a secas, así que cuando un barbero subía su
-      // foto el write se denegaba, el error se tragaba un .catch y al recargar
-      // la página volvía la inicial: la foto nunca se guardaba. De ahí la rama
-      // propia para el propio barbero.)
       allow update: if isOwner()
                     || (request.auth.uid == uid
                         && request.resource.data.diff(resource.data).affectedKeys()
                              .hasOnly(['n', 'foto', 'tel', 'ig', 'desc']));
+    }
+
+    // ---------- la foto de cada barbero, sola ----------
+    //
+    // Antes la foto iba adentro de `config/barberos`, que es del dueño solo
+    // (ver arriba). El "Cambiar foto" del barbero hacía un setDoc ahí y se
+    // denegaba siempre: el error se tragaba con un .catch, la foto se guardaba
+    // en `users/` y `staff/`, y la web seguía mostrando el cartel [Foto].
+    //
+    // Acá la foto vive en su propio documento: se LEE sin sesión (la landing
+    // tiene que mostrarla al que no está logueado) y solo la ESCRIBE el propio
+    // barbero, y solo el campo "foto". Nada más de la configuración queda
+    // expuesto.
+    match /fotoBarbero/{uid} {
+      allow read: if true;
+      allow create, update: if isSignedIn() && request.auth.uid == uid
+                            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['foto']);
+      allow delete: if isSignedIn() && request.auth.uid == uid;
     }
 
     match /turnos/{id} {
@@ -200,12 +229,13 @@ service cloud.firestore {
       //
       // Es la única colección que se había quedado sin la rama de staff;
       // /ocupados, /espera y /activos ya la tenían.
-      // La hora tiene que tener FORMA de hora. Antes el "create" no miraba
-      // ningún campo: un cliente registrado podía escribir un turno con
-      // "t": "<img src=x onerror=...>" y ese HTML se dibujaba crudo en la Agenda
-      // del dueño y del barbero. Probado con tests/xss.js: el payload corría y
-      // window.__pwn quedaba en 1. Con el formato cerrado, el dato que llega ya
-      // no puede ser marcado.
+      //
+      // Y además se fuerza el FORMATO de la fecha y de la hora (nada de HTML).
+      // Con el formato cerrado, el dato que llega ya no puede ser marcado:
+      // antes un cliente podía dejar
+      //   "t": "<img src=x onerror=...>" y ese HTML se dibujaba crudo en la
+      // Agenda del dueño y del barbero (probado con tests/xss.js: el payload
+      // corría y window.__pwn quedaba en 1).
       allow create: if isSignedIn()
                     && (request.resource.data.uid == request.auth.uid || isBarberoOrOwner())
                     && request.resource.data.t.matches('^[0-2][0-9]:[0-5][0-9]$')
@@ -213,9 +243,10 @@ service cloud.firestore {
 
       // El cliente puede mover o cancelar SU turno pendiente, y nada más.
       //
-      // Antes: "if isBarberoOrOwner() || (resource.data.uid == request.auth.uid)"
-      // para update Y delete, sin mirar qué campos cambian ni en qué estado
-      // estaba. Eso le permitía a un cliente, desde el SDK:
+      // Antes (y en tu versión era): "if isBarberoOrOwner() || (resource.data
+      // .uid == request.auth.uid)" para update Y delete, sin mirar qué campos
+      // cambian ni en qué estado estaba. Eso le permitía a un cliente, desde
+      // el SDK:
       //
       //   * marcarse el turno como "hecho" y ponerle el precio que quisiera
       //     (inflaba el Dashboard del dueño y el promedio por corte);
@@ -236,9 +267,8 @@ service cloud.firestore {
                             || (resource.data.st != 'pend'
                                 && request.resource.data.diff(resource.data).affectedKeys()
                                      .hasOnly(['nm']))));
-
-      // Borrar un turno es tarea de quien administra. Un cliente ya cancela con
-      // "st": "cancel", que queda registrado; el borrado físico queda arriba.
+      // Borrar un turno es cosa de quien administra. Con "st": "cancel", que
+      // queda registrado, el borrado físico queda arriba.
       allow delete: if isBarberoOrOwner();
     }
 
@@ -246,24 +276,6 @@ service cloud.firestore {
       allow read: if true;
       allow create: if isSignedIn() && (request.resource.data.uid == request.auth.uid || isBarberoOrOwner());
       allow update, delete: if isSignedIn() && (resource.data.uid == request.auth.uid || isBarberoOrOwner());
-    }
-
-    // La foto de cada barbero, sola.
-    //
-    // Antes la foto iba adentro de `config/barberos`, que es del dueño solo
-    // (ver arriba). El "Cambiar foto" del barbero hacía un setDoc ahi y se
-    // denegaba siempre: el error se tragaba con un .catch, la foto se guardaba
-    // en `users/` y `staff/`, y la web seguía mostrando el cartel [Foto].
-    //
-    // Acá la foto vive en su propio documento: se LEE sin sesión (la landing
-    // tiene que mostrarla al que no está logueado) y solo la ESCRIBE el propio
-    // barbero, y solo el campo "foto". Nada más de la configuración queda
-    // expuesto.
-    match /fotoBarbero/{uid} {
-      allow read: if true;
-      allow create, update: if isSignedIn() && request.auth.uid == uid
-                            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['foto']);
-      allow delete: if isSignedIn() && request.auth.uid == uid;
     }
 
     match /activos/{id} {
@@ -283,22 +295,20 @@ service cloud.firestore {
     }
 
     // Las ventas y los gastos son de un barbero concreto ("bid"). La UI ya
-    // filtraba por "bid == me.uid", pero la regla no: antes un barbero podía,
-    // desde el SDK, borrar ventas del dueño o cambiarle el precio a un cobro
-    // ajeno.
+    // filtraba por "bid == me.uid", pero la regla no: con "read, write: if
+    // isBarberoOrOwner()" un barbero podía, desde el SDK, borrar ventas del
+    // dueño o cambiarle el precio a un cobro ajeno.
     //
     // OJO con la rama del dueño: "bsnap()" devuelve el "bid" del BARBERO al que
-    // se le asigna el cobro (un id del tipo "b1"), no el uid del dueño; y los
-    // gastos del dueño ni siquiera llevan "bid" (main.js los escribe con c, m,
-    // d y hechoEn). Por eso la condición es "isOwner() ||", no "isOwner() &&".
+    // se le cobró (un id de tipo "b1"), no el uid del dueño. Por eso la rama
+    // del dueño no lleva la comparación de "bid".
     match /ventas/{id} {
       allow read: if isOwner() || (isStaff() && resource.data.bid == request.auth.uid);
       allow create: if isOwner() || (isStaff() && request.resource.data.bid == request.auth.uid);
       allow update, delete: if isOwner() || (isStaff() && resource.data.bid == request.auth.uid);
     }
 
-    // Los gastos los carga el dueño (son del negocio, no del barbero), así que
-    // acá no hay rama de barbero.
+    // Los gastos los carga el dueño desde el negocio. No hay rama de barbero.
     match /gastos/{id} {
       allow read, create, update, delete: if isOwner();
     }

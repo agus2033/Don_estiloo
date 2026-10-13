@@ -75,8 +75,33 @@ const CONSEJOS = {
     await page.waitForSelector(".lb-wcard", { timeout: 30000 });
     await page.waitForTimeout(2500);
     if (preparar) await preparar(page);
-    await page.addScriptTag({ url: AXE });
-    await page.waitForFunction(() => !!window.axe, { timeout: 20000 });
+    /* El axe se baja de un CDN, y ese CDN se cae. Cuando pasaba, la prueba
+       moría con un "Error" a secas en el informe de la suite, sin decir que lo
+       que había fallado era bajar la librería y no la accesibilidad: es
+       distinto que haya un problema de red a que el sitio tenga
+       violaciones. Se reintenta y, si sigue sin bajar, se dice exactamente eso
+       en vez de un error genérico. */
+    let bajo = false;
+    let ultimo = "";
+    for (let intento = 1; intento <= 3 && !bajo; intento++) {
+      try {
+        await page.addScriptTag({ url: AXE });
+        await page.waitForFunction(() => !!window.axe, { timeout: 20000 });
+        bajo = true;
+      } catch (e) {
+        ultimo = String(e && e.message ? e.message : e).slice(0, 120);
+        console.log(`  (no se pudo bajar axe del CDN, intento ${intento}/3: ${ultimo})`);
+        await page.waitForTimeout(3000 * intento);
+      }
+    }
+    if (!bajo) {
+      throw new Error(
+        "NO SE PUDO BAJAR axe-core del CDN (" +
+          AXE +
+          "). No es un problema de accesibilidad del sitio, es que la librería " +
+          "no llegó. El informe de esta prueba NO es válido en este intento.",
+      );
+    }
     const r = await page.evaluate(async () => {
       const res = await window.axe.run(document, {
         runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "best-practice"] },

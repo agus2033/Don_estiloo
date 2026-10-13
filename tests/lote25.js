@@ -86,6 +86,74 @@ async function entrar(b, email, pass, ancho = 1400) {
     ok(/allow read: if true/.test(bloque), "y se lee sin sesión (la landing la necesita)");
   }
   ok(/request\.resource\.data\.pt <= 50;/.test(reglas), "el tope de puntos de las reglas es 50");
+
+  /* ---------- los agujeros que la auditoría cerró ----------
+     El 13/10 el archivo de reglas fue reescrito a mano y quedó con una versión
+     anterior a la auditoría: sin fotoBarbero, con el tope en 20 y con los
+     agujeros abiertos. Como la app NO falla visible cuando un write se deniega
+     (el error se traga con un .catch), nadie se enteró salvo por el cartel de
+     "Máximo 20 puntos". Estos chequeos existen para que la regresión no pueda
+     volver a colarse en silencio.
+
+     Se comparan las reglas sin comentarios, porque los comentarios se reescriben
+     seguido y no deben poder cambiar el veredicto. */
+  const codigo = (t) =>
+    t
+      .split(/\r?\n/)
+      .map((s) => s.replace(/\/\/.*$/, "").trim())
+      .filter(Boolean)
+      .join("\n");
+  const cod = codigo(reglas);
+  const bloque = (etq) => {
+    const i = cod.indexOf("match " + etq + " {");
+    if (i < 0) return null;
+    const j = cod.indexOf("match /", i + 1);
+    return j < 0 ? cod.slice(i) : cod.slice(i, j);
+  };
+  const bConfig = bloque("/config/{docId}");
+  const bStaff = bloque("/staff/{uid}");
+  const bTurnos = bloque("/turnos/{id}");
+  const bVentas = bloque("/ventas/{id}");
+  const bGastos = bloque("/gastos/{id}");
+
+  ok(bConfig !== null && /allow write: if isOwner\(\);/.test(bConfig), "config: escribir es sólo del dueño (un barbero no puede reescribir precios ni horarios)");
+  ok(bConfig !== null && /docId != 'finanzas' \|\| isStaff\(\) \|\| isOwner\(\)/.test(bConfig), "config/finanzas pide ser del equipo, no sólo estar registrado");
+  ok(bStaff !== null && /hasOnly\(\['n', 'foto', 'tel', 'ig', 'desc'\]\)/.test(bStaff), "un barbero sólo toca su ficha y sin el campo pd (el porcentaje del dueño)");
+  ok(bTurnos !== null && /t\.matches\(/.test(bTurnos) && /d\.matches\(/.test(bTurnos), "turnos: el alta valida el formato de fecha y hora (cierra el HTML inyectado)");
+  ok(bTurnos !== null && /allow delete: if isBarberoOrOwner\(\);/.test(bTurnos), "turnos: borrar es del equipo (el cliente no borra un turno cobrado)");
+  ok(bTurnos !== null && /resource\.data\.st in \['pend', 'cancel'\]/.test(bTurnos), "turnos: el cliente no puede marcarse el turno como hecho ni ponerle el precio");
+  /* Ojo con contar. La comprobación anterior buscaba dos apariciones de
+     "resource.data.bid == request.auth.uid", pero ese texto va DENTRO de
+     "request.resource.data.bid" del create: contaba una de más y seguía
+     dando verde con una venta abierta al equipo entero. Ahora se exige que en
+     el bloque no aparezca ni un "isBarberoOrOwner()" y que cada línea con
+     isStaff() lleve además el filtro por bid. */
+  ok(
+    bVentas !== null &&
+      !/isBarberoOrOwner\(\)/.test(bVentas) &&
+      bVentas
+        .split("\n")
+        .filter((s) => /isStaff\(\)/.test(s))
+        .every((s) => /bid == request\.auth\.uid/.test(s)) &&
+      (bVentas.match(/^\s*allow /gm) || []).length === 3,
+    "ventas: un barbero sólo toca las suyas, no las del dueño",
+    bVentas,
+  );
+  ok(bGastos !== null && /allow read, create, update, delete: if isOwner\(\);/.test(bGastos), "gastos: los carga sólo el dueño");
+  /* Y al revés de la anterior: endurecer de más también rompe. Si el create de
+     ventas pierde la rama del barbero, un barbero que cobra un corte en la
+     barbería no puede registrar la venta y la plata se pierde. */
+  ok(
+    bVentas !== null &&
+      bVentas
+        .split("\n")
+        .filter((s) => /allow create/.test(s))
+        .some((s) => /isStaff\(\)/.test(s)),
+    "ventas: el barbero todavía puede registrar un cobro",
+    bVentas,
+  );
+  ok(!/allow read, write: if isBarberoOrOwner\(\);\s*\n\s*\}\s*\n\s*match \/gastos/.test(cod), "no quedó un 'read, write: if isBarberoOrOwner()' sin filtrar antes de gastos");
+
   ok(/u\.id !== OWNER_UID/.test(src), "el dueño se excluye de la lista de clientes");
   ok(!/data-act="fotoBarbero"/.test(src), "el botón Foto del dueño ya no está");
   ok(!/const negTab/.test(src), "el apartado Negocio ya no existe");
