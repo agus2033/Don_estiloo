@@ -576,3 +576,123 @@ vacía), que es lo que de verdad prueba que la cancelación se ignora.
 Medido en el navegador, a 390 px: en Ingreso y en Registro quedan un solo botón
 por pantalla, los dos de Google; `<img src="facebook.png">` = 0 en las dos; el
 único logo que se pide es `assets/google.png`.
+
+---
+
+## 31. Scroll suave, la foto en el panel del dueño, y los mensajes
+
+Cuatro cosas del dueño. Tres eran bugs y una es una decisión.
+
+### 1. El menú baja de un salto
+
+El dueño pidió que tocar un link del menú baje despacio. Hacían falta **dos**
+cosas, y con la segunda es fácil olvidarse:
+
+1. `scroll-behavior: smooth` en el elemento que **scrollea**, que en la landing es
+   la raíz del documento, no `.lb`.
+2. `scroll-margin-top` en las secciones, porque el encabezado es `position:
+   sticky` y mide 105 px: sin el margen, al terminar el scroll el título queda
+   tapado y parece un error de maquetado.
+
+Y el apagado por `prefers-reduced-motion` tiene que estar en `html`. El que ya
+estaba iba sobre `.lb *`, y **nunca hizo efecto**: `scroll-behavior` se lee en el
+elemento que scrollea, no en sus descendientes.
+
+Medido en las seis secciones del menú, a 1280×900: el `h2` queda entre Y=193 y
+Y=212, con la barra terminando en Y=105. Ninguna tapada. Con
+`prefers-reduced-motion`, `scroll-behavior` computado = `auto`.
+
+### 2. La foto del barbero no le aparecía al dueño
+
+El mismo dato, la misma base, dos resultados distintos: **en la web se veía, en
+el panel no**.
+
+Motivo: `BARS` se asignaba en **tres** lugares y sólo uno pasaba por `conFotos`.
+Los otros dos la pisaban con la lista cruda de `config/barberos`, que viene con
+`foto: ""`, y como corrían después ganaban:
+
+| lugar | ¿usaba `conFotos`? |
+|---|---|
+| el listener de módulo (el de la landing) | sí |
+| el listener de `setup()`, que es el que se registra **con sesión** | **no** |
+| el que reaplica los datos al cambiar de sesión | **no** |
+
+Sin sesión sólo corre el primero, y por eso la web andaba. Con sesión corren los
+tres y gana el crudo: la tarjeta del dueño mostraba la inicial "R".
+
+Y el caso raro que reportó el dueño —"cuando vuelvo a la web tampoco aparece"— tiene
+la misma causa: `verWebOn()` no cierra los listeners del panel, así que al volver
+a la web el listener crudo seguía vivo y seguía ganando.
+
+Las **tres** asignaciones pasan ahora por `conFotos`. Medido con sesión: la
+tarjeta del dueño trae `<img>` cargada, y la tarjeta de la web muestra la foto al
+volver del panel.
+
+### 3. "Mandé un mensaje y no se cargó"
+
+**El mensaje sí estaba.** Comprobado contra Firestore: había 3. La pantalla decía
+"Todavía no mandó nadie un mensaje desde la web".
+
+La consulta estaba a nivel de módulo, detrás de un `if (isOwner())`:
+
+```js
+if (isOwner())            // ← se evalúa UNA vez, al cargar el módulo
+  onSnapshot(             //    cuando `me` todavía es null
+    query(collection(db, "mensajes"), …),
+```
+
+`isOwner()` daba `false`, la consulta **nunca se abría** y no había reintento.
+El mismo patrón que en el punto 2: una condición que se evalúa una sola vez y
+mata una suscripción para siempre.
+
+Ahora se abre dentro de `setup()`, donde ya se sabe quién es el dueño, y con
+`ls()` para que se baje al cerrar sesión.
+
+Medido: "3 mensajes sin responder", con los tres nombres y correos reales.
+
+### 4. El tope de los puntos de bienvenida seguía en 20
+
+No lo reportó nadie: apareció revisando el punto 3, que está a veinte líneas del
+código que lo acota.
+
+`PTSRv = Math.min(20, …)`, con un comentario que decía "acotado a 20 porque las
+reglas piden `pt <= 20`". Pero las reglas piden **50** desde el lote 25 y el panel
+lo muestra como 50.
+
+O sea: el dueño escribía 40 puntos de bienvenida, el guardado daba bien, y a cada
+persona nueva se le daban **20**. Sin error, sin aviso, y el panel diciendo otra
+cosa. Ahora es 50 y el comentario dice por qué.
+
+### Por qué ninguna prueba lo agarró
+
+Las tres veces el patrón fue el mismo: **una comprobación mira un lugar del
+código y el bug está en otro.**
+
+- La foto: `setFotos` pasaba a mano la forma que el *consumidor* espera.
+- Los mensajes: `if (isOwner())` da `true` si lo probás en un archivo donde `me`
+  ya está cargado.
+- Los puntos: la prueba del lote 25 miraba el panel (`Math.min(50, v)`), no el
+  lugar donde se recortan.
+
+### Las pruebas nuevas
+
+`tests/lote25.js` (82 comprobaciones, era 73):
+
+- **todas** las asignaciones de `BARS` pasan por `conFotos`. Mira las ocho, no
+  una: el bug estaba en las dos que nadie mira.
+- La consulta de `mensajes` está dentro de `setup()`, y hay exactamente **una**
+  en el archivo (se cuenta `query(collection(…`, no `mensajes` a secas, que
+  también aparece en el `addDoc` del formulario y en el `deleteDoc` del botón).
+- El tope de bienvenida es 50 y no queda el de 20.
+- La raíz scrollea suave, las secciones tienen `scroll-margin-top`, y
+  `prefers-reduced-motion` lo apaga en `html`.
+
+**Se comprobó que muerden**: se reintrodujo cada bug sobre una copia del archivo
+y las siete comprobaciones lo detectaron.
+
+### Lo que NO es código
+
+Que la barbería no aparezca en Google (la cuarta captura) no se arregla desde
+aquí: es el **Perfil de Negocio de Google**, que hay que crear a mano. El sitio
+tiene sus datos estructurados y su SEO local listo, pero Google no muestra un
+sitio en el mapa local sin ese perfil.

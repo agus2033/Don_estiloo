@@ -270,6 +270,84 @@ async function entrar(b, email, pass, ancho = 1400) {
     "y el ícono de Facebook ya no se referencia en ninguna pantalla",
   );
 
+  /* ---------- BARS SIEMPRE tiene que pasar por conFotos ----------
+     La foto del barbero llegaba a la web y no al panel, con el mismo dato en la
+     misma base. Motivo: había TRES lugares que asignaban `BARS`, y sólo uno
+     usaba `conFotos`. Los otros dos la pisaban con la lista cruda de
+     `config/barberos`, que viene con `foto: ""`, y como corrían después ganaban.
+
+     - el listener de módulo (el de la landing): sí usaba conFotos
+     - el listener de setup(), que es el que se registra con sesión: NO
+     - el que reaplica los datos al cambiar de sesión: NO
+
+     Con sesión, la foto desaparecía del panel del dueño (la tarjeta mostraba la
+     inicial "R"). Y al volver a la web desde el panel los dos listeners siguen
+     vivos, así que el crudo seguía ganando y la foto tampoco aparecía en la
+     landing: exactamente lo que reportó el dueño.
+
+     La comprobación mira TODAS las asignaciones, no una en particular: el bug
+     estaba justamente en las dos que nadie mira. */
+  const asignBARS = [...src.matchAll(/BARS\s*=[^=]/g)].map((m) =>
+    src.slice(Math.max(0, m.index - 220), m.index + 100),
+  );
+  const crudas = asignBARS.filter((c) => !/BARS = \[\]|Array\.isArray\(l\)|conFotos\(/.test(c));
+  ok(
+    crudas.length === 0,
+    `las ${asignBARS.length} asignaciones de BARS pasan todas por conFotos`,
+    crudas.map((c) => "-> " + c.trim().slice(-100)).join("   ||   "),
+  );
+  ok(
+    asignBARS.filter((c) => /conFotos\(/.test(c)).length >= 4,
+    "y hay al menos cuatro: la de módulo, la de fotoBarbero, la de setup() y la del cambio de sesión",
+    String(asignBARS.filter((c) => /conFotos\(/.test(c)).length),
+  );
+
+  /* ---------- la consulta de mensajes tiene que estar dentro de setup() ----------
+     Estaba a nivel de módulo, detrás de un `if (isOwner())`. Eso se evaluaba una
+     sola vez, cuando el módulo termina de cargar y `me` todavía es `null`: la
+     consulta NUNCA se abría, y no había reintento.
+
+     El efecto: la pantalla decía siempre "Todavía no mandó nadie un mensaje",
+     con la base llena. Comprobado contra Firestore: había 3 mensajes y la
+     pantalla mostraba 0. */
+  const cuerpoSetup = src.slice(
+    src.indexOf("function setup(a)"),
+    src.indexOf('onSnapshot(doc(db, "config", "servicios")'),
+  );
+  ok(cuerpoSetup.includes('collection(db, "mensajes")'), "la consulta de `mensajes` se abre dentro de setup(), donde ya se sabe quién es el dueño");
+  /* Ojo con el alcance: `mensajes` también aparece en el `addDoc` del formulario
+     de contacto y en el `deleteDoc` del botón de borrar. Lo que se cuenta es la
+     CONSULTA (`query(collection(...`), que es la que abre el listener: si
+     aparece dos veces, una de las dos está en el lugar donde no se abre. */
+  const consultasMensajes = src.match(/query\(\s*collection\(db, "mensajes"\)/g) || [];
+  ok(consultasMensajes.length === 1, "y hay exactamente UNA consulta a `mensajes` en todo el archivo", consultasMensajes.length + " consultas");
+
+  /* ---------- el tope de los puntos de bienvenida ----------
+     Estaba en 20, que era el de una versión vieja de las reglas. Las reglas hoy
+     piden `pt <= 50` y el panel lo muestra como 50, así que los puntos de
+     bienvenida se recortaban en silencio: el dueño escribía 40, el guardado daba
+     bien, y a cada persona nueva se le daban 20. Sin error y sin aviso. */
+  ok(/PTSRv = Math\.min\(50,/.test(src), "los puntos de bienvenida se acotan a 50, como las reglas", (src.match(/PTSRv = Math\.min\(\d+,[^)]*\)/) || [])[0]);
+  ok(!/PTSRv = Math\.min\(20,/.test(src), "y no queda el tope viejo de 20");
+
+  /* ---------- el scroll de las secciones ----------
+     El dueño pidió que bajar a una sección no sea un salto. Hacían falta DOS
+     cosas, y con la segunda es fácil olvidarse: el comportamiento suave va en el
+     elemento que SCROLLEA (la raíz del documento, no `.lb`), y además hace
+     falta `scroll-margin-top`, porque el encabezado es `sticky` y sin ese margen
+     el título de la sección queda tapado.
+
+     Y el apagado por `prefers-reduced-motion` tiene que estar en `html`: puesto
+     sobre `.lb *` no hace nada, porque `scroll-behavior` se lee en el elemento
+     que scrollea. */
+  const lc = fs.readFileSync(path.join(__dirname, "..", "src", "landing.css"), "utf8");
+  ok(/^html\s*\{\s*scroll-behavior:\s*smooth/m.test(lc), "la raíz scrollea suave");
+  ok(/scroll-margin-top:/.test(lc), "y las secciones tienen scroll-margin-top para que el encabezado fijo no las tape");
+  ok(
+    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?html\s*\{[\s\S]*?scroll-behavior:\s*auto/.test(lc),
+    "con prefers-reduced-motion vuelve a ser instantáneo, y el apagado está en `html`",
+  );
+
   /* ---------- 2. el dueño ---------- */
   console.log("\n=== 2. panel del dueño ===");
   const b = await chromium.launch();

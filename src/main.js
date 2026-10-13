@@ -790,7 +790,10 @@ function unsub() {
      cambió la sesión. Sin esto la landing queda sin servicios, sin equipo
      y sin horarios apenas cerrás sesión. */
   if (PUB.servicios) S = PUB.servicios;
-  if (PUB.barberos) BARS = PUB.barberos;
+  /* conFotos y no la lista cruda: al volver a la web desde el panel (o al cerrar
+     sesion) esto corre, y si deja BARS sin la foto del barbero, la tarjeta
+     de la web vuelve a decir "[Foto]". */
+  if (PUB.barberos) BARS = conFotos(PUB.barberos);
   if (PUB.horario) CF = PUB.horario;
   navOpen = 0;
 }
@@ -959,15 +962,21 @@ function setup(a) {
          de cuenta y el texto del formulario de registro); ahora salen de
          acá, para que el dueño los cambie desde Servicios/Premios y se
          reflejen en todos los paneles. */
-      /* Acotado a 20 porque las reglas de Firestore piden `pt <= 20` al crear
+      /* Acotado a 50 porque las reglas de Firestore piden `pt <= 50` al crear
          el documento del usuario. El campo del panel acepta 4 dígitos, así
-         que un Dueño que escribiera 25 dejaba la cuenta creada en Auth pero
-         con el setDoc de `users/{uid}` rechazado: el alta parecía funcionar,
-         la promesa no, y el panel se quedaba en "Cargando tu cuenta…" para
+         que un Dueño que escribiera 60 dejaría la cuenta creada en Auth pero
+         con el setDoc de `users/{uid}` rechazado: el alta parecería funcionar,
+         la promesa no, y el panel se quedaría en "Cargando tu cuenta…" para
          siempre, sin error. Ahora el tope se aplica acá y el dueño se entera
-         al guardar. */
+         al guardar.
+
+         OJO: este tope estaba en 20, que era el de una versión vieja de las
+         reglas. Las reglas hoy piden 50 (y el panel lo muestra como 50), así
+         que acá se recortaban en silencio los puntos de bienvenida: el dueño
+         escribía 40, el panel aceptaba el guardado, y a cada persona nueva se
+         le daban 20. Sin error y sin aviso. */
       if (d.ptsRegistro !== undefined && +d.ptsRegistro >= 0)
-        PTSRv = Math.min(20, Math.max(0, Math.floor(+d.ptsRegistro) || 0));
+        PTSRv = Math.min(50, Math.max(0, Math.floor(+d.ptsRegistro) || 0));
       if (+d.cancelHs >= 0 && d.cancelHs !== undefined) CHSv = +d.cancelHs;
       if (Array.isArray(d.premios) && d.premios.length)
         PRv = d.premios.map((p) => ({ n: p.n, p: +p.p || 0 }));
@@ -997,7 +1006,19 @@ function setup(a) {
   ls(
     doc(db, "config", "barberos"),
     (x) => {
-      BARS = x.exists() && x.data().l ? x.data().l : [];
+      /* conFotos, O SINO: sin él, esta línea metía la lista CRUDA y dejaba la
+         foto (y el oficio, la descripción) afuera.
+
+         Es el mismo documento que escucha el listener de módulo (el que usa la
+         landing), pero acá se registraba otro aparte para los que tienen
+         sesión. Este corre DESPUÉS, así que ganaba: con sesión, `BARS` quedaba
+         sin la foto y el dueño veía la inicial "R" en su pantalla de Barberos.
+         Sin sesión el de módulo era el único y todo andaba.
+
+         Y el caso raro que reportó el dueño: al volver a la web desde el panel
+         los dos listeners siguen vivos, así que el crudo seguía gaining y la
+         foto tampoco aparecía en la landing. */
+      BARS = conFotos(x.exists() && x.data().l ? x.data().l : []);
       if (sel.b && !BARS.some((b) => b.id === sel.b)) {
         sel.b = "";
         sel.d = "";
@@ -1012,6 +1033,31 @@ function setup(a) {
   if (ad) {
     ls(collection(db, "users"), (x) => (UA = mp(x)));
     ls(collection(db, "espera"), (x) => (EW = mp(x)));
+    /* Los mensajes del formulario de la landing.
+
+       ACÁ, DENTRO DE setup(), Y NO AFUERA. Estaba a nivel de módulo, detrás de
+       un `if (isOwner())`. Eso se evaluaba una sola vez, cuando el módulo
+       termina de cargar y `me` todavía es `null`: `isOwner()` daba false, la
+       consulta nunca se abría y no había forma de reintentarla.
+
+       El efecto: la pantalla de Mensajes decía SIEMPRE "Todavía no mandó nadie
+       un mensaje", con la base llena. Comprobado contra Firestore: había 3
+       mensajes y la pantalla mostraba 0.
+
+       Se abre acá porque acá es donde ya se sabe quién es el dueño, y con `ls()`
+       para que se baje con el resto cuando se cierra sesión. */
+    if (isOwner())
+      ls(
+        query(collection(db, "mensajes"), orderBy("fecha", "desc"), limit(100)),
+        (x) => {
+          MSGS = x.docs.map((d) => ({ id: d.id, ...d.data() }));
+          R();
+        },
+        () => {
+          MSGS = [];
+          R();
+        },
+      );
     if (isOwner())
       ls(
         doc(db, "config", "finanzas"),
@@ -1080,28 +1126,29 @@ onSnapshot(doc(db, "config", "servicios"), (x) => {
     datosLlegos();
   }
 });
-/* Los mensajes del formulario de la landing. Las reglas sólo dejan leerlos al
-   dueño (FIRESTORE_RULES.txt), así que la consulta se abre únicamente con
-   sesión de dueño: si se pidieran sin sesión, Firestore la rechazaría y el
-   resto de las consultas de la pantalla quedarían colgadas. */
-if (isOwner())
-  onSnapshot(
-    query(collection(db, "mensajes"), orderBy("fecha", "desc"), limit(100)),
-    (x) => {
-      MSGS = x.docs.map((d) => ({ id: d.id, ...d.data() }));
-      R();
-    },
-    () => {
-      MSGS = [];
-      R();
-    },
-  );
+/* La consulta de `mensajes` NO está acá: vive dentro de setup(), en el bloque
+   del dueño. Estaba antes a nivel de módulo, detrás de un `if (isOwner())` que
+   se evaluaba con `me === null` y por eso nunca se abría. Ver el comentario en
+   setup(). */
 onSnapshot(doc(db, "config", "barberos"), (x) => {
   PUB.barberos = x.exists() && x.data().l ? x.data().l : [];
-  if (!me) {
-    BARS = conFotos(PUB.barberos);
-    datosLlegos();
-  }
+  /* BARS se arma SIEMPRE, haya sesión o no.
+
+     Estaba acá adentro de un `if (!me)`, con la misma intención que las demás
+     consultas de esta zona (son las que alimentan la landing y el cartel de
+     "cargando"). El problema es que BARS no es sólo de la landing: el dueño la
+     usa en su pantalla de Barberos para buscar la foto de cada uno
+     (`farmFoto = (BARS.find(...) || {}).foto`).
+
+     Y con el dueño dentro, `!me` es false, así que BARS se quedaba vacío y las
+     tarjetas del panel mostraban la inicial ("R") en vez de la foto, aunque el
+     barbero la tuviera subida. La foto sí llegaba a la landing (sin sesión), y
+     no llegaba al panel: el mismo dato, dos resultados distintos.
+
+     El `if (!me)` que sí tiene que seguir es el de `datosLlegos()`, que es la
+     barrera del loader de la landing. */
+  BARS = conFotos(PUB.barberos);
+  if (!me) datosLlegos();
 });
 /* El perfil público de cada barbero, aparte de la lista de config/barberos. Es
    una consulta propia y no se mezcla con la de la lista: si vinieran en el

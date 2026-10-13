@@ -4,6 +4,37 @@
    Prefijo .lb- para no colisionar con la landing vieja (.lnd-*).
    ===================================================================== */
 
+/* ---------- 0. SCROLL DE LAS SECCIONES ----------
+
+   El dueño pidió que tocar un link del menú baje hasta la sección despacio,
+   y no de un salto.
+
+   Dos cosas hacen falta, y con la segunda es fácil olvidarse:
+
+   1. `scroll-behavior: smooth` en el elemento que SCROLLEA, que en la landing
+      es la raíz del documento (html), no `.lb`. Por eso va acá y no dentro
+      del bloque `.lb`.
+
+   2. `scroll-margin-top` en las secciones. El encabezado es `position: sticky`
+      y mide 64px (+ el safe-area del notch). Sin este margen, al terminar el
+      scroll la barra queda TAPANDO el título de la sección: "NUESTROS
+      SERVICIOS" queda a medio camino y parece un error de maquetado.
+
+   Con prefers-reduced-motion el salto tiene que volver a ser instantáneo: para
+   alguien con vestibulares, un scroll de 600 ms es una forma de marearse. El
+   bloque del final del archivo lo apaga, pero OJO que lo hace sobre `html`, no
+   sobre `.lb *`: `scroll-behavior` en un descendiente no cambia cómo se mueve
+   la raíz, que es la que scrollea. */
+html {
+  scroll-behavior: smooth;
+}
+/* La altura del encabezado, más un respiro. 64px es el min-height de .lb-hd-in,
+   más el safe-area-inset-top del notch. */
+.lb-sec[id],
+#inicio {
+  scroll-margin-top: calc(78px + env(safe-area-inset-top, 0px));
+}
+
 /* ---------- 1. TOKENS ---------- */
 :root {
   /* superficies */
@@ -3846,13 +3877,20 @@ body,
 
 /* ---------- 20. REDUCED MOTION ---------- */
 @media (prefers-reduced-motion: reduce) {
+  /* El scroll de la raíz va acá, y NO dentro del bloque de `.lb *` de más
+     abajo. `scroll-behavior` se lee en el elemento que scrollea, y en la
+     landing ese elemento es la raíz del documento: ponerlo en un descendiente
+     no cambia nada. Ese `scroll-behavior: auto !important` sobre `.lb *` estaba
+     desde antes y nunca hizo efecto. */
+  html {
+    scroll-behavior: auto !important;
+  }
   .lb *,
   .lb *::before,
   .lb *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
   }
   .lb .reveal {
     opacity: 1;
