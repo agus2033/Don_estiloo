@@ -348,6 +348,49 @@ async function entrar(b, email, pass, ancho = 1400) {
     "con prefers-reduced-motion vuelve a ser instantáneo, y el apagado está en `html`",
   );
 
+  /* ---------- las políticas leen los datos, no los escriben ----------
+     El dueño pidió que los puntos, las horas de cancelar y los premios cambien
+     solos cuando los cambia desde su panel.
+
+     Antes la sección de puntos tenía los premios escritos a mano: "Descuento 20%
+     (25 puntos), Descuento 50% (50 puntos) y Corte gratis (100 puntos)". Los
+     reales eran 20, 40 y 100. O sea que el documento —que es un contrato— decía
+     un premio que no existía, con un precio que no era el. Y no se notaba,
+     porque los puntos por corte y las horas SÍ salían de la configuración: dos
+     de cada tres estaban bien, y el que estaba mal era el menos visible.
+
+     Estas comprobaciones buscan números con unidad ESCRITOS a mano dentro de
+     polH(). Si vuelve a aparecer "25 puntos" o "5 horas" en el texto, el bug
+     volvió. */
+  const pol = src.slice(src.indexOf("function polH()"), src.indexOf("const cuerpo = { resumen"));
+  /* Se buscan sobre el CÓDIGO, no sobre el texto entero. El bloque de polH()
+     lleva comentarios que nombran cada fuente, y si se buscara en todo el
+     archivo, borrar el código y dejar el comentario daría verde: es el mismo
+     problema de una afirmación que pasa con un selector roto, que ya mordió una
+     vez en este repo. Los comentarios también traen números de ejemplo ("25
+     puntos"), que no son un error. */
+  const polCodigo = pol.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+  const aMano = [...new Set(polCodigo.match(/\b\d+\s*(puntos|horas|hora|%)\b/g) || [])];
+  ok(aMano.length === 0, "en las políticas no hay ningún número de puntos u horas escrito a mano", JSON.stringify(aMano));
+  const debeLeer = [
+    ["los puntos por corte", /polPuntos\(PTSv\)/],
+    ["los puntos de bienvenida", /polPuntos\(PTSRv\)/],
+    ["las horas de cancelar", /\$\{CHSv\}/],
+    ["los premios", /polLista\(premios\)/],
+    ["el horario del local", /lbHorarioTxt\(""\)/],
+  ];
+  /* Ojo con comparar con `re.source`: eso devuelve el patrón CON los paréntesis
+     escapados ("polPuntos\\(PTSv\\)"), que no aparece literalmente en el
+     archivo, y la comprobación daba verde sin encontrar nada. */
+  const faltan = debeLeer.filter(([, re]) => !re.test(polCodigo)).map(([q]) => q);
+  ok(faltan.length === 0, "y las cinco cosas que cambia el dueño salen de la configuración", faltan.join(", "));
+  /* Un premio vacío no puede dejar una lista vieja: si el dueño no cargó
+     premios, el documento lo dice. */
+  ok(
+    /premios\.length[\s\S]{0,120}Por el momento no hay premios/.test(pol),
+    "si no hay premios cargados, lo dice en vez de mostrar la lista de antes",
+  );
+
   /* ---------- 2. el dueño ---------- */
   console.log("\n=== 2. panel del dueño ===");
   const b = await chromium.launch();

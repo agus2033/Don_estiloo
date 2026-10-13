@@ -696,3 +696,106 @@ Que la barbería no aparezca en Google (la cuarta captura) no se arregla desde
 aquí: es el **Perfil de Negocio de Google**, que hay que crear a mano. El sitio
 tiene sus datos estructurados y su SEO local listo, pero Google no muestra un
 sitio en el mapa local sin ese perfil.
+
+Las políticas leen los datos de la configuración en vez de escribirlos
+
+Lo pidió el dueño: que cuando cambie los puntos, las horas de cancelar, etc., el
+documento de políticas, condiciones y privacidad se actualice solo.
+
+LO QUE HABÍA
+
+En la sección "PUNTOS Y PREMIOS" los premios estaban escritos a mano:
+
+  Descuento 20% (25 puntos), Descuento 50% (50 puntos) y Corte gratis
+  (100 puntos).
+
+Los reales, en Firestore, eran 20, 40 y 100.
+
+O sea que el documento —que es un contrato con la persona que se registra— decía
+un premio que no existía, con un precio que no era el. Y no se notaba: los puntos
+por corte y las horas de cancelación SÍ salían de la configuración. Dos de cada
+tres estaban bien, y el que estaba mal era justamente el más invisible.
+
+LO QUE AHORA SE LEE DE LA CONFIGURACIÓN
+
+| en las políticas | de dónde sale |
+|---|---|
+| puntos por corte | `PTSv` |
+| puntos de bienvenida | `PTSRv` |
+| horas para cancelar sin cargo | `CHSv` |
+| premios y sus puntos | `PRv` |
+| horario del local | `lbHorarioTxt("")` |
+
+Los dos primeros ya salían de la configuración; los premios, los de bienvenida y
+el horario, no.
+
+Ayudantes nuevos, para que todo se lea igual:
+
+- `polPuntos(n)` — "1 punto" / "5 puntos", con el singular bien puesto.
+- `polLista(arr)` — "A", "A y B", "A, B y C". La conjunción antes del último es
+  lo que hace que una lista de premios se lea como enumerada en español.
+
+**Si no hay premios cargados, el documento lo dice** ("Por el momento no hay
+premios canjeables cargados") en vez de mostrar la lista de antes. Un documento
+que promete algo que no existe es peor que uno que avisa que no hay.
+
+### Probado de punta a punta
+
+Con la configuración real, cambiando los valores **desde el panel del dueño**
+(sin tocar una línea de código) y mirando el modal después:
+
+| | antes | después de cambiar | |
+|---|---|---|---|
+| puntos por corte | 5 | 12 | **"Ganás 12 puntos por cada corte completado"** |
+| horas de cancelar | 5 h | 8 h | **"hasta 8 horas antes"** |
+| premios | 20 / 40 / 100 | sin tocar | quedaron iguales |
+
+Y al volver a la configuración original, el documento volvió a decir 5 y 5.
+
+### Sobre la versión del documento
+
+`POL_VERSION` y `POL_FECHA` siguen a mano, y el comentario ahora aclara **qué** es
+la versión: es la versión del **texto**, no de los datos. Cambiar los puntos o los
+premios no obliga a subirla, porque el documento no se editó. Se sube cuando
+cambia una redacción, se agrega o saca una sección, o se cambia qué datos se
+piden: ahí sí cambian los términos que la persona aceptó.
+
+### Las pruebas
+
+`tests/lote25.js` (85 comprobaciones, era 82):
+
+- No hay **ningún** número de puntos u horas escrito a mano dentro de `polH()`.
+- Las cinco cosas salen de la configuración.
+- Si no hay premios, el documento lo dice.
+
+**Se comprobó que muerden:** se reintrodujeron los seis bugs (premios a mano,
+puntos clavados, bienvenida clavada, horas clavadas, horario borrado, aviso de
+"no hay premios" borrado) y las siete comprobaciones los detectaron.
+
+Y se corrigió una debilidad de la propia comprobación: buscaba sobre el texto
+entero de `polH()`, que incluye comentarios que nombran cada fuente. Borrar el
+código dejando el comentario daba verde — el mismo problema de una afirmación que
+pasa con un selector roto, que ya mordió una vez en este repo. Ahora los chequeos
+corren sobre el bloque **sin comentarios**, y eso también se verificó.
+
+### Un error mío, en esta corrida
+
+Para probar que los valores se movían solos tuve que cambiar los puntos de
+verdade en la base: 5 → 12 y 5 h → 8 h. **El script que tenía que restaurarlos
+falló** y los datos quedaron cambiados. Los restauré a mano por la API de
+Firestore y lo verifiqué:
+
+  antes de restaurar: {"pts":12, "cancelHs":8}
+  después:           {"pts":5,  "cancelHs":5}
+  RESTAURADO CORRECTAMENTE: true
+
+Los premios (20/40/100) y los 20 puntos de bienvenida no se tocaron en ningún
+momento.
+
+Causa del fallo: el script intentaba volver a Ajustes escribiendo el hash, pero
+estaba en la web y el router no navegaba; el click a la pestaña tenía `.catch()`,
+que se tragó el error, y los `fill` siguientes escribieron sobre nada.
+
+sw.js v12 -> v13.
+
+Suite: 37 pruebas, 871 comprobaciones, 0 en rojo.

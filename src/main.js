@@ -5760,7 +5760,16 @@ function revH() {
   );
 }
 /* Versión y fecha de las políticas. Se muestran en el encabezado del modal
-   y en el aviso de cambios: si se tocan, subí la versión. */
+   y en el aviso de cambios: si se tocan, subí la versión.
+
+   OJO con qué es "la versión": es la versión del TEXTO del documento, no de los
+   datos que muestra. Los puntos por corte, las horas de cancelación, los premios
+   de bienvenida y el horario salen de la configuración y cambian solos; cambiar
+   esos valores NO obliga a subir la versión, porque el documento no se editó.
+
+   Se sube cuando se toca una redacción: se agrega o saca una sección, se
+   cambia qué datos se piden, o se cambia una fórmula legal. Ahí sí cambian los
+   términos que la persona aceptó. */
 const POL_VERSION = "1.0";
 const POL_FECHA = "7 de octubre de 2026";
 const PAIS = "Argentina";
@@ -5795,11 +5804,47 @@ const polSvg = (k, cls) =>
    config.js, se ve la etiqueta con el hueco, no un dato falso. */
 const POL_PEND = (t) => `<span class="pol-pend" title="Falta completar en config.js">${esc(t)}</span>`;
 
+/* Los datos que las políticas dicen, salen de la misma configuración que el
+   panel del dueño edita. Nada de escribir un número en dos lugares.
+
+   Antes la sección de puntos tenía los premios clavados a mano ("Descuento 20%
+   (25 puntos), Descuento 50% (50 puntos) y Corte gratis (100 puntos)"): si el
+   dueño cambiaba un premio desde Servicios/Premios, la web decía una cosa y el
+   panel otra, y las políticas —que son un contrato— quedaban mintiendo. Los
+   puntos por corte y las horas de cancelación ya salían de la configuración;
+   faltaban los premios, los de bienvenida y el horario.
+
+   Se arman con estos helpers para que todos se lean igual:
+
+   - PTSv    puntos por corte completado
+   - PTSRv   puntos de bienvenida al crear la cuenta
+   - PRv     premios: [{ n: nombre, p: puntos que cuesta }]
+   - CHSv    horas antes para cancelar sin cargo
+   - lbHorarioTxt("")  horario general del local */
+
+const polPuntos = (n) => `${n} ${n === 1 ? "punto" : "puntos"}`;
+
+/* "A", "A y B", "A, B y C". La conjunción antes del último es lo que hace que
+   una lista de premios se lea como enumerated en español. */
+const polLista = (arr) =>
+  arr.length === 1 ? arr[0] : arr.slice(0, -1).join(", ") + " y " + arr[arr.length - 1];
+
 function polH() {
   /* Tarjeta de "en resumen": ícono + título + texto. */
   const it = (ic, t, d) => `<div class="pol-card">${polSvg(ic)}<div><h2 class="ft-h">${t}</h2><p>${d}</p></div></div>`;
   /* Sección numerada del documento. */
   const num = (i, t, cuerpo) => `<div class="pol-num"><span class="pol-num-n" aria-hidden="true">${i}</span><h4 id="h-${i}">${t}</h4></div>${cuerpo}`;
+
+  /* Los tres datos que el dueño cambia y que antes estaban escritos a mano.
+     Los tres leen de la configuración viva, así que cambian solos.
+
+     - premios: si la lista está vacía NO se inventa una línea con datos
+       falsos; se dice que por ahora no hay. Las políticas son un contrato: lo
+       que no existe no se escribe.
+     - horario: `lbHorarioTxt("")` devuelve "" (string) cuando no hay ningún día
+       abierto, y un objeto cuando sí. Por eso el chequeo de truthy. */
+  const premios = PRv.map((p) => `<b>${esc(p.n)}</b> (${polPuntos(p.p)})`);
+  const horarioTxt = lbHorarioTxt("") || "";
 
   const resumen = `<h3 class="pol-h3">EN RESUMEN</h3>
     <div class="pol-grid">
@@ -5876,11 +5921,13 @@ function polH() {
     ${num(8, "MENORES DE EDAD", `<p>Si sos menor de 18 años, reservá con autorización de tu madre, padre o tutor, que pueden pedir el acceso o el borrado de tus datos.</p>`)}`;
 
   const condiciones = `<h3 class="pol-h3">CONDICIONES DEL SERVICIO</h3>
-    ${num(9, "TURNOS, CANCELACIONES Y FALTAS", `<p>Podés cancelar o reprogramar desde <b>Mis turnos</b> hasta <b>${CHSv} horas</b> antes. Si no te presentás, avisá.</p>
+    ${num(9, "TURNOS, CANCELACIONES Y FALTAS", `<p>Podés cancelar o reprogramar desde <b>Mis turnos</b> hasta <b>${CHSv} ${CHSv === 1 ? "hora" : "horas"}</b> antes. Si no te presentás, avisá.</p>
+      ${horarioTxt ? `<p>Atendemos <b>${esc(horarioTxt.dias)}</b>, de <b>${esc(horarioTxt.horas)}</b>${horarioTxt.pausa ? ` (${esc(horarioTxt.pausa.toLowerCase())})` : ""}. Los turnos se sacan dentro de ese horario.</p>` : ""}
       <p>Si no te presentás y avisás, se registra una falta. Con faltas repetidas, el local puede pedirte una seña para reservar.</p>`)}
     ${num(10, "PUNTOS Y PREMIOS", `<ul class="pol-ul">
-        <li>Ganás <b>${PTSv} puntos</b> por cada corte completado. No se suman por turnos cancelados ni por faltas.</li>
-        <li><b>Descuento 20% (25 puntos)</b>, <b>Descuento 50% (50 puntos)</b> y <b>Corte gratis (100 puntos)</b>.</li>
+        <li>Ganás <b>${polPuntos(PTSv)}</b> por cada corte completado. No se suman por turnos cancelados ni por faltas.</li>
+        ${PTSRv > 0 ? `<li>Al crear tu cuenta te damos <b>${polPuntos(PTSRv)}</b> de bienvenida.</li>` : ""}
+        ${premios.length ? `<li>Los premios son: ${polLista(premios)}.</li>` : `<li><i>Por el momento no hay premios canjeables cargados.</i></li>`}
         <li>Al canjear se genera un código (por ejemplo <code>CB-4FK7</code>). Mostralo en la barbería: el barbero lo marca como usado y solo sirve una vez.</li>
         <li>Los puntos no tienen valor en dinero, no se transfieren y no se pierden al borrar tu cuenta.</li>
       </ul>
