@@ -27,6 +27,8 @@ const TODAS = [
   { n: "csp.sync", sesion: false, red: false },
   { n: "deploy.carga", sesion: false, red: false },
   { n: "visual", sesion: false, red: false },
+  { n: "accesibilidad", sesion: true, red: true },
+  { n: "img.vivas", sesion: false, red: true },
 
   /* red, sin cuenta */
   { n: "landing.web", sesion: true, red: false },

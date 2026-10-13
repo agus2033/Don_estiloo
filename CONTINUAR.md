@@ -1980,3 +1980,94 @@ ven actualizando.
       (trae `fotoBarbero` y el tope de 50).
 - [ ] **Cambiar la contraseña de las tres cuentas de prueba.**
 - [ ] Verificar que `codigobarber.com.ar/ACTIVAR_GOOGLE_FACEBOOK.md` da 404.
+
+---
+
+## 26. Las fotos no cargaban, y la accesibilidad en el teléfono
+
+### Las fotos: un 404 mío, tapado por una medición que mentía
+
+Todas las imágenes de la landing daban **404**. La causa: la transformación de
+Cloudinary quedó con el orden al revés. El formato es
+
+```
+.../upload/<transformación>/<versión>/<public_id>
+```
+
+y yo había puesto `.../upload/<versión>/<transformación>/<public_id>`. Comprobado
+contra el servicio: con el orden viejo HTTP 404, con el correcto HTTP 200.
+
+**Lo más incómodo es cómo se escondió.** El lote 25 ("el rendimiento bajó 32%")
+lo MIDIÓ con imágenes rotas: `tests/perf.movil.js` sumaba bytes y no miraba el
+código de respuesta, y una imagen rota son 357 bytes. El peso bajó, la
+medición quedó mejor, y el sitio se rompió. Cuando una medición mejora y el sitio
+no, la medición está mal.
+
+Con el orden bien, el ahorro real medido contra Cloudinary es de **48%**
+(95 KB → 49 KB en WebP). El 32% anterior era mentira.
+
+Nueva `tests/img.vivas.js` (18 checks): saca la función `imgCld` del código
+real, le pasa las 7 fotos que hay cargadas en la base y exige que cada una
+responda **200 y devuelva una imagen**. También comprueba que lo que no es de
+Cloudinary no se toque.
+
+### Accesibilidad: de 44 elementos con problemas a 0
+
+No se pudo traer el informe de PageSpeed (la API responde HTTP 429, cuota de la
+clave compartida), así que se corrió **axe-core**, que es el mismo motor que usa
+Lighthouse para esa categoría. Medido en móvil emulado (390×844):
+
+| pantalla | antes | después |
+|---|---|---|
+| landing | 39 elementos con problemas | **0 violaciones** |
+| ingreso | 4 | **0 violaciones** |
+| panel del dueño | 10 | **0 violaciones** |
+
+Lo que se corrigió:
+
+- **`#app` era un `<div>`**: todo el cuerpo de la página quedaba fuera de
+  cualquier landmark (37 elementos, el peor problema de los tres). Con
+  `<main id="app">` se puede saltar al contenido con el teclado o el lector de
+  pantalla. No cambia ni un píxel: `<main>` es `block` como `<div>`.
+- **El login tenía su propio `<main class="shell">`**: con el de `#app` quedaban
+  **dos** landmarks main en la misma pantalla, que es peor que ninguno. Pasó a
+  `<div class="shell">`.
+- **La foto del header** llevaba `aria-label` sobre un `<span>` sin rol: es un
+  atributo ARIA prohibido. Se le agregó `role="img"`.
+- **Encabezados que se saltaban un nivel**: `<h1>` seguido de `<h3>` (el widget
+  y la tarjeta de reservar, ahora `<h2>`) y los `<h4>` del pie (ahora
+  `<h2 class="ft-h">`, con el CSS actualizado).
+
+Nueva `tests/accesibilidad.js`: corre axe en las tres pantallas, en móvil, y
+falla si aparece cualquier violación.
+
+### Un bug de scroll que salió en el camino
+
+`landing.barberos` empezó a fallar en 390 px, siempre igual. No era la prueba:
+el cálculo de scroll de la ficha del barbero tomaba el borde inferior de
+`.lb-hd` como "dónde termina el header". Pero ese header es `sticky` **sólo
+dentro del alcance de su padre**: al scrollear lejos se despega y su `bottom`
+se va a **-2447**. Con eso, `arriba` daba -2435, la comparación nunca se
+cumplía y **el scroll no se hacía nunca**: al tocar una ficha en el celular la
+tarjeta quedaba con el remate cortado arriba.
+
+Ahora se mide el header que **realmente está tapando**; si no hay ninguno
+pegado, se deja un margen chico, porque un header que no se ve no puede tapar
+nada.
+
+Y la prueba, que pedía `top >= 60` suponiendo un header de 60 px, ahora mide el
+header que hay. No se aflojó la comprobación: se corrigió la suposición.
+
+### Dos cosas que se learnieron mirando
+
+**Un comentario JSX dentro de una plantilla sale literal.** Al cambiar un `<h3>`
+por `<h2>` se escribió `{/* ... */}` dentro de un `template literal` de
+JavaScript, que no es un comentario: es una expresión que vale `undefined`. Va
+como `<!-- ... -->`. (En el código hay siete `${/* ... */ expr ? a : b}` que sí
+son correctos: ahí el comentario va seguido de la expresión.)
+
+**El service worker servía código viejo a las pruebas.** `tests/accesibilidad.js`
+seguía reportando un `<h3>` que en el archivo ya era `<h2>`: el `main.js` salía
+de la caché del worker. Ahora la prueba desregistra el worker y vacía las cachés
+antes de medir. **Ojo: cualquier prueba que mida algo visual debería hacerlo,
+o puede estar midiendo la corrida anterior.**

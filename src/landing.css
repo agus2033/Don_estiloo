@@ -2976,7 +2976,7 @@ body[data-theme="light"] .wz-btn--pri:hover {
   gap: 14px;
   align-content: start;
 }
-.lb-wcard h3 {
+.lb-wcard h2 {
   font-size: clamp(1.5rem, 5vw, 2rem);
 }
 .lb-wpasos {

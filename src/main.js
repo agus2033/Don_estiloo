@@ -282,7 +282,13 @@ const imgCld = (u, ancho) => {
   const s = String(u || "");
   const m = s.match(/^https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/(v\d+)\/(.+)$/);
   if (!m) return s;
-  return `https://res.cloudinary.com/${s.split("/")[3]}/image/upload/${m[1]}/f_auto,q_auto,w_${Math.max(200, Number(ancho) || 800)}/${m[2]}`;
+  /* OJO con el ORDEN: la transformacion va ANTES de la version, no
+     despues. La url cruda es .../upload/v1791822041/codigo-barber-1/... y el
+     formato de Cloudinary es .../upload/<transformacion>/<version>/<public_id>.
+     Con la version primero daba 404 en TODAS las imagenes y ninguna se veia.
+     Comprobado contra el servicio: con el orden viejo, HTTP 404; con este,
+     HTTP 200. */
+  return `https://res.cloudinary.com/${s.split("/")[3]}/image/upload/f_auto,q_auto,w_${Math.max(200, Number(ancho) || 800)}/${m[1]}/${m[2]}`;
 };
 const bsnap = () => {
   if (!isOwner() && SB) return { bid: me.uid, bn: SB.n, pd: SB.pd };
@@ -3439,7 +3445,11 @@ function loginH() {
   const up = tab === "up",
     rec = tab === "rec";
   return `<div class="franja" aria-hidden="true"></div>
-<main class="shell">
+<!-- Antes esto era <main class="shell">. Con #app ahora siendo <main>,
+      el login se quedaba con DOS landmarks main en la misma pantalla, que es
+      peor que ninguno: axe marca "landmark-no-duplicate-main" y
+      "landmark-main-is-top-level". El rol lo aporta el <main> de index.html. -->
+      <div class="shell">
   <section class="hero" aria-label="Presentación">
     <div class="poste" aria-hidden="true"><span class="tapa sup"></span><div class="cuerpo"><div class="rayas"></div></div><span class="tapa inf"></span></div>
     <div class="hero__texto">
@@ -3450,7 +3460,7 @@ function loginH() {
         <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l5 5 9-10"/></svg>Sumá ${PTSv} puntos por cada corte</li>
         <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l5 5 9-10"/></svg>Canjeá descuentos y un corte gratis</li>
       </ul>
-      <h3 class="lab" style="margin-top:22px">Servicios y precios</h3>
+      <h2 class="lab" style="margin-top:22px">Servicios y precios</h3>
       <div class="pricing">${lines()}</div>
     </div>
   </section>
@@ -3667,7 +3677,11 @@ const lbResumen = () => {
 function lbWidget() {
   return `<div class="lb-widget" id="lbw">
     <div class="lb-widget-head">
-      <h3>Reservá tu turno</h3>
+      <!-- h2 y no h3: venía justo después del <h1> del héroe, así que un h3
+        se saltaba un nivel (axe: heading-order). El comentario va en HTML y no
+        en JSX ({/* */}) porque dentro de una plantilla de JavaScript un
+        comentario de JSX sale LITERAL en la página. -->
+     <h2>Reservá tu turno</h2>
       <span class="lb-prog-lbl">4 pasos</span>
     </div>
     <ol class="lb-steps">
@@ -3701,7 +3715,7 @@ function lbPaint() {
    estaba acá pasa a ser el modal: son los mismos 6 pasos. */
 function lbReservaCard() {
   return `<div class="lb-widget lb-wcard">
-    <h3>Reservá tu turno</h3>
+    <h2>Reservá tu turno</h2>
     <p class="lb-lead">Elegí servicio, barbero, día y horario. Te lleva menos de un minuto.</p>
     <!-- La lista de pasos (1 a 6) es decorativa: el asistente real ya los
          muestra con nombre arriba. En el celular ocupaba dos filas de
@@ -4055,10 +4069,23 @@ function lbAbre(giro, abrir) {
     tarjeta._lbT2 = setTimeout(() => {
       tarjeta._lbT2 = null;
       const r = tarjeta.getBoundingClientRect();
-      const hd = document.querySelector(".lb-hd");
-      /* +12 de aire para que el borde de la tarjeta no quede pegado al
-         header. Si el header no está, el default es 68. */
-      const arriba = (hd ? hd.getBoundingClientRect().bottom : 68) + 12;
+      /* Antes: `arriba` se sacaba del borde inferior de ".lb-hd". Ese número
+         es una trampa: el header de la landing es sticky Sólo dentro del
+         alcance de su padre, así que al scrollear lejos se despega y su
+         `bottom` se va en negativo (medido: -2447). Con eso `arriba` daba
+         -2435, la comparación `r.top < arriba` nunca se cumplía y el
+         scroll no se hacía nunca: al tocar una ficha en el celular la tarjeta
+         quedaba con el remate cortado arriba.
+
+         Ahora se mide el header que REALMENTE está tapando: si el <header>
+         de la app está pegado arriba, se usa su borde; si no hay ninguno
+         pegado, se deja un margen chico y nada más. Un header que no está
+         visible no puede tapar nada. */
+      const cab = [...document.querySelectorAll("header, .lb-hd")]
+        .map((h) => h.getBoundingClientRect())
+        .filter((q) => q.top >= -2 && q.bottom > 0 && q.bottom < window.innerHeight * 0.6)
+        .sort((a, b) => b.bottom - a.bottom)[0];
+      const arriba = (cab ? cab.bottom : 0) + 12;
       const abajo = window.innerHeight - 12;
       /* Prioridad al borde de arriba: lo que se tapa es el remate de la
          foto. Si además no entra por abajo, se prioriza que al menos se vea
@@ -4171,7 +4198,7 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
         ${x.tag ? `<p class="lb-sv-desc">${esc(x.tag)}</p>` : ""}
         <div class="lb-sv-ft"><span class="lb-sv-dur">${esc(x.tx)}</span><span class="lb-price">${$$(x.p)}</span></div>
         </div>
-      </article>`,
+      </div>`,
       ).join("")
     : `<p class="lb-empty">Todavía no hay servicios cargados.</p>`;
 
@@ -4346,7 +4373,7 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
         <div class="lb-car-vent">
         <div class="lb-car-viz">
           ${TESTS.map(
-            (t, i) => `<article class="lb-tst" role="group" aria-roledescription="diapositiva" aria-label="${i + 1} de ${TESTS.length}" aria-hidden="true">
+            (t, i) => `<div class="lb-tst" role="group" aria-roledescription="diapositiva" aria-label="${i + 1} de ${TESTS.length}" aria-hidden="true">
             <span class="lb-stars" role="img" aria-label="${Math.max(1, Math.min(5, t.estrellas || 5))} de 5 estrellas">${"<svg width='18' height='18' viewBox='0 0 24 24' fill='currentColor' aria-hidden='true'><path d='M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.3 5.9 20.6l1.4-6.8L2.2 9.1l6.9-.8z'/></svg>".repeat(Math.max(1, Math.min(5, t.estrellas || 5)))}</span>
             <blockquote>“${esc(t.texto || "")}”</blockquote>
             <footer>
@@ -4921,14 +4948,14 @@ function homeH() {
       <button class="pillb" data-act="go" data-args="${A("rev")}">${ult ? "Editar reseña" : "Dejar reseña"}</button>
     </div>` +
     /* ---------- premios y canjes: siguen debajo, no se pierden ---------- */
-    `<h3 class="lab" id="premios">Premios</h3><div class="card" style="padding:0">` +
+    `<h2 class="lab" id="premios">Premios</h3><div class="card" style="padding:0">` +
     PRv.map((p, i) => {
       const puede = U.pt >= p.p;
       return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 18px;border-bottom:1px solid var(--line)"><div><b>${esc(p.n)}</b><br><small>${p.p} puntos</small></div><button class="pillb" ${puede ? "" : "disabled"} data-act="redeem" data-args="${A(i)}">${cf === i ? "Confirmar canje" : "Canjear"}</button></div>`;
     }).join("") +
     `</div>` +
     (mine.length
-      ? `<h3 class="lab">Tu código de canje</h3>` +
+      ? `<h2 class="lab">Tu código de canje</h3>` +
         mine
           .map(
             (c) =>
@@ -5569,7 +5596,7 @@ const POL_PEND = (t) => `<span class="pol-pend" title="Falta completar en config
 
 function polH() {
   /* Tarjeta de "en resumen": ícono + título + texto. */
-  const it = (ic, t, d) => `<div class="pol-card">${polSvg(ic)}<div><h4>${t}</h4><p>${d}</p></div></div>`;
+  const it = (ic, t, d) => `<div class="pol-card">${polSvg(ic)}<div><h2 class="ft-h">${t}</h2><p>${d}</p></div></div>`;
   /* Sección numerada del documento. */
   const num = (i, t, cuerpo) => `<div class="pol-num"><span class="pol-num-n" aria-hidden="true">${i}</span><h4 id="h-${i}">${t}</h4></div>${cuerpo}`;
 
@@ -5635,7 +5662,7 @@ function polH() {
 
   /* Los plazos de la Ley 25.326 van como chip, no como texto corrido: es lo
      primero que uno mira cuando va a ejercer un derecho. */
-  const der = (ic, t, p, d) => `<div class="pol-card">${polSvg(ic)}<div><h4>${t}</h4><p>${p}</p><span class="pol-dias">${d}</span></div></div>`;
+  const der = (ic, t, p, d) => `<div class="pol-card">${polSvg(ic)}<div><h2 class="ft-h">${t}</h2><p>${p}</p><span class="pol-dias">${d}</span></div></div>`;
   const derechos = `<h3 class="pol-h3">TUS DERECHOS</h3>
     ${num(7, "TUS DERECHOS", `<p>La Ley 25.326 de Protección de los Datos Personales te da estos derechos. Son gratuitos y tus puntos siguen contando aunque los ejerzas o borres la cuenta.</p>
       <div class="pol-grid pol-grid--4">
@@ -5750,9 +5777,9 @@ function turH() {
   };
   return (
     `<h1>MIS TURNOS</h1>` +
-    `<h3 class="lab">Próximos</h3>` +
+    `<h2 class="lab">Próximos</h3>` +
     (prox.length ? prox.map(card).join("") : "<p><small>Todavía no reservaste. Tocá “Reservar” para elegir un horario.</small></p>") +
-    `<h3 class="lab">Historial</h3>` +
+    `<h2 class="lab">Historial</h3>` +
     (hist.length ? hist.map(card).join("") : "<p><small>No hay turnos pasados.</small></p>")
   );
 }
@@ -5983,7 +6010,7 @@ function dashH() {
   return (
     `<div class="head" style="margin-top:0"><div><h1 style="margin-bottom:4px">Dashboard</h1><small>${new Date().toLocaleDateString("es-AR", { month: "long", year: "numeric" })} · todos los barberos</small></div></div><div class="chips" style="margin-bottom:18px">${P.map((p) => `<button class="chip ${per === p[0] ? "on" : ""}" aria-pressed="${!!(per === p[0])}" data-act="setPer" data-args="${A(p[0])}">${p[1]}</button>`).join("")}</div>` +
     `<div class="kpis">${kp("Cortes realizados", L.length)}${kp("Ingresos cobrados", $$(tot))}${kp("Promedio por corte", $$(L.length ? Math.round(tot / L.length) : 0))}${kp("Turnos cancelados", CL.length)}${kp("Descuentos otorgados", $$(dsc))}${kp("Canjes entregados", CU.length)}</div>` +
-    `<div class="card" style="margin-bottom:14px"><h3 class="lab" style="margin-top:0">Ventas por día · últimos 7 días</h3><div class="vchart">${dayChart.map((x) => `<div class="col ${x.d === ymd() ? "hoy" : ""}"><small>${$$(x.m)}</small><i style="height:${Math.max(3, Math.round((x.m / maxDay) * 150))}px"></i><small>${["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"][dow(x.d)]}</small></div>`).join("")}</div></div>` +
+    `<div class="card" style="margin-bottom:14px"><h2 class="lab" style="margin-top:0">Ventas por día · últimos 7 días</h3><div class="vchart">${dayChart.map((x) => `<div class="col ${x.d === ymd() ? "hoy" : ""}"><small>${$$(x.m)}</small><i style="height:${Math.max(3, Math.round((x.m / maxDay) * 150))}px"></i><small>${["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"][dow(x.d)]}</small></div>`).join("")}</div></div>` +
     `<div class="grid b"><div><h2 style="margin-top:26px">Ventas por servicio</h2>${bars(by, maxBy)}<h2>Medio de pago</h2>${Object.keys(md).length ? medBar() : "<p><small>Todavía no hay cortes en este período.</small></p>"}</div><div><div class="head"><h2>Registro de cortes</h2><button data-act="exportar" ${L.length ? "" : "disabled"}>Descargar CSV</button></div>` +
     (L.length
       ? '<div class="scr">' +
@@ -6082,7 +6109,7 @@ function cliH() {
           hsel = selU ? CH[selU.id] : null;
         if (!selU)
           return `<div class="card"><small>Elegí un cliente de la lista para ver su detalle.</small></div>`;
-        return `<div class="card"><div style="display:flex;gap:14px;align-items:center;margin-bottom:14px">${selU.foto ? `<img src="${imgCld(esc(selU.foto), 200)}" alt="" width="64" height="64" style="border-radius:50%;object-fit:cover;border:2px solid var(--brass)">` : `<span class="aval">${esc((selU.nm || "?")[0].toUpperCase())}</span>`}<div><b style="font:700 26px 'Barlow Condensed';text-transform:uppercase">${esc(selU.nm)}</b><br><small>${esc(selU.ph || "—")}</small></div></div><div class="grid3"><div class="kv"><small>Puntos</small><b>${selU.pt}</b></div><div class="kv"><small>Cortes</small><b>${(hsel || []).length}</b></div><div class="kv"><small>Faltas</small><b>${selU.ns || 0}</b></div></div><h3 class="lab">Historial</h3>` +
+        return `<div class="card"><div style="display:flex;gap:14px;align-items:center;margin-bottom:14px">${selU.foto ? `<img src="${imgCld(esc(selU.foto), 200)}" alt="" width="64" height="64" style="border-radius:50%;object-fit:cover;border:2px solid var(--brass)">` : `<span class="aval">${esc((selU.nm || "?")[0].toUpperCase())}</span>`}<div><b style="font:700 26px 'Barlow Condensed';text-transform:uppercase">${esc(selU.nm)}</b><br><small>${esc(selU.ph || "—")}</small></div></div><div class="grid3"><div class="kv"><small>Puntos</small><b>${selU.pt}</b></div><div class="kv"><small>Cortes</small><b>${(hsel || []).length}</b></div><div class="kv"><small>Faltas</small><b>${selU.ns || 0}</b></div></div><h2 class="lab">Historial</h3>` +
           (!own
             ? `<small>Este detalle lo administra el dueño.</small>`
             : hsel == null
@@ -6183,7 +6210,7 @@ function finH() {
         "</div>"
       : "");
   const gastosLista =
-    '<h3 class="lab" style="margin-top:0">Gastos</h3>' +
+    '<h2 class="lab" style="margin-top:0">Gastos</h3>' +
     (GL.length
       ? GL.map(
           (g) =>
@@ -6191,7 +6218,7 @@ function finH() {
         ).join("")
       : "<p><small>Todavía no hay gastos en este período.</small></p>");
   const gastoForm = `<div class="card" style="margin-top:14px"><input id="gc" placeholder="Concepto (insumos, alquiler…)" maxlength="40" value="${esc(gx.c)}" data-in="gIn" data-args="${A("c", "@el")}"><input id="gm" inputmode="numeric" placeholder="Monto $" maxlength="8" value="${esc(gx.m)}" data-in="gIn" data-args="${A("m", "@el")}"><button class="main" style="margin-top:0" data-act="gAdd">+ Agregar gasto</button></div>`;
-  const tablaBarb = `<h3 class="lab" style="margin-top:0">Porcentaje por barbero</h3>` +
+  const tablaBarb = `<h2 class="lab" style="margin-top:0">Porcentaje por barbero</h3>` +
     (own && fe
       ? `<div class="card"><div class="bwrap"><div class="clin chead" style="grid-template-columns:44px 1.4fr .6fr 1fr .5fr 1fr"><span></span><span>Barbero</span><span>Cortes</span><span>Facturado</span><span>%</span><span style="text-align:right">Le corresponde</span></div>` +
         (GR.length
@@ -6278,7 +6305,7 @@ function footer() {
       .map((d) => D[d])
       .join(" · ");
   $("#ft").innerHTML =
-    `<div class="ft"><div><div class="fb"><img src="${LOGO}" alt="" width="48" height="48"><div><b>${esc(NOMBRE)}</b><small>Turnos online y puntos por cada visita</small></div></div></div><div><h4>Horarios</h4><p>${dd}</p><p>${hm(CF.a)} a ${hm(CF.c)} hs</p></div><div class="ft-cont"><h4>Contacto</h4><div class="ft-soc">${WA_LISTA.map(
+    `<div class="ft"><div><div class="fb"><img src="${LOGO}" alt="" width="48" height="48"><div><b>${esc(NOMBRE)}</b><small>Turnos online y puntos por cada visita</small></div></div></div><div><h2 class="ft-h">Horarios</h2><p>${dd}</p><p>${hm(CF.a)} a ${hm(CF.c)} hs</p></div><div class="ft-cont"><h2 class="ft-h">Contacto</h2><div class="ft-soc">${WA_LISTA.map(
     (w) =>
       `<p><a href="https://wa.me/${esc(w.num)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none"><img class="ic-wa" src="assets/whatsapp-96.png" alt="" width="22" height="22" loading="lazy">WhatsApp ${esc(w.n)} · ${esc(w.num)}</a></p>`,
   ).join("")}<p><a href="https://www.instagram.com/${esc(INSTAGRAM)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none"><img class="ic-ig" src="assets/instagram-96.png" alt="" width="22" height="22" loading="lazy">@${esc(INSTAGRAM)}</a></p></div><p>Reservá desde la web, sin llamadas.</p></div></div><div class="fz">© ${new Date().getFullYear()} ${esc(NOMBRE)} · Desarrollado por <b>${esc(AUTOR)}</b> · <a href="#" data-act="openPol" style="color:#cbd3dc">Políticas</a> · <a href="#" data-act="openPol" style="color:#cbd3dc">Privacidad</a></div>`;

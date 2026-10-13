@@ -286,7 +286,12 @@
           <div class="mewrap">
             <button id="mebadge" data-act="toggleMebadge" aria-label="Menú de tu perfil" aria-expanded="false" aria-controls="pmenu" hidden>
               <span id="mefn"></span>
-              <span class="med" id="med"></span>
+              <!-- role="img" NO es adorno: sin él, el aria-label de este
+                 <span> es un atributo ARIA prohibido (axe lo marca como
+                 "serious") porque un <span> sin rol no admite nombre
+                 accesible. Decirle que ES una imagen le da sentido, y el
+                 texto que lo acompaña pasa a ser redundante para el lector. -->
+            <span class="med" id="med" role="img"></span>
             </button>
             <div id="pmenu" hidden></div>
           </div>
@@ -297,7 +302,14 @@
            vive acá, fuera de .hd: se ancla a la barra, no al encabezado. -->
       <div id="nmenu" hidden></div>
     </header>
-    <div id="app"></div>
+    <!-- El contenido va dentro de un <main>, no en un <div> suelto.
+     Con un div, TODO el cuerpo de la página quedaba fuera de cualquier
+     landmark: axe-core marcaba 37 elementos con "contenido fuera de
+     landmarks" y el documento entero con "debe tener un main". Para quien
+     navega con lector de pantalla, eso significa que no hay forma de saltar
+     al contenido: hay que recorrer el encabezado y el pie con el tabulador.
+     <main> es lo que permite ese salto, y no cambia ni un píxel. -->
+<main id="app"></main>
     <div id="wzm" hidden></div>
     <footer id="ft"></footer>
     <div id="mo" hidden></div>

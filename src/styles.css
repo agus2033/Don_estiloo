@@ -2028,7 +2028,7 @@ h1::after {
   gap: 28px;
   grid-template-columns: 1.5fr 1fr 1fr;
 }
-.ft h4 {
+.ft .ft-h {
   margin: 0 0 10px;
   font:
     600 15px "Barlow Condensed",
@@ -2054,7 +2054,10 @@ h1::after {
   .ft-soc {
     display: none;
   }
-  .ft-cont h4 {
+  .ft-cont .ft-h {
+    /* El selector cambió de `h4` a `.ft-h` porque el pie pasó de <h4> a <h2>
+       (para no saltarse niveles de encabezado). La fuente y el tamaño los
+       sigue poniendo `.ft .ft-h` de arriba; acá sólo va el margen. */
     margin-bottom: 0;
   }
 }

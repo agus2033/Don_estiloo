@@ -260,10 +260,29 @@ const completaBarberos = async (page, out, tag) => {
       const c = document.querySelector(".lb-barber--abierta");
       if (!c) return null;
       const r = c.getBoundingClientRect();
-      return { top: Math.round(r.top), bottom: Math.round(r.bottom), alto: Math.round(r.height), win: window.innerHeight };
+      /* Qué header está REALMENTE tapando arriba, en vez de suponer que
+         siempre hay uno de 60 px. El header de la landing es sticky sólo
+         dentro del alcance de su padre: al scrollear lejos se despega y no
+         tapa nada, y en ese caso la tarjeta puede arrancar 12 px más arriba,
+         que es lo correcto. El chequeo fijo de "60" fallaba por una
+         suposición que no siempre se cumple. */
+      const tapando = [...document.querySelectorAll("header, .lb-hd")]
+        .map((h) => h.getBoundingClientRect())
+        .filter((q) => q.top >= -2 && q.bottom > 0 && q.bottom < window.innerHeight * 0.6)
+        .sort((a, b) => b.bottom - a.bottom)[0];
+      return {
+        top: Math.round(r.top),
+        bottom: Math.round(r.bottom),
+        alto: Math.round(r.height),
+        win: window.innerHeight,
+        bordeHeader: tapando ? Math.round(tapando.bottom) : 0,
+      };
     });
     chk(
-      enVista && enVista.top >= 60 && enVista.bottom <= enVista.win + 4,
+      enVista &&
+        enVista.top >= Math.max(enVista.bordeHeader, 0) - 2 &&
+        enVista.top >= -2 &&
+        enVista.bottom <= enVista.win + 4,
       `${tag} · al abrir, la tarjeta entera queda a la vista`,
       JSON.stringify(enVista),
     );
