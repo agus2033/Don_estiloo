@@ -91,8 +91,8 @@ async function entrar(page, email, pass) {
   console.log("   nombre original: " + JSON.stringify(original));
   ok(!!original && original !== PRUEBA, "arranca con un nombre real");
 
-  await page.click("details.perfil > summary");
-  await page.waitForTimeout(500);
+  await page.click('[data-act="miPerfilWeb"]');
+    await page.waitForSelector("#pfNombre", { timeout: 15000 });
   await page.fill("#pfNombre", PRUEBA);
   await page.click('[data-act="guardarPerfil"]');
   await page.waitForTimeout(6000);
@@ -160,8 +160,8 @@ async function entrar(page, email, pass) {
   /* ---------- 5. restaurar ---------- */
   console.log("\n5. Se devuelve el nombre original");
   await entrar(page, env.BARBERO_EMAIL, env.BARBERO_PASSWORD);
-  await page.click("details.perfil > summary");
-  await page.waitForTimeout(500);
+  await page.click('[data-act="miPerfilWeb"]');
+    await page.waitForSelector("#pfNombre", { timeout: 15000 });
   await page.fill("#pfNombre", original);
   await page.click('[data-act="guardarPerfil"]');
   await page.waitForTimeout(6000);

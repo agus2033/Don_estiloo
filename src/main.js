@@ -452,7 +452,14 @@ const M = (o) => {
   $("#mok").focus();
 };
 const Mx = () => {
-  $("#mo").hidden = true;
+  const m = $("#mo");
+  m.hidden = true;
+  /* Se vacía el contenido, no sólo se oculta. La ventana de "Editar perfil"
+     tiene campos con texto: si quedaran en el documento, el formulario
+     seguía ahí (invisible) con lo que se había escrito, y con el teclado se
+     podía volver a llegar. `Mok` ya copió el callback a `f` antes de llamar
+     acá, así que limpiar no le afecta. */
+  m.innerHTML = "";
   mf = null;
   mr && mr.focus && mr.focus();
 };
@@ -509,16 +516,31 @@ let UA = [],
   agT = null, // formulario de turno agendado por el barbero
   ag = ymd(), // dashboard: cortes hechos, canjes usados, período
   BARS = [], // barberos publicados para que el cliente elija (config/barberos)
-  FOTOS = {}, // uid -> url de la foto, desde la coleccion publica fotoBarbero
+  /* Perfil público de cada barbero, por uid, desde la colección `fotoBarbero`.
+     Antes acá sólo vivía la foto; ahora es la ficha completa que el barbero
+     carga desde "Editar perfil". Se llama FOTOS por historia: el nombre quedó,
+     pero el contenido es el perfil entero. */
+  FOTOS = {},
   MSGS = [], // mensajes del formulario de contacto (solo los ve el dueño)
-  /* La foto que gana es la de `fotoBarbero`, que subió el propio barbero. La
-     de la ficha (`config/barberos`) queda de respaldo para las fichas viejas
-     que ya tenían foto puesta a mano. */
+  /* Arma la lista de equipo que ve el cliente.
+
+     `config/barberos` decide QUIÉNES están (eso es del dueño: él agrega y
+     quita). Lo que el barbero cargó de sí mismo está en `fotoBarbero/{uid}`, y
+     eso se encima por encima: gana lo que él puso, y la foto nunca queda
+     vacía si él subió una.
+
+     El `id` NO se puede pisar desde `pub` aunque venga: es la clave con la que
+     se lo buscó, y sin él la lista pierde el vínculo con su documento. */
   conFotos = (l) =>
-    (Array.isArray(l) ? l : []).map((b) => ({
-      ...b,
-      foto: (b && b.id && FOTOS[b.id]) || (b && b.foto) || "",
-    })),
+    (Array.isArray(l) ? l : []).map((b) => {
+      const pub = (b && b.id && FOTOS[b.id]) || {};
+      return {
+        ...b,
+        ...pub,
+        id: b && b.id,
+        foto: pub.foto || (b && b.foto) || "",
+      };
+    }),
   /* Copia de los últimos datos PÚBLICOS recibidos. Va en ESTA declaración
      y no como una línea suelta: fuera de la cadena de `let` sería una
      variable no declarada y en un módulo eso es ReferenceError al cargar
@@ -600,9 +622,11 @@ const ERR = {
   "auth/invalid-email": "El email no es válido.",
   /* Este texto era una nota de desarrollo pegada en un cartel de persona:
      le decía al dueño que abriera un archivo de reglas. Ahora dice qué pasó y
-     qué hacer, sin jerga. */
-  "permission-denied":
-    "No se pudo guardar ese cambio. Volvé a intentar; si sigue igual, avisale al dueño.).",
+     qué hacer, sin jerga.
+     OJO: "Volvé a intentar" era un consejo inútil cuando el motivo es que las
+     reglas de Firestore lo niegan, porque reintentar da exactamente lo mismo.
+     Para eso está motivoFirestore() más abajo, que mira el error de verdad. */
+  "permission-denied": "No se pudo guardar ese cambio: la base de datos no lo permitió.",
   "auth/network-request-failed":
     "Sin conexión. Revisá tu internet e intentá de nuevo.",
   "auth/too-many-requests":
@@ -653,6 +677,59 @@ const CANCELADO = new Set([
 ]);
 const esCancelacion = (e) => !!(e && CANCELADO.has(e.code));
 
+/* Por qué NO se pudo guardar, en criollo, según lo que el error dice de verdad.
+
+   Esto se agregó después de que el dueño se encontrara con un cartel que decía
+   "No se pudo guardar ese cambio. Volvé a intentar" y, en la consola del
+   navegador, esto:
+
+       Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+       POST https://firestore.googleapis.com/google.firestore.v1.Firestore/wr…
+
+   ERR_BLOCKED_BY_CLIENT NO lo genera la aplicación ni el servidor: lo genera
+   una extensión del navegador o los escudos de Brave/AdBlock. O sea que el
+   consejo de "volvé a intentar" era actively inútil: iba a fallar las cinco
+   veces.
+
+   Ojo con lo de arriba: si el bloqueo fuera del sitio, no faudrait tocar la
+   base. Esta función no promete una causa, promete distinguir las tres que se
+   pueden diferenciar desde el error, y en la que no se puede, decirlo. */
+function motivoFirestore(e) {
+  /* Se junta el mensaje de toda la cadena de causas: el error de red de
+     navegadores nuevos viene en e.cause, no en e.message, y por eso antes
+     no se veía por ningún lado. */
+  const cadena = [];
+  for (let x = e, i = 0; x && i < 6; i++) {
+    if (x.message) cadena.push(String(x.message));
+    if (x.code) cadena.push(String(x.code));
+    x = x.cause || x.originalError;
+  }
+  const txt = cadena.join(" | ");
+
+  if (/ERR_BLOCKED_BY_CLIENT|ERR_BLOCKED_BY_ADMINISTRATOR|ERR_BLOCKED_BY_RESPONSE/i.test(txt))
+    return "Alguna extensión del navegador (o los escudos de Brave) está bloqueando las consultas a Firebase. No es un problema del sitio: probá con una ventana de incógnito sin extensiones, o poné este dominio en la lista blanca del bloqueador.";
+  if (/Failed to fetch|NetworkError|ERR_INTERNET_DISCONNECTED|ERR_NAME_NOT_RESOLVED|load failed/i.test(txt))
+    return "No se pudo llegar a la base de datos. Revisá la conexión a internet e intentá de nuevo.";
+  if (e && e.code === "permission-denied")
+    return "Las reglas de Firebase no dejaron guardar este dato. Si sos el dueño o el barbero, hay que revisar el archivo FIRESTORE_RULES.txt y publicarlo de nuevo en Firebase Console.";
+  if (e && e.code === "unavailable")
+    return "Firebase no respondió a tiempo. Es momentsáneo: intentá de nuevo en un momento.";
+  if (e && e.code === "deadline-exceeded")
+    return "La operación tardó demasiado y se cortó. Intentá de nuevo.";
+  return "";
+}
+
+/* Aviso concreto cuando lo que falló fue publicar el perfil del barbero en la
+   web. El motivo se calcula una vez porque el error ya seGuardó aparte en
+   fotoTomar: no se vuelve a pedir. */
+let _motivoWeb = "";
+const setMotivoWeb = (e) => {
+  _motivoWeb = motivoFirestore(e);
+};
+const porQueWeb = () =>
+  _motivoWeb ||
+  "Lo más probable es que las reglas de Firebase en la consola estén viejas: hay que pegar el archivo FIRESTORE_RULES.txt actualizado y publicarlo.";
+
 const err = (e) => {
   if (!me && e.code === "permission-denied") return;
   /* Si la persona canceló, se sale en silencio: sin cartel, sin error en
@@ -664,10 +741,13 @@ const err = (e) => {
     "auth/invalid-email",
     "auth/weak-password",
   ].includes(e.code);
+  const porQue = motivoFirestore(e);
   M({
-    k: w ? "w" : "x",
-    h: w ? "Revisá los datos" : "No se pudo completar",
-    b: esc(ERR[e.code] || "Ocurrió un error. Intentá de nuevo.") + ` — ${esc(e.message || "")}`.slice(0, 180),
+    k: w || (porQue && !/no lo permitió/.test(ERR[e.code] || "")) ? "w" : "x",
+    h: w ? "Revisá los datos" : porQue ? "No se pudo guardar" : "No se pudo completar",
+    b:
+      esc(porQue || ERR[e.code] || "Ocurrió un error. Intentá de nuevo.") +
+      (porQue ? "" : ` — ${esc(e.message || "")}`.slice(0, 180)),
   });
 };
 function unsub() {
@@ -1521,44 +1601,22 @@ const W = {
   },
   /* El barbero editando los datos que salen en su tarjeta de la landing.
 
-     El bloque se llama "Mi perfil en la web" y vive en el DORSO de la ficha
-     (`<details class="perfil">`, ver lbFichaBarbero). El barbero no tiene
-     pantalla de Ajustes: `rtOk` no le deja abrir "cfg", que es del dueño. Por
-     eso la acción va a la web y le da vuelta a su propia tarjeta, que es
-     exactamente donde ese bloque está. */
+     ANTES: el formulario era un `<details>` arriba de todo en la Agenda, y esta
+     acción lo desplegaba, lo bajaba hasta el medio de la pantalla y le daba
+     foco. El dueño pidió que fuera una ventana emergente y que no se desplegara
+     en el dashboard. Ahora es un modal (#mo), el mismo que usan los avisos.
+
+     El barbero no tiene pantalla de Ajustes (`rtOk` no le deja abrir "cfg",
+     que es del dueño), así que esta acción es su única entrada al formulario.
+     Por eso avisa si no puede abrirla, en vez de no hacer nada. */
   miPerfilWeb() {
     perfilOpen = 0;
-    R();
-    /* El bloque ya está en el panel (lo imprime la Agenda del barbero), así
-       que no hay que ir a la web ni voltear ninguna tarjeta. */
-    const d = document.querySelector("details.perfil");
-    if (!d) {
-      /* Si no está dibujado (todavía no llegó la ficha), al menos se avisa,
-         en vez de no hacer nada como antes. */
-      M({
-        k: "w",
-        h: "Todavía no hay nada para editar",
-        b: "Tu perfil en la web aparece en la Agenda, abajo de tu nombre.",
-      });
-      return;
-    }
-    d.open = true;
-    d.scrollIntoView({ block: "center", behavior: "smooth" });
-    const c = d.querySelector("input, textarea");
-    if (c) c.focus();
-    /* La landing se pinta recién acá, así que la ficha se busca después. */
-    setTimeout(() => {
-      const mio = BARS.find((b) => b.id === me.uid);
-      if (!mio) return;
-      ACT.lbFlip(mio.id);
-      setTimeout(() => {
-        const d = document.querySelector(`details.perfil`);
-        if (d) {
-          d.open = true;
-          d.scrollIntoView({ block: "center" });
-        }
-      }, 260);
-    }, 260);
+    if (abrirPerfil()) return;
+    M({
+      k: "w",
+      h: "No se pudo abrir la edición",
+      b: "Cerrá y volvé a abrir el panel, o probá desde el ícono de tu foto, arriba a la derecha.",
+    });
   },
   /* Se mantiene el nombre viejo porque hay tests y textos que lo usan, pero
      ahora hace lo mismo que tocar la foto. */
@@ -1797,24 +1855,62 @@ const W = {
   async fotoTomar() {
     W.pickFoto(async (f) => {
       try {
+        busy(1, "Subiendo la foto…", 1);
         const x = await W.subirFoto(f, "perfil");
-        const u = { foto: x.url };
-        await setDoc(doc(db, "users", me.uid), u, { merge: true });
+        /* Se escribe en los tres lugares y se JUENTA EL RESULTADO DE CADA UNO
+           por separado, en vez de un Promise.all.
+
+           Con Promise.all, el primer rechazo tumba el resto: como
+           `fotoBarbero` daba 403 (la regla usaba diff(resource.data) en un
+           create, donde resource es null y la regla truena), ese 403 tumbaba
+           también el write a users/ y a staff/. Y el de fotoBarbero estaba
+           envuelto en un `.catch(() => {})`, o sea que el error se perdía y
+           la app decía "listo" con la foto sin publicar: la tarjeta de la web
+           seguía mostrando "[Foto]".
+
+           Ahora se escribe cada uno por su cuenta, se anota el que falló y al
+           final se avisa. Si la foto se guardó en el perfil pero NO llegó a la
+           web, el cartel dice exactamente eso y por qué. */
+        const fallos = [];
+        let errorWeb = null;
+        const guardar = async (que, fn, esWeb) => {
+          try {
+            await fn();
+          } catch (e) {
+            fallos.push(que);
+            if (esWeb) errorWeb = e;
+          }
+        };
+        await guardar("perfil", () => setDoc(doc(db, "users", me.uid), { foto: x.url }, { merge: true }));
         if (SB) {
           SB.foto = x.url;
-          /* Sin catch: antes el write a staff/ se denegaba por las reglas,
-             el error se tragaba acá y la foto se perdía al recargar. Si
-             vuelve a fallar, el aviso tiene que verse. */
-          await setDoc(doc(db, "staff", me.uid), { foto: x.url }, { merge: true });
+          await guardar("ficha de barbero", () => setDoc(doc(db, "staff", me.uid), { foto: x.url }, { merge: true }));
         }
-        /* La foto pública va a su propia colección, `fotoBarbero/{uid}`.
-           Antes se intentaba meterla dentro de `config/barberos`, que siempre
-           daba permiso denegado (config es del dueño solo) y el error se
-           tragaba con un .catch: la foto se guardaba y la web no la mostraba
-           nunca. Ver el comentario de arriba de este bloque. */
-        await setDoc(doc(db, "fotoBarbero", me.uid), { foto: x.url }, { merge: true }).catch(() => {});
+        await guardar("web", () => setDoc(doc(db, "fotoBarbero", me.uid), { foto: x.url }, { merge: true }), true);
+
+        busy(0);
+        FOTOS[me.uid] = { ...(FOTOS[me.uid] || {}), foto: x.url };
+        if (!fallos.length) {
+          msg = "Listo. Tu foto ya está en todos lados, también en la web.";
+          R();
+          return;
+        }
+        setMotivoWeb(errorWeb);
+        /* El caso importante es "web": la foto quedó en tu perfil y en tu
+           ficha, pero la landing no la muestra. */
         R();
-      } catch (e) { err(e); }
+        M({
+          k: "w",
+          h: fallos.length > 1 ? "La foto se guardó a medias" : "La foto no llegó a la web",
+          b:
+            (fallos.length > 1 ? "No se pudo guardar en: " + fallos.join(", ") + ".<br>" : "") +
+            "Quedó en tu panel, pero los clientes que reserven siguen viendo el cartel [Foto] en la web.<br><br>" +
+            porQueWeb(),
+        });
+      } catch (e) {
+        busy(0);
+        err(e);
+      }
     });
   },
   async entrar() {
@@ -4131,32 +4227,78 @@ function lbFlip(id) {
   lbAbre(giro, !abierta);
 }
 
-/* Ficha que ve el cliente en la landing. Se guarda en
-   config/barberos (única colección de perfil legible sin sesión) y no en
-   staff/{uid}, que exige sesión. La foto sí va a staff. */
+/* Ficha que ve el cliente en la landing.
+
+   ANTES era un `<details class="perfil">` que se abría EN EL DORSO, arriba de
+   todo, entre la tarjeta de tu nombre y el título "AGENDA". El dueño pidió que
+   sea una ventana emergente: al abrirlo, el formulario se colgaba en medio de
+   la pantalla y empujaba la agenda hacia abajo (con el móvil, que es donde
+   más se nota), y al guardar había que volver a buscar dónde quedó.
+
+   Ahora es un modal. El bloque inline desaparece de la agenda y los campos
+   viven en #mo, el mismo lugar que usan los avisos.
+
+   Se conservan los mismos ids (#pfNombre, #pfEsp, #pfDesc, #pfTel, #pfIg,
+   #pfRedes) porque guardarPerfil los lee por id, y el `maxlength` de cada
+   campo va en el HTML: el modal se inyecta una sola vez y se relee al abrir.
+
+   La descripción va como CONTENIDO del textarea, no como placeholder: con
+   placeholder, abrir y guardar sin tocarla vaciaba el campo en Firestore. */
 function perfilH() {
   const f = miFicha();
   const redes = (f.redes || [])
     .map((r) => (r.url ? (r.n || r.url) + " | " + r.url : ""))
     .join("\n");
-  /* La descripción va como CONTENIDO del textarea, no como placeholder:
-     con placeholder, abrir el panel y guardar sin tocarla vaciaba el
-     campo en Firestore. */
-  return `<details class="perfil" style="max-width:640px;margin-bottom:16px">
-  <summary style="cursor:pointer;font-weight:700">Mi perfil en la web</summary>
-  <p style="margin:8px 0 14px"><small>Estos datos salen en tu tarjeta del equipo, en la landing. Si los dejás vacíos, la tarjeta no muestra el botón de información.</small></p>
-  <div class="cols2">
+  return (
+    `<div class="mf-campos">` +
+    `<div class="cols2">
     <label class="campo"><span class="etq">Nombre</span><input class="entrada" id="pfNombre" value="${esc(f.n || (SB && SB.n) || "")}" maxlength="40"></label>
     <label class="campo"><span class="etq">Oficio / especialidad</span><input class="entrada" id="pfEsp" value="${esc(f.esp || f.especialidad || "")}" placeholder="Barbero, colorista…" maxlength="40"></label>
   </div>
   <label class="campo"><span class="etq">Descripción</span><textarea class="entrada" id="pfDesc" rows="3" maxlength="300" placeholder="Contá tu estilo, tu oficio, qué te gusta hacer.">${esc(f.desc || "")}</textarea></label>
   <div class="cols2">
-    <label class="campo"><span class="etq">WhatsApp</span><input class="entrada" id="pfTel" inputmode="tel" value="${esc(f.tel || "")}" placeholder="5493757xxxxxx"></label>
-    <label class="campo"><span class="etq">Instagram</span><input class="entrada" id="pfIg" value="${esc(f.ig || "")}" placeholder="usuario, sin @"></label>
+    <label class="campo"><span class="etq">WhatsApp</span><input class="entrada" id="pfTel" inputmode="tel" value="${esc(f.tel || "")}" placeholder="5493757xxxxxx" maxlength="24"></label>
+    <label class="campo"><span class="etq">Instagram</span><input class="entrada" id="pfIg" value="${esc(f.ig || "")}" placeholder="usuario, sin @" maxlength="40"></label>
   </div>
-  <label class="campo"><span class="etq">Otra red social</span><textarea class="entrada" id="pfRedes" rows="2" placeholder="una por línea: Nombre | https://…">${esc(redes)}</textarea></label>
-  <button class="boton primario" data-act="guardarPerfil" type="button">Guardar perfil</button>
-</details>`;
+  <label class="campo"><span class="etq">Otra red social</span><textarea class="entrada" id="pfRedes" rows="2" placeholder="una por línea: Nombre | https://…">${esc(redes)}</textarea></label>` +
+    `</div>`
+  );
+}
+
+/* Abre la ventana. Devuelve false si no hay con qué armarla, para que el que
+   la llama pueda avisar en vez de no hacer nada (que era lo que pasaba antes). */
+function abrirPerfil() {
+  if (!me) return false;
+  const m = $("#mo");
+  if (!m) return false;
+  mr = document.activeElement;
+  mf = null; /* el modal de perfil no es un aviso: al cerrar no dispara nada */
+  m.innerHTML =
+    `<div class="mb mb--ancho" role="dialog" aria-modal="true" aria-labelledby="pmh">` +
+    `<div class="pole"></div>` +
+    `<h2 id="pmh">Editar perfil</h2>` +
+    `<p class="mt"><small>Estos datos salen en tu tarjeta del equipo, en la web. Si los dejás vacíos, la tarjeta no muestra el botón de información.</small></p>` +
+    perfilH() +
+    `<div class="chips">` +
+    `<button class="main" data-act="guardarPerfil" type="button">Guardar</button>` +
+    `<button data-act="Mx" type="button">Cancelar</button>` +
+    `</div></div>`;
+  m.hidden = false;
+  busy(0);
+  /* El foco va al primer campo, no al botón: se abre para escribir. */
+  const c = m.querySelector("input, textarea");
+  c && c.focus();
+  return true;
+}
+
+/* Cierra la ventana de "Editar perfil".
+
+   OJO con el nombre: YA EXISTE un `ACT.cerrarPerfil`, que cierra el MENÚ del
+   encabezado (el dropdown con "Editar perfil" y "Cambiar foto"). Si este se
+   llamara igual, el botón "Cancelar" del modal dispararía el cierre del menú y
+   la ventana seguiría abierta, sin guardar nada y sin avisar. */
+function cerrarModalPerfil() {
+  Mx();
 }
 
 /* Los links sociales del header y del pie compacto se fueron: el pie se
@@ -5817,10 +5959,23 @@ const recH = () => {
    en vez de reventar, porque esta función se llama desde el render. */
 const miFicha = () => (me ? BARS.find((x) => x.id === me.uid) || {} : {});
 
-/* Guarda los datos de la tarjeta del landing.
-   async + await a propósito: setDoc devuelve una promesa, así que con un
-   try/catch sin await el error de las reglas de Firestore se escapaba como
-   rechazo sin capturar y la app decía "se guardó" sin haber guardado. */
+/* Guarda los datos que el barbero publica sobre sí.
+
+   DÓNDE VIVEN AHORA. Antes iban a `config/barberos`, dentro de la lista `l`, y
+   se escribían con un `Promise.all` junto a `staff/{uid}`. Eso fallaba siempre:
+   las reglas de Firebase no le dejaban a un barbero escribir su entrada de la
+   lista (comprobado con la sesión real del barbero: HTTP 403; el mismo pedido
+   con la sesión del dueño daba 200, así que no era el payload sino la regla).
+   Como `Promise.all` se cae con el primer rechazo, ese 403 tumbaba también el
+   write a `staff`, y el cartel decía "No se pudo completar" sin guardar nada.
+
+   Ahora el perfil va a SU PROPIO documento, `fotoBarbero/{uid}`: se lee sin
+   sesión (la landing lo necesita) y lo escribe sólo el propio barbero, y sólo
+   esos campos. `config/barberos` vuelve a ser del dueño solamente: él decide
+   quién está en el equipo.
+
+   Cada write va por separado y se anota el que falla, por lo mismo que en
+   fotoTomar: con Promise.all un solo rechazo esconde a los demás. */
 async function guardarPerfil() {
   if (!me) return;
   const id = me.uid;
@@ -5836,13 +5991,14 @@ async function guardarPerfil() {
         .map((l) => {
           const i = l.indexOf("|");
           const n = (i < 0 ? "" : l.slice(0, i)).trim();
-          const u = (i < 0 ? l : l.slice(i + 1)).trim();
+          const u = (i < 0 ? "" : l.slice(i + 1)).trim();
           return { n: n || u, url: u };
         })
         .filter((r) => r.url)
     : [];
+  const ficha = miFicha();
   const nueva = {
-    ...miFicha(),
+    ...ficha,
     n: val("#pfNombre") || (SB && SB.n) || "Barbero",
     esp: val("#pfEsp"),
     desc: val("#pfDesc"),
@@ -5850,31 +6006,64 @@ async function guardarPerfil() {
     ig: val("#pfIg").replace(/^@/, ""),
     redes,
   };
-  /* Si el barbero todavía no está en la lista pública (recién creado, o
-     la lista se vació), el map no lo iba a tocar y el guardado era un
-     no-op silencioso: se perdía todo. Se agrega al final. */
-  const l = BARS.some((b) => b.id === id)
-    ? BARS.map((b) => (b.id === id ? nueva : b))
-    : [...BARS, { ...nueva, id }];
+  /* Se mandan los siete campos siempre, aunque estén vacíos.
+
+     La lista blanca de las reglas es exactamente esos siete y `hasOnly` no
+     mira cuáles cambiaron, así que mandar el objeto entero no tiene forma de
+     dejar un campo de más. Y mandarlos vacíos también es lo que quiere el
+     barbero cuando borra algo de su ficha: si se omitieran, el valor anterior
+     quedaría pegado y no se podría limpiar nada. */
+  const publico = {
+    foto: ficha.foto || (SB && SB.foto) || "",
+    n: nueva.n,
+    esp: nueva.esp,
+    desc: nueva.desc,
+    tel: nueva.tel,
+    ig: nueva.ig,
+    redes,
+  };
   try {
     busy(1, "Guardando…", 1);
-    /* Se escribe en las DOS colecciones del nombre. Antes solo iba a
-       config/barberos (la landing) y el encabezado del panel seguía sacando
-       el nombre de staff/{uid}, que nunca se actualizaba: el barbero se
-       cambiaba el nombre y no se veía en ninguna parte menos en la web.
-       Las reglas permiten al propio barbero actualizar `n` en su documento
-       de staff. */
-    await Promise.all([
-      setDoc(doc(db, "config", "barberos"), { l }, { merge: true }),
-      setDoc(doc(db, "staff", id), { n: nueva.n }, { merge: true }),
-    ]);
-    /* Se actualiza en memoria para que el encabezado y la lista del dueño no
-       sigan mostrando el nombre viejo hasta el próximo snapshot. */
+    const fallos = [];
+    let errorWeb = null;
+    const guardar = async (que, fn, esWeb) => {
+      try {
+        await fn();
+      } catch (e) {
+        fallos.push(que);
+        if (esWeb) errorWeb = e;
+      }
+    };
+    await guardar("el perfil en la web", () => setDoc(doc(db, "fotoBarbero", id), publico, { merge: true }), true);
+    await guardar("tu nombre en la ficha", () => setDoc(doc(db, "staff", id), { n: nueva.n }, { merge: true }));
+
+    busy(0);
+    /* Memoria: para que el encabezado y las listas no sigan mostrando el
+       nombre viejo hasta el próximo snapshot. */
     if (SB) SB = { ...SB, n: nueva.n };
     FN = { ...FN, bs: FN.bs.map((b) => (b.id === id ? { ...b, n: nueva.n } : b)) };
-    msg = "Tu ficha se guardó. Ya está visible en la web.";
+    FOTOS[id] = { ...(FOTOS[id] || {}), ...publico };
+    BARS = conFotos(PUB.barberos);
+
+    if (!fallos.length) {
+      cerrarModalPerfil();
+      msg = "Tu perfil se guardó. Ya está visible en la web.";
+      R();
+      return;
+    }
+    setMotivoWeb(errorWeb);
+    cerrarModalPerfil();
     R();
+    M({
+      k: "w",
+      h: fallos.length > 1 ? "El perfil se guardó a medias" : "El perfil no llegó a la web",
+      b:
+        "No se pudo guardar en " + fallos.join(" ni ") + ".<br><br>" +
+        esc(porQueWeb()) +
+        (publico.foto ? "<br><br>Tu foto sí quedó a salvo en el panel." : ""),
+    });
   } catch (e) {
+    busy(0);
     err(e);
   }
 }
@@ -5893,7 +6082,7 @@ function barH() {
       .sort((a, b) => (a.d + a.t).localeCompare(b.d + b.t));
   const mySBFoto = SB && SB.foto ? SB.foto : "";
   return (
-    `<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;max-width:640px">${mySBFoto ? `<img src="${esc(mySBFoto)}" alt="" width="44" height="44" style="border-radius:50%;object-fit:cover">` : `<span class="aval" style="width:44px;height:44px;font-size:20px;flex:0 0 auto">${esc(((SB && SB.n) || (me && me.displayName) || "?")[0].toUpperCase())}</span>`}<div style="flex:1"><b>${esc((SB && SB.n) || (me && me.displayName) || "Tu barbería")}</b><br><small>Tu foto aparece para los clientes al reservar.</small></div><button data-act="fotoTomar" style="flex:0 0 auto">Cambiar foto</button></div>` + perfilH() +
+    `<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;max-width:640px">${mySBFoto ? `<img src="${esc(mySBFoto)}" alt="" width="44" height="44" style="border-radius:50%;object-fit:cover">` : `<span class="aval" style="width:44px;height:44px;font-size:20px;flex:0 0 auto">${esc(((SB && SB.n) || (me && me.displayName) || "?")[0].toUpperCase())}</span>`}<div style="flex:1"><b>${esc((SB && SB.n) || (me && me.displayName) || "Tu barbería")}</b><br><small>Tu foto aparece para los clientes al reservar.</small></div><button data-act="fotoTomar" style="flex:0 0 auto">Cambiar foto</button><button data-act="miPerfilWeb" style="flex:0 0 auto">Editar perfil</button></div>` +
     `<div class="head" style="margin-top:0;flex-wrap:wrap"><div><h1 style="margin-bottom:4px">Agenda</h1><small>${ag ? fd(ag) : "Todos los días"} · ${p.length} ${p.length === 1 ? "turno" : "turnos"}</small></div><div class="chips" style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px">${[["", "Todos"], ...[...new Set([hoy, ...days()])].sort().map((d) => [d, d === hoy ? "Hoy" : fd(d)])].map((a) => `<button class="chip ${ag === a[0] ? "on" : ""}" aria-pressed="${!!(ag === a[0])}" data-act="setAg" data-args="${A(a[0])}" style="border:0">${a[1]}</button>`).join("")}</div><div class="chips"><button data-act="openMan">+ Carga manual</button><button data-act="agOpen">+ Agendar turno</button></div></div>${manH()}${agT ? agH() : ""}<div class="chips" style="margin-bottom:14px">${isOwner() ? [["", "Todos"], ...FN.bs.map((b) => [b.id, nomBar(b)])].map((x) => `<button class="chip ${bf === x[0] ? "on" : ""}" data-act="setBf" data-args="${A(x[0])}">${esc(x[1])}</button>`).join("") : ""}</div>` +
     `<div class="cols3">${barbers
       .concat(

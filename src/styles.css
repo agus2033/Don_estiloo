@@ -2215,15 +2215,36 @@ h1::after {
   gap: 14px;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
-/* El <details> del perfil: sin esto el summary queda como texto plano sin
-   marcador de que se abre. */
-.perfil > summary {
-  list-style: revert;
+/* El <details> del perfil ya no existe: el formulario es una ventana
+   emergente (lo pidió el dueño, para que no se desplegara en el dashboard).
+   Estas dos reglas quedaron sin uso y se borran. */
+
+/* La ventana de "Editar perfil" necesita más ancho que un aviso normal y, en
+   el móvil, alto: son seis campos y con 460px de ancho los labels se partían
+   en dos renglones. */
+.mb--ancho {
+  max-width: 620px;
 }
-.perfil > summary:focus-visible {
-  outline: 3px solid var(--brass);
-  outline-offset: 3px;
-  border-radius: 6px;
+.mb--ancho .cols2 {
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.mb--ancho textarea {
+  min-height: 64px;
+  resize: vertical;
+}
+@media (max-width: 480px) {
+  .mb--ancho .cols2 {
+    grid-template-columns: 1fr;
+  }
+  .mb--ancho {
+    padding: 0 18px 20px;
+  }
+}
+/* Los botones del modal al final, separados de los campos, para que el pulgar
+   no quede encima de un textarea al confirmar. */
+.mb--ancho > .chips {
+  margin-top: 20px;
 }
 /* La etiqueta de cada campo del perfil. .campo etiqueta con flex sólo a
    los <label> que son hijos directos; acá el texto va en un <span>. */

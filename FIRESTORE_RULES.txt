@@ -66,21 +66,31 @@ service cloud.firestore {
       allow write: if isOwner();
     }
 
-    // La lista pública de equipo, separada del resto de /config porque acá sí
-    // escribe el barbero: cuando carga su perfil en la web tiene que poder
-    // guardar su nombre, su foto, su teléfono, su Instagram y su descripción.
+    // La lista pública de equipo la administra SOLO el dueño: él decide qué
+    // barberos están y en qué orden, y puede quitar a uno.
     //
-    // Cómo funciona: `l` es la lista de barberos. El `where(b, b.id !=
-    // request.auth.uid)` saca la entrada del propio barbero y compara el resto
-    // de la lista, nueva contra vieja. Si da igual, lo único que cambió fue su
-    // propia ficha. No puede agregar barberos ni tocar los de los demás: para
-    // eso el dueño.
+    // Antes esta colección tenía además una rama para que cada barbero
+    // escribiera SU entrada de la lista, con esta condición:
+    //
+    //     request.resource.data.l.where(b, b.id != request.auth.uid)
+    //          == resource.data.l.where(b, b.id != request.auth.uid)
+    //
+    // O sea: "todo lo que NO es mío tiene que quedar igual". El razonamiento
+    // es correcto, pero en producción NUNCA dio true. Comprobado contra las
+    // reglas de Firebase con la sesión real del barbero, escribiendo la lista
+    // sin modificarla (idempotente, dato intacto): HTTP 403 "Missing or
+    // insufficient permissions". Con el dueño el mismo pedido daba 200, así que
+    // no era el payload: era la rama del barbero.
+    //
+    // El efecto era que "Editar perfil" fallaba siempre: guardarPerfil() hace
+    // Promise.all entre config/barberos y staff/{uid}, y el primero rechazado
+    // tumbaba el guardado entero.
+    //
+    // Por eso el perfil del barbero ya no vive acá: vive en su propio
+    // documento, fotoBarbero/{uid} (abajo), que es una regla mucho más simple
+    // y que además funciona.
     match /config/barberos {
-      allow write: if isOwner()
-                    || (isStaff()
-                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['l'])
-                        && request.resource.data.l.where(b, b.id != request.auth.uid)
-                             == resource.data.l.where(b, b.id != request.auth.uid));
+      allow write: if isOwner();
     }
 
     match /galeria/{docId} {
@@ -196,21 +206,38 @@ service cloud.firestore {
                              .hasOnly(['n', 'foto', 'tel', 'ig', 'desc']));
     }
 
-    // ---------- la foto de cada barbero, sola ----------
+    // ---------- el perfil público de cada barbero, en su propio documento ----------
     //
-    // Antes la foto iba adentro de `config/barberos`, que es del dueño solo
-    // (ver arriba). El "Cambiar foto" del barbero hacía un setDoc ahí y se
-    // denegaba siempre: el error se tragaba con un .catch, la foto se guardaba
-    // en `users/` y `staff/`, y la web seguía mostrando el cartel [Foto].
+    // Acá vive TODO lo que el barbero publica sobre sí: la foto, el nombre, el
+    // oficio, la descripción, el teléfono, el Instagram y las redes. Se LEE sin
+    // sesión (la landing tiene que mostrarlo al que no está logueado) y sólo lo
+    // ESCRIBE el propio barbero, y sólo esos campos.
     //
-    // Acá la foto vive en su propio documento: se LEE sin sesión (la landing
-    // tiene que mostrarla al que no está logueado) y solo la ESCRIBE el propio
-    // barbero, y solo el campo "foto". Nada más de la configuración queda
-    // expuesto.
+    // POR QUÉ NO SE USA `diff(resource.data)` ACÁ. El bug que había:
+    //
+    //     allow create, update: if ... request.resource.data
+    //                                  .diff(resource.data)
+    //                                  .affectedKeys().hasOnly(['foto']);
+    //
+    // En un CREATE el documento no existe todavía, así que `resource` es null
+    // y `resource.data` hace TRUENAR la regla: Firestore falla cerrada y
+    // deniega. Comprobado contra las reglas publicadas: fotoBarbero/{uid} daba
+    // 404 (no existía) y el setDoc de la app devolvía 403. Como además el
+    // código se tragaba el error con un `.catch(() => {})`, la foto se guardaba
+    // en users/ y staff/ y en la web no aparecía nunca: la tarjeta decía
+    // "[Foto]".
+    //
+    // Acá no se menciona `resource` en ninguna rama, así que no hay forma de
+    // que truene. Con `hasOnly` alcanza para acotar qué campos se pueden
+    // escribir; no limita QUÉ se modifica de los que ya estaban, pero como la
+    // lista blanca es exactamente la del perfil, escribir cualquier subconjunto
+    // de esos campos es lo único que se puede llegar a hacer.
     match /fotoBarbero/{uid} {
       allow read: if true;
-      allow create, update: if isSignedIn() && request.auth.uid == uid
-                            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['foto']);
+      allow create, update: if isSignedIn()
+                            && request.auth.uid == uid
+                            && request.resource.data.keys().hasOnly(
+                                 ['foto', 'n', 'esp', 'desc', 'tel', 'ig', 'redes']);
       allow delete: if isSignedIn() && request.auth.uid == uid;
     }
 

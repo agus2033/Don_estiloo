@@ -111,6 +111,8 @@ async function entrar(b, email, pass, ancho = 1400) {
     return j < 0 ? cod.slice(i) : cod.slice(i, j);
   };
   const bConfig = bloque("/config/{docId}");
+  const bBarberos = bloque("/config/barberos");
+  const bFoto = bloque("/fotoBarbero/{uid}");
   const bStaff = bloque("/staff/{uid}");
   const bTurnos = bloque("/turnos/{id}");
   const bVentas = bloque("/ventas/{id}");
@@ -140,6 +142,61 @@ async function entrar(b, email, pass, ancho = 1400) {
     bVentas,
   );
   ok(bGastos !== null && /allow read, create, update, delete: if isOwner\(\);/.test(bGastos), "gastos: los carga sólo el dueño");
+
+  /* ---------- fotoBarbero: el perfil público del barbero ----------
+     Esta regla tenía el bug que hacía que la foto nunca llegara a la web. Vale
+     la pena dejar escrito por qué los dos chequeos siguientes miran lo que
+     miran.
+
+     El bug era `request.resource.data.diff(resource.data)` en un `create`. En
+     un create el documento no existe, así que `resource` es null y la regla
+     TRUENA: Firestore falla cerrada y deniega. Comprobado contra las reglas
+     publicadas: el documento daba 404 y el setDoc de la app devolvía 403. */
+  ok(
+    bFoto !== null && !/diff\(\s*resource\.data\s*\)/.test(bFoto),
+    "fotoBarbero: la regla NO usa diff(resource.data), que truena en un create",
+    bFoto,
+  );
+  ok(
+    bFoto !== null && /allow read: if true;/.test(bFoto),
+    "fotoBarbero se lee sin sesión (la landing la necesita)",
+  );
+  ok(
+    bFoto !== null &&
+      /allow create, update:[\s\S]*hasOnly\(([\s\S]*?)\)/.test(bFoto) &&
+      /'foto'/.test(bFoto) &&
+      /'n'/.test(bFoto) &&
+      /'desc'/.test(bFoto),
+    "fotoBarbero acepta el perfil entero (foto, nombre, descripción, …) y no sólo la foto",
+    bFoto,
+  );
+
+  /* config/barberos vuelve a ser del dueño solo. El barbero ya no escribe
+     adentro de la lista: la regla con `where(b, b.id != auth.uid)` daba 403 en
+     producción y hacía fallar "Editar perfil" entero. */
+  ok(bBarberos !== null && /allow write: if isOwner\(\);/.test(bBarberos), "config/barberos: la lista del equipo la escribe sólo el dueño", bBarberos);
+  ok(!/where\(/.test(cod), "ninguna regla depende de where() sobre la lista: esa construcción nunca evaluó true en producción");
+
+  /* Y el código tiene que guardar el perfil del barbero en SU documento, no
+     en la lista: si vuelve a escribir en config/barberos, "Editar perfil"
+     vuelve a fallar aunque las reglas estén bien. */
+  /* OJO: el chequeo va ACOTADO al cuerpo de guardarPerfil y no a todo el
+     archivo. El dueño sí tiene que escribir `config/barberos` — es su pantalla
+     de Barberos, la que decide quién está en el equipo—, y ese write es
+     correcto. Lo que no puede volver a pasar es que lo haga el BARBERO. */
+  const cuerpoGuardarPerfil = src.slice(src.indexOf("async function guardarPerfil"), src.indexOf("Object.assign(ACT, { guardarPerfil })"));
+  ok(
+    /setDoc\(doc\(db, "fotoBarbero", id\), publico/.test(cuerpoGuardarPerfil),
+    "guardarPerfil escribe el perfil del barbero en fotoBarbero/{uid}",
+  );
+  ok(
+    !/setDoc\(doc\(db, "config", "barberos"\)/.test(cuerpoGuardarPerfil),
+    "y ya no intenta escribir la lista config/barberos (esa la maneja el dueño)",
+  );
+  ok(
+    !/setDoc\(doc\(db, "fotoBarbero", me\.uid\)[^;]*\.catch\(\(\) => \{\}\)/.test(src),
+    "la foto ya no se guarda con un .catch que se traga el error",
+  );
   /* Y al revés de la anterior: endurecer de más también rompe. Si el create de
      ventas pierde la rama del barbero, un barbero que cobra un corte en la
      barbería no puede registrar la venta y la plata se pierde. */
@@ -204,10 +261,17 @@ async function entrar(b, email, pass, ancho = 1400) {
     /* --- el merge de la foto --- */
     const merge = await du.page.evaluate(() => {
       window.__test.setBars([
-        { id: "uid-falso", n: "Prueba", foto: "https://ejemplo/vieja.jpg" },
+        { id: "uid-falso", n: "Prueba", foto: "https://ejemplo/vieja.jpg", desc: "la vieja" },
         { id: "uid-nuevo", n: "Sin foto" },
       ]);
-      const conNueva = window.__test.setFotos({ "uid-falso": "https://ejemplo/nueva.jpg" });
+      /* FOTOS guarda el PERFIL entero del barbero, no sólo la foto: es el mismo
+         documento fotoBarbero/{uid} del que escribe "Editar perfil". Antes el
+         test pasaba un mapa de strings porque eso era lo que había; con la
+         forma nueva, extender un string con `...pub` lo partiría en
+         caracteres sueltos. */
+      const conNueva = window.__test.setFotos({
+        "uid-falso": { foto: "https://ejemplo/nueva.jpg", n: "Nombre Nuevo", desc: "la nueva" },
+      });
       window.__test.setFotos({});
       const conVieja = window.__test.setBars([{ id: "x", n: "y", foto: "vieja" }]);
       const limpio = window.__test.setFotos({});
@@ -217,6 +281,16 @@ async function entrar(b, email, pass, ancho = 1400) {
       merge.conNueva[0].foto === "https://ejemplo/nueva.jpg",
       "la foto de fotoBarbero pisa a la de la ficha",
       JSON.stringify(merge.conNueva.map((b) => b.foto)),
+    );
+    ok(
+      merge.conNueva[0].n === "Nombre Nuevo" && merge.conNueva[0].desc === "la nueva",
+      "y también el nombre y la descripción: el perfil entero va en un solo documento",
+      JSON.stringify(merge.conNueva[0]),
+    );
+    ok(
+      merge.conNueva[0].id === "uid-falso",
+      "pero el id NO se pisa: es la clave con la que se buscó la entrada",
+      JSON.stringify(merge.conNueva[0]),
     );
     ok(
       merge.conNueva[1].foto === "",
@@ -301,18 +375,39 @@ async function entrar(b, email, pass, ancho = 1400) {
     await ba.page.locator('#pmenu button:has-text("Editar perfil")').click();
     await ba.page.waitForTimeout(1600);
     const ed = await ba.page.evaluate(() => {
-      const d = document.querySelector("details.perfil");
+      const mo = document.getElementById("mo");
+      const d = mo ? mo.querySelector("#pfNombre") : null;
       return {
-        existe: !!d,
-        abierto: d ? d.open : false,
-        enPanel: d ? !!d.closest("#app") : false,
+        modalAbierto: !!mo && !mo.hidden,
+        hayCampos: !!d,
+        /* El pedido del dueño: que sea una ventana emergente y NO se despliegue
+           en el dashboard. O sea, el formulario no puede estar en #app. */
+        enElDashboard: !!(d && d.closest("#app")),
+        enElModal: !!(d && d.closest("#mo")),
+        hayTitulo: !!(mo && mo.querySelector("#pmh")),
         foco: document.activeElement ? document.activeElement.id || document.activeElement.tagName : null,
       };
     });
-    ok(ed.existe, "el bloque «Mi perfil en la web» está en el panel");
-    ok(ed.enPanel, "y está dentro del panel, no hay que ir a la web");
-    ok(ed.abierto, "«Editar perfil» lo abre", JSON.stringify(ed));
+    ok(ed.modalAbierto, "«Editar perfil» abre una ventana emergente");
+    ok(ed.hayCampos, "con los campos del perfil adentro");
+    ok(ed.enElModal, "los campos viven en la ventana, no en el dashboard");
+    ok(!ed.enElDashboard, "y NO hay un <details> desplegado en el dashboard", JSON.stringify(ed));
+    ok(ed.hayTitulo, "con su título (dialog aria-labelledby tiene a qué apuntar)");
     ok(ed.foco === "pfNombre", "y deja el foco en el primer campo para escribir", String(ed.foco));
+
+    /* Cancelar tiene que cerrar SIN guardar, y tiene que ser la acción Mx y no
+       `cerrarPerfil`: ese nombre ya lo usa el menú del encabezado, y si los
+       dos se confundieran el Cancelar cerraría el menú y dejaría el formulario
+       abierto. */
+    await ba.page.fill("#pfNombre", "PRUEBA QUE NO DEBE GUARDARSE");
+    await ba.page.locator('#mo button:has-text("Cancelar")').click();
+    await ba.page.waitForTimeout(700);
+    const despues = await ba.page.evaluate(() => {
+      const mo = document.getElementById("mo");
+      return { oculto: !mo || mo.hidden, quedaCampo: !!document.querySelector("#pfNombre") };
+    });
+    ok(despues.oculto, "el botón Cancelar cierra la ventana", JSON.stringify(despues));
+    ok(!despues.quedaCampo, "y el formulario sale del documento");
     ok(ba.jsErr.length === 0, "sin errores de JS", [...new Set(ba.jsErr)].join(" / "));
   }
   await ba.ctx.close();

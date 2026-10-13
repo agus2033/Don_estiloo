@@ -104,8 +104,14 @@ for (const t of lista) {
     const txt = salida.join("\n");
     const ok = (txt.match(/^\s*(OK|CK)\s/gm) || []).length;
     /* Con un espacio después de FALLA: si no, la línea de resumen
-       "FALLARON 0 · avisos 0" cuenta como un fallo y el cuadro miente. */
-    const fallas = (txt.match(/^\s*FALLA\s/gm) || []).length;
+       "FALLARON 0 · avisos 0" cuenta como un fallo y el cuadro miente.
+
+       Y OJO con el "FAIL": hay pruebas (politicas, entre otras) que escriben
+       "FAIL" en vez de "FALLA". Con este filtro, esas aparecían en el cuadro
+       como "ROJO fallas=0" y sin ninguna línea de detalle: el informe decía
+       que algo falló pero no qué, que es peor que no informarlo. Se cuentan y
+       se muestran las dos escrituras. */
+    const fallas = (txt.match(/^\s*(FALLA|FAIL)\s/gm) || []).length;
     const skips = (txt.match(/SKIP|skip/g) || []).length;
     console.log(
       `    ${cod === 0 ? "VERDE" : "ROJO "}  ok=${ok} fallas=${fallas}` +
@@ -115,8 +121,8 @@ for (const t of lista) {
       console.log(
         txt
           .split(/\r?\n/)
-          .filter((l) => /FALLA|Error|CRASH|Timeout/i.test(l))
-          .slice(0, 6)
+          .filter((l) => /^\s*(FALLA|FAIL)\s|Error|CRASH|Timeout/i.test(l))
+          .slice(0, 8)
           .map((l) => "      " + l.trim())
           .join("\n"),
       );

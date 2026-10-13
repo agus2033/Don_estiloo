@@ -388,3 +388,109 @@ personas editando el mismo rostro termina en que una pise a la otra.
 **Los mensajes del formulario no se envían a ningún correo.** Se guardan en
 Firestore y hasta ahora **nadie los veía**: la pantalla "Mensajes" del dueño es
 nueva. El `EMAIL` de `config.js` es sólo texto que se muestra en la web.
+
+---
+
+## 29. La foto del barbero no llegaba a la web, y "Editar perfil" no guardaba
+
+Tres cosas que el dueño reportó en la misma tanda. Las tres venían de la misma
+raíz: **el barbero no tenía ningún camino de escritura que las reglas dejaran
+pasar**.
+
+### Lo que se comprobó, no lo que se suponer
+
+Antes de tocar nada se midió contra la base real, con la sesión real del
+barbero:
+
+| prueba | resultado |
+|---|---|
+| `fotoBarbero/{uid}` existía | **404**, no existía |
+| el `setDoc` que hace la app | **403** "Missing or insufficient permissions" |
+| escribir `config/barberos` desde el barbero (idempotente, dato intacto) | **403** |
+| lo mismo desde la sesión del dueño | **200** |
+| `staff/{uid}` | **existe**, con nombre y foto |
+| `config/barberos` | existe, con `foto: ""` |
+
+O sea: la foto estaba guardada (en `staff` y en `users`) y el panel la
+mostraba, pero **no había ningún documento público que la tuviera**. Por eso la
+tarjeta de la web decía "[Foto]".
+
+### Las dos causas
+
+**1. La regla de `fotoBarbero` era imposible de satisfacer.** Tenía:
+
+    allow create, update: if ... request.resource.data
+                             .diff(resource.data)
+                             .affectedKeys().hasOnly(['foto']);
+
+En un **create** el documento todavía no existe, así que `resource` es `null`
+y `resource.data` hace **truenar** la regla. Firestore falla cerrada y
+deniega. Como además el código envolvía ese write en un `.catch(() => {})`, el
+error se perdía y la app decía "listo" con la foto sin publicar.
+
+**2. La rama de `config/barberos` para barberos nunca daba `true`.** La
+condición era "todo lo que no es mío tiene que quedar igual", hecha con
+`where(b, b.id != request.auth.uid)`. Con la sesión real daba 403 siempre.
+
+Y como `guardarPerfil()` usaba un `Promise.all` entre `config/barberos` y
+`staff`, ese 403 tumbaba también el write a `staff`: **"Editar perfil" no
+guardaba nada** y mostraba el cartel de "No se pudo completar".
+
+### La decisión: el perfil del barbero va en su propio documento
+
+El perfil público (foto, nombre, oficio, descripción, WhatsApp, Instagram,
+redes) vive en `fotoBarbero/{uid}`. Se lee sin sesión y lo escribe sólo el
+propio barbero, y sólo esos siete campos.
+
+- `config/barberos` vuelve a ser **del dueño solamente**: él decide quién está en
+  el equipo y en qué orden.
+- La regla nueva es simple y **no menciona `resource`**, así que no hay forma de
+  que truene en un create.
+- La foto y los datos van en el **mismo documento**: cargar la foto actualiza
+  todo de una, y por eso aparece en la web, en el panel y en las tarjetas sin
+  ningún paso extra.
+
+**Lo que NO cambia:** si el barbero no está en la lista `config/barberos`, no
+aparece en la web. Sigue siendo el dueño quien decide quién está en el equipo.
+Lo que cambia es que, una vez que está en la lista, **todo lo que el barbero
+carga sobre sí mismo se publica sin que el dueño tenga que hacer nada**.
+
+### "Editar perfil" pasó a ser una ventana emergente
+
+Antes era un `<details>` que se abría **en el dashboard**, entre la tarjeta del
+nombre y el título "AGENDA": el formulario se colgaba en medio de la pantalla y
+empujaba la agenda hacia abajo. Ahora es un modal, el mismo que usan los avisos,
+con el foco en el primer campo y cierre por Cancelar o Escape.
+
+El bloque inline desaparece de la agenda. La tarjeta con el nombre y el botón
+"Cambiar foto" **se queda**: es el resumen, y "Editar perfil" también está en el
+menú del ícono de la foto.
+
+### Los errores ahora dicen la causa
+
+El cartel decía "No se pudo guardar ese cambio. Volvé a intentar". Con las reglas
+de Firestore denegando el write, eso era un consejo inútil: iba a fallar igual
+las cinco veces.
+
+Se agregó `motivoFirestore(e)`, que recorre la cadena de causas del error
+(incluyendo `e.cause`, que es donde el navegador nuevo deja el detalle de red) y
+distingue tres casos:
+
+- **`ERR_BLOCKED_BY_CLIENT`**: lo genera una extensión o los escudos de Brave,
+  **no el sitio**. Dice que pruebe incógnito sin extensiones.
+- **fallo de red**: revisar la conexión.
+- **`permission-denied`**: las reglas no dejaron guardar, hay que republicar
+  `FIRESTORE_RULES.txt`.
+
+Y con eso se destapó que en la captura del dueño había un `ERR_BLOCKED_BY_CLIENT`
+contra `firestore.googleapis.com`: **tenía Brave bloqueando Firebase**, no era un
+fallo del código.
+
+### Dos correcciones en el camino
+
+- `Promise.all` en `fotoTomar` y en `guardarPerfil`: un solo write rechazado
+  tumbaba los demás y sólo se veía un error. Ahora cada write va por separado, se
+  anotan los que fallan y el cartel nombra **cuáles** y por qué.
+- El runner de pruebas contaba sólo `FALLA`, pero `politicas` imprime `FAIL`:
+  cuando algo fallaba ahí, el cuadro decía **"ROJO fallas=0"** sin ninguna línea
+  de detalle. Ahora cuenta las dos escrituras y las muestra.
