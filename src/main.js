@@ -1103,16 +1103,29 @@ onSnapshot(doc(db, "config", "barberos"), (x) => {
     datosLlegos();
   }
 });
-/* Las fotos van aparte de la ficha (ver el bloque de fotoTomar). Es una
-   consulta propia y no se mezcla con la de config/barberos: si vinieran en el
+/* El perfil público de cada barbero, aparte de la lista de config/barberos. Es
+   una consulta propia y no se mezcla con la de la lista: si vinieran en el
    mismo onSnapshot, hasta que llegara el primero de los dos la ficha se
-   dibujaría sin foto y después saltaría. */
+   dibujaría sin foto y después saltaría.
+
+   OJO con lo que se guarda acá: el DOCUMENTO ENTERO, no sólo `d.data().foto`.
+
+   Se guardaba sólo la cadena, y conFotos() espera el objeto completo porque
+   ahora el mismo documento lleva también el nombre, el oficio y la
+   descripción. Con una cadena, `...pub` en conFotos extiende el string
+   carácter por carácter: `pub.foto` queda `undefined`, el merge cae al
+   respaldo de la ficha (`foto: ""`) y la tarjeta de la web sigue mostrando
+   "[Foto]" aunque el documento esté lleno y las reglas dejen leerlo.
+
+   Pasó porque la prueba del merge (setFotos) pasaba la forma que el
+   CONSUMIDOR espera, en vez de la que produce el snapshot. Ver
+   tests/landing.barberos, que ahora carga un documento real. */
 onSnapshot(
   collection(db, "fotoBarbero"),
   (x) => {
     FOTOS = {};
     x.forEach((d) => {
-      if (d.exists() && d.data() && d.data().foto) FOTOS[d.id] = d.data().foto;
+      if (d.exists() && d.data()) FOTOS[d.id] = d.data();
     });
     if (PUB.barberos) {
       BARS = conFotos(PUB.barberos);

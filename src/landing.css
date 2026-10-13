@@ -1624,7 +1624,7 @@ body[data-theme="light"] .lb-btn--pri:hover {
   border: 1px solid var(--lb-brass);
   border-radius: 999px;
   background: transparent;
-  font-size: 0.72rem;
+  font-size: 0.75rem; /* el oficio del barbero en el dorso de la tarjeta: era 0.72rem (11.52px), bajo el minimo de 12px */
 }
 .lb-bd-sobre {
   margin: 16px 0 2px;
@@ -2214,7 +2214,7 @@ body.wz-abierto {
   min-width: 0;
   padding-top: 8px;
   border-top: 3px solid var(--lb-line);
-  font-size: 0.66rem;
+  font-size: 0.75rem; /* el titulo de cada paso del asistente de reserva: era 0.66rem (10.56px), bajo el minimo de 12px */
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -2356,7 +2356,7 @@ body.wz-abierto {
 }
 .wz-dows span {
   text-align: center;
-  font-size: 0.68rem;
+  font-size: 0.75rem; /* las iniciales de los dias en la grilla: era 0.68rem (10.88px), bajo el minimo de 12px */
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -2656,7 +2656,7 @@ body.wz-abierto {
 }
 .wz-res-precio span {
   display: block;
-  font-size: 0.72rem;
+  font-size: 0.75rem; /* el precio en el resumen de la reserva: era 0.72rem (11.52px), bajo el minimo de 12px */
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -2770,7 +2770,7 @@ body.wz-abierto {
 }
 .wz-rf-t > span {
   display: block;
-  font-size: 0.72rem;
+  font-size: 0.75rem; /* la etiqueta del formulario de confirmacion: era 0.72rem (11.52px), bajo el minimo de 12px */
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -3537,7 +3537,7 @@ body[data-theme="light"] .ver:hover {
     font-size: 1rem;
   }
   .wz-dows span {
-    font-size: 0.64rem;
+  font-size: 0.75rem; /* las iniciales de los dias en el celu: era 0.64rem (10.24px), bajo el minimo de 12px */
   }
 }
 

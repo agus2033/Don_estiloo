@@ -30,6 +30,10 @@ const TODAS = [
   { n: "accesibilidad", sesion: true, red: true },
   { n: "img.vivas", sesion: false, red: true },
   { n: "html.valido", sesion: true, red: false },
+      /* Corre contra el servidor LOCAL, no contra el sitio publicado: lo que
+         se está midiendo es el código del repo, no si ya se desplegó. Contra
+         el sitio en vivo queda como comprobación manual (ver el mensaje). */
+      { n: "landing.foto.viva", sesion: false, red: true, arg: "http://127.0.0.1:8765/index.html" },
 
   /* red, sin cuenta */
   { n: "landing.web", sesion: true, red: false },
@@ -99,7 +103,7 @@ for (const t of lista) {
   console.log(`\n--- ${t.n}`);
   const salida = [];
   try {
-    const r = spawnSyncLog(t.n, salida);
+    const r = spawnSyncLog(t.n, salida, t.arg);
     const cod = r;
     const txt = salida.join("\n");
     const ok = (txt.match(/^\s*(OK|CK)\s/gm) || []).length;
@@ -134,8 +138,10 @@ for (const t of lista) {
 }
 if (srv) srv.kill();
 
-function spawnSyncLog(nombre, salida) {
-  const r = require("child_process").spawnSync(process.execPath, [path.join(__dirname, nombre + ".js")], {
+function spawnSyncLog(nombre, salida, arg) {
+  const args = [path.join(__dirname, nombre + ".js")];
+  if (arg) args.push(arg);
+  const r = require("child_process").spawnSync(process.execPath, args, {
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
   });

@@ -197,6 +197,36 @@ async function entrar(b, email, pass, ancho = 1400) {
     !/setDoc\(doc\(db, "fotoBarbero", me\.uid\)[^;]*\.catch\(\(\) => \{\}\)/.test(src),
     "la foto ya no se guarda con un .catch que se traga el error",
   );
+
+  /* ---------- el contrato entre quien llena FOTOS y quien la lee ----------
+     Este es el bug que casi se va sin ver. conFotos() espera que FOTOS[b.id]
+     sea el DOCUMENTO ENTERO, porque ahora ese documento lleva también el
+     nombre, el oficio y la descripción. Pero el snapshot se había quedado
+     guardando `d.data().foto`, que es una CADENA.
+
+     Al extender una cadena con `...pub` se parten los caracteres, `pub.foto`
+     queda `undefined`, el merge cae al respaldo `foto: ""` y la tarjeta de la
+     web muestra "[Foto]" aunque el documento esté lleno y las reglas dejen
+     leerlo. O sea: la base de datos estaba bien, las reglas estaban bien, y
+     aun así no se veía nada.
+
+     La prueba del merge (setFotos) pasaba a mano la forma que el CONSUMIDOR
+     espera, así que se comprobaba a sí misma. Estos dos chequeos atan las dos
+     puntas; lo que de verdad lo atrapa es tests/landing.foto.viva.js, que
+     carga un documento real de Firestore y mira lo que ve un visitante. */
+  const snapFoto = src.slice(
+    src.indexOf('collection(db, "fotoBarbero")'),
+    src.indexOf('onSnapshot(doc(db, "config", "horario")'),
+  );
+  ok(
+    /FOTOS\[d\.id\] = d\.data\(\);/.test(snapFoto),
+    "el snapshot guarda el documento entero en FOTOS, no sólo d.data().foto",
+    snapFoto.slice(0, 200),
+  );
+  ok(
+    !/FOTOS\[d\.id\] = d\.data\(\)\.foto;/.test(src),
+    "y en ningún lado se guarda la cadena suelta",
+  );
   /* Y al revés de la anterior: endurecer de más también rompe. Si el create de
      ventas pierde la rama del barbero, un barbero que cobra un corte en la
      barbería no puede registrar la venta y la plata se pierde. */

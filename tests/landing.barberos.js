@@ -313,14 +313,29 @@ const completaBarberos = async (page, out, tag) => {
     await page.goto("http://127.0.0.1:8765/index.html", { waitUntil: "domcontentloaded" });
     await page.waitForSelector(".lb-barber", { timeout: 25000 });
     await page.waitForTimeout(3000);
-    const hayFicha = await page.evaluate(() =>
-      (window.__test ? window.__test.bars : []).some((b) => b.tel || b.ig || b.desc || (b.redes || []).length),
+    /* Lo que se necesita para medir el DORSO es una descripción. La condición
+       anterior pedía cualquier dato de ficha (tel, ig, desc o redes), y con
+       eso la prueba se colgaba de lo que el barbero hubiera tipeado por última
+       vez.
+
+       Y pasó justo al arreglar el bug: con `fotoBarbero` roto, el barbero no
+       tenía NINGÚN dato en la lista, así que siempre caía en los sintéticos y
+       daba verde. Al arreglarlo, apareció su teléfono e Instagram reales, la
+       condición se dio por satisfecha, no se inyectaron los sintéticos, y la
+       tarjeta real no tiene descripción (la dejó vacía) → "muestra la
+       descripción" empezó a fallar.
+
+       No era un problema del producto: el dorso muestra la descripción cuando
+       existe. Lo que estaba mal era la prueba, que medía el diseño con datos
+       que dependían del contenido real. Ahora pide lo que necesita medir. */
+    const hayDesc = await page.evaluate(() =>
+      (window.__test ? window.__test.bars : []).some((b) => (b.desc || "").trim()),
     );
-    if (!hayFicha) {
+    if (!hayDesc) {
       await page.evaluate((bars) => window.__test.setBars(bars), SINTETICOS);
       await page.waitForTimeout(600);
-      out.push(["SKIP", `${tag} · sin ficha en Firestore: se prueba con datos sintéticos`, ""]);
-      console.log(`  skip  ${tag} · sin ficha en Firestore: se prueba con datos sintéticos`);
+      out.push(["SKIP", `${tag} · la ficha real no tiene descripción: se mide con datos sintéticos`, ""]);
+      console.log(`  skip  ${tag} · la ficha real no tiene descripción: se mide con datos sintéticos`);
     }
     await page.locator(".lb-barber-giro").first().click();
     await page.waitForTimeout(750);
