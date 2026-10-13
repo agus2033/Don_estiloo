@@ -1,12 +1,22 @@
-# Activar el inicio de sesión con Google y con Facebook
+# Activar el inicio de sesión con Google
 
-Los botones del login **ya estan programados**. No falta código: el código llama a
-`signInWithPopup` con los dos proveedores y, si la persona no existe todavía, le
-crea su documento en `users/{uid}` con los puntos de bienvenida
+> **OJO: el botón de Facebook ya no está.** El dueño lo sacó (ver PRODUCT.md).
+> La Parte 2 de este archivo queda como referencia por si algún día vuelve, pero
+> **no hay que hacer nada de eso para que el sitio funcione**: con Google
+> alcanza.
+>
+> Si decidís sacarlo de verdad, en Firebase Console > Authentication > Sign-in
+> method > Facebook > **Desactivar**. Mientras siga activo no molesta (nadie
+> llega al pop-up porque el botón no está), pero es una puerta abierta que no
+> hace falta.
+
+Los botones del login **ya están programados**. No falta código: el código llama
+a `signInWithPopup` con Google y, si la persona no existe todavía, le crea su
+documento en `users/{uid}` con los puntos de bienvenida
 (`config/reglas.ptsRegistro`).
 
-Lo que falta es **activar los dos proveedores en la consola de Firebase**. Eso
-lo hacés vos, porque requiere entrar con tu cuenta.
+Lo que falta es **activar el proveedor en la consola de Firebase**. Eso lo hacés
+vos, porque requiere entrar con tu cuenta.
 
 Proyecto: **`barberia-taccu`**
 
@@ -99,11 +109,21 @@ genérico:
 
 ## Dónde aparece cada botón
 
-En las **dos** pantallas: Ingreso y Crear cuenta.
+El de Google aparece en las **dos** pantallas: Ingreso y Crear cuenta.
 
-Al registrarse con Google o con Facebook se le pide después una **contraseña**
-(con un botón para saltárselo). Sirve de red de seguridad: si después esa persona
-pierde el acceso a la red social, puede entrar con su correo y esa contraseña en
+Al registrarse con Google se le pide después una **contraseña** (con un botón
+para saltárselo). Sirve de red de seguridad: si después esa persona pierde el
+acceso a la cuenta de Google, puede entrar con su correo y esa contraseña en
 lugar de quedarse afuera.
 
 Al **ingresar** no se pide contraseña: si la cuenta ya existe, se entra y listo.
+
+### El riesgo real de esto, para que quede anotado
+
+Una cuenta creada con Google **y sin contraseña** es una cuenta que sólo se
+puede abrir con el pop-up de Google. Si esa persona clickea "Ahora no, gracias",
+se queda dentro pero después no vuelve a entrar por ningún lado.
+
+Por eso el botón de Google está también en el **ingreso**: si el día de mañana
+alguien pide sacarlo del ingreso, hay que avisar antes, porque las cuentas sin
+contraseña se quedan afuera para siempre.

@@ -494,3 +494,85 @@ fallo del código.
 - El runner de pruebas contaba sólo `FALLA`, pero `politicas` imprime `FAIL`:
   cuando algo fallaba ahí, el cuadro decía **"ROJO fallas=0"** sin ninguna línea
   de detalle. Ahora cuenta las dos escrituras y las muestra.
+
+---
+
+## 30. Se saca el botón de Facebook
+
+**Lo pidió el dueño.** El ingreso offering tenía Google y Facebook en las dos
+pantallas; ahora queda **sólo Google**.
+
+### Qué se sacó
+
+- El botón de Facebook en **Ingreso** y en **Crear cuenta**.
+- El import de `FacebookAuthProvider`.
+- El `red(p, registro)` que elegía proveedor según el argumento: ahora es
+  `red(registro)` y entra siempre con Google. El botón de Google tenía
+  `data-args="${A("google")}"` con **dos** argumentos que ya no se usan, así que
+  el segundo es el que llega como `registro`. Quedaba implícito y depende de
+  un detalle de `data-args` que no se ve leyendo el botón.
+- El texto de "elegí una contraseña", que decía "Tu cuenta ya está creada con
+  Google o Facebook".
+
+### Lo que **no** se tocó, y por qué
+
+- **La pantalla de "elegí una contraseña" sigue existiendo.** Es de Google, no
+  de Facebook: alguien que se registra con Google puede no tener contraseña. Si
+  esa persona clickea "Ahora no, gracias", su cuenta queda sin forma de volver a
+  entrar. Es el riesgo real de este diseño y está anotado en
+  `ACTIVAR_GOOGLE_FACEBOOK.md`.
+- **El botón de Google sigue también en el Ingreso**, por lo mismo. Sacarlo de
+  ahí requiere avisar antes.
+- **La CSP no mentionaba Facebook**, así que no hay nada que sacar de `vercel.json`.
+- **El proveedor de Facebook sigue activo en Firebase.** Desde el cliente no se
+  puede desactivar, y mientras esté activo no molesta (nadie llega al pop-up
+  porque el botón no está). Desactivarlo es un paso manual en Firebase Console >
+  Authentication > Sign-in method, y conviene hacerlo para no dejar una puerta
+  abierta que nadie usa.
+
+### El riesgo que no se pudo verificar
+
+**No se pudo comprobar si hay cuentas creadas con Facebook.** La API de
+Firebase Auth para listar usuarios necesita credenciales de administrador, y
+desde el código no se tiene.
+
+Si alguien se registró con Facebook, esa persona tiene una cuenta **sin
+contraseña**, y el pop-up de Facebook era la única forma de entrar. Al sacar el
+botón, se queda afuera para siempre: no puede entrar con email porque nunca se
+le pidió una contraseña.
+
+**Cómo revisarlo:** Firebase Console > Authentication > Users, y filtrar por
+proveedor. Si aparece alguna cuenta de Facebook, hay que pedirle a esa persona
+que setting una contraseña desde la consola, o directamente crearle una cuenta
+con email.
+
+El barbero no está en ese caso: su cuenta (`Px0Gbqr…`) tiene contraseña y entra
+con email.
+
+### `assets/facebook.png`
+
+Quedó el archivo (21,7 KB) sin ninguna referencia: ya no se pide en ninguna
+pantalla. **No se borró** porque es del dueño y volver a usarlo sería trivial si
+algún día hace falta; queda como resto sin usar.
+
+### Pruebas
+
+`tests/lote25.js` (73 comprobaciones) ahora se asegura de que el botón no
+vuelva. Las comprobaciones miran **el HTML que se dibuja**, no el texto del
+archivo: en `src/main.js` quedan comentarios que explican la decisión y tienen
+la palabra "Facebook", así que buscar la palabra en el fuente daría verde con
+el botón puesto.
+
+`tests/csp.popup.js` saca la entrada de Facebook de `PROVEEDORES`: el pop-up ya
+no existe y no hay nada que medir.
+
+`tests/seo2.js` tenía una comprobación que buscaba la cadena exacta
+`"Cerraste la ventana de Google o Facebook sin terminar."`. Era una comprobación
+vacía por dos motivos: la cadena ya no existe, y la frase **sobrevive en un
+comentario** que explica por qué se borró. Ahora limpia los comentarios antes
+de buscar, y agrega el positivo (que el texto de ese error sea la cadena
+vacía), que es lo que de verdad prueba que la cancelación se ignora.
+
+Medido en el navegador, a 390 px: en Ingreso y en Registro quedan un solo botón
+por pantalla, los dos de Google; `<img src="facebook.png">` = 0 en las dos; el
+único logo que se pide es `assets/google.png`.

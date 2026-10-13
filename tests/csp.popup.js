@@ -44,10 +44,13 @@ const REQUERIDOS = [
   ["frame-src", "https://*.firebaseapp.com"],
 ];
 
-const PROVEEDORES = [
-  { etq: "Google", btn: "Google", dominio: "accounts.google.com" },
-  { etq: "Facebook", btn: "Facebook", dominio: "facebook.com" },
-];
+/* Sólo Google. El dueño pidió sacar el botón de Facebook (ver PRODUCT.md), así
+   que el pop-up de Facebook ya no existe y no hay nada que medir.
+
+   Si algún día vuelve el botón, hay que volver a agregar esta entrada Y
+   revisar que la CSP de vercel.json permita el frame de facebook.com: este
+   archivo avisaría con un error de CSP en vez de dejarlo pasar. */
+const PROVEEDORES = [{ etq: "Google", btn: "Google", dominio: "accounts.google.com" }];
 
 (async () => {
   console.log("=== 1. la CSP trae los orígenes que hacen falta ===");

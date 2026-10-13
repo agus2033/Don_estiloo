@@ -147,8 +147,24 @@ console.log("\n4. LOGIN CANCELADO (sin aviso)\n");
   ok(/const esCancelacion = /.test(main), "hay un helper esCancelacion");
   ok(/if \(esCancelacion\(e\)\) return;/.test(main), "err() sale en silencio con una cancelación");
   ok(/if \(!esCancelacion\(e\)\) err\(e\);/.test(main), "el login social también sale en silencio");
-  /* Y que no quede el cartel viejo diciendo "cerraste la ventana". */
-  ok(!/"Cerraste la ventana de Google o Facebook sin terminar\."/.test(main), "el cartel de \"cerraste la ventana\" ya no existe");
+  /* Y que no quede NINGUN cartel que diga "cerraste la ventana".
+ 
+     Esta comprobaba una cadena que ya no existe ni con Facebook: el dueño pidió
+     sacar el botón y el texto era "Cerraste la ventana de Google o Facebook sin
+     terminar". Buscar esa cadena exacta daba verde aunque volviera un cartel
+     parecido con otra palabra: comprobación vacía.
+ 
+     Y hay otra cosa: la frase sobrevive dentro de un COMENTARIO, el que explica
+     por qué ese texto se borró. Buscar en el archivo entero la encuentra y la
+     prueba falla siempre. Por eso primero se limpian los comentarios: lo que se
+     busca es el texto que se le muestra a la persona. */
+  const codigo = main.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+  ok(!/Cerraste la ventana/i.test(codigo), "ningún cartel dice \"cerraste la ventana\"");
+  ok(
+    /"auth\/popup-closed-by-user":\s*"",/.test(codigo),
+    "y el texto de ese error es la cadena vacía: se ignora en silencio",
+    (codigo.slice(Math.max(0, codigo.indexOf("popup-closed-by-user") - 20), codigo.indexOf("popup-closed-by-user") + 70) || "(no está)").replace(/\n/g, " "),
+  );
 }
 
 (async () => {

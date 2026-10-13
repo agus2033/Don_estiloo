@@ -10,7 +10,6 @@ import {
   signInWithPopup,
   updatePassword,
   GoogleAuthProvider,
-  FacebookAuthProvider,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
   initializeFirestore,
@@ -481,7 +480,7 @@ let me = null,
   msg = "",
   tab = "in",
   /* Datos de la pantalla "elegí una contraseña" que aparece después de
-     registrarse con Google o Facebook. Ver red(). */
+     registrarse con Google. Ver red(). */
   redPass = null,
   cf = -1,
   sel = { s: 0, d: "", t: "", b: "", pol: 0 },
@@ -631,9 +630,10 @@ const ERR = {
     "Sin conexión. Revisá tu internet e intentá de nuevo.",
   "auth/too-many-requests":
     "Demasiados intentos. Esperá unos minutos e intentá de nuevo.",
-  /* Errores de los botones de Google y Facebook. Con los proveedores sin
-     habilitar en la consola salía el "Ocurrió un error" genérico, que no
-     dice nada. Ver ACTIVAR_GOOGLE_FACEBOOK.md con el paso a paso. */
+  /* Errores del botón de Google. Con el proveedor sin habilitar en la consola
+     salía el "Ocurrió un error" genérico, que no dice nada. Ver
+     ACTIVAR_GOOGLE_FACEBOOK.md con el paso a paso (el archivo cubre los dos
+     proveedores, aunque por ahora sólo queda Google en pantalla). */
   "auth/operation-not-allowed":
     "Ese botón todavía no está habilitado. Hay que activar el proveedor en Firebase Console > Authentication > Sign-in method.",
   "auth/unauthorized-domain":
@@ -642,8 +642,8 @@ const ERR = {
     "El navegador bloqueó la ventana de inicio de sesión. Habilitá los popups para este sitio e intentá de nuevo.",
   "auth/popup-closed-by-user":
     /* Ya no se muestra: es una cancelación y se maneja en CANCELADO, sin
-       cartel (más abajo). Antes decía "Cerraste la ventana de Google o Facebook
-       sin terminar", que además de molestar le decía al usuario que había
+       cartel (más abajo). Antes decía "Cerraste la ventana de Google sin
+       terminar", que además de molestar le decía al usuario que había
        hecho algo mal cuando simplemente cambió de idea. */
     "",
   "auth/account-exists-with-different-credential":
@@ -654,8 +654,8 @@ const ERR = {
 /* Cancelaciones: NO son errores y no se avisan.
 
    Lo pidió el dueño: si alguien aprieta "Cancelar" en la pantalla de permisos
-   de Google, o cierra la ventanita de Facebook, no hay nada que informar: la
-   persona decidió hacerlo así.
+   de Google, o cierra la ventanita, no hay nada que informar: la persona
+   decidió hacerlo así.
 
    Antes pasaba esto: `auth/user-cancelled` no estaba en el mapa de arriba, así
    que caía en el cartel genérico "No se pudo completar — Ocurrió un error",
@@ -1951,21 +1951,22 @@ const W = {
       R();
     }
   },
-  /* `registro` dice desde qué pantalla se apretó el botón. Es lo único
-     que separa "crear la cuenta" de "entrar": el pop-up es el mismo.
-     Ver el comentario de redPassOk() para por qué hace falta. */
-  async red(p, registro) {
+  /* Ingreso con Google.
+
+     Antes esta función aceptaba dos proveedores: Google y Facebook. El dueño
+     pidió sacar el botón de Facebook (ver PRODUCT.md). Queda sólo Google, así
+     que `p` ya no decide nada y el argumento se eliminó: `red()` toma un solo
+     parámetro, `registro`.
+
+     OJO con `redPass`: la pantalla de "elegí una contraseña" sigue existiendo y
+     hace falta, porque alguien que se registra con Google puede no tener
+     contraseña. Si esa persona cerrara esa pantalla con "ahora no", se queda
+     con una cuenta de la que no puede volver a entrar. No es un tema de
+     Facebook: es de Google también, y el botón de Google sigue en el ingreso. */
+  async red(registro) {
     try {
-      const prov =
-        p === "google"
-          ? new GoogleAuthProvider()
-          : new FacebookAuthProvider();
-      const r = await signInWithPopup(auth, prov);
-      /* Si la cuenta quedó sin contraseña, hay que pedir una. Es el
-         problema de dejar Facebook sólo en el registro: quien se anotó
-         con Facebook no tiene contraseña, así que si el botón no está en
-         el ingreso esa persona no vuelve a entrar nunca y pierde sus
-         puntos y su historial. */
+      const r = await signInWithPopup(auth, new GoogleAuthProvider());
+      /* Si la cuenta quedó sin contraseña, hay que pedir una. */
       const s = await getDoc(doc(db, "users", r.user.uid));
       if (!s.exists())
         await setDoc(doc(db, "users", r.user.uid), {
@@ -1980,21 +1981,21 @@ const W = {
          perfil, puntos e historial. La contraseña es lo último que se
          resuelve, y hay un botón de "ahora no" justamente para eso. */
       if (registro && !r.user.providerData.some((x) => x.providerId === "password")) {
-        redPass = { n: "", c: "", red: p };
+        redPass = { n: "", c: "", red: "google" };
         tab = "redpass";
         R();
       }
     } catch (e) {
       /* Cancelar no es fallar. Si la persona cerró la pantalla de permisos de
-         Google o la ventanita de Facebook, no se muestra NADA: `err()` ya
-         devuelve en silencio para esos códigos y acá sólo se repinta, para que
-         la pantalla quede como estaba y el botón vuelva a su estado normal. */
+         Google, no se muestra NADA: `err()` ya devuelve en silencio para esos
+         códigos y acá sólo se repinta, para que la pantalla quede como estaba
+         y el botón vuelva a su estado normal. */
       if (!esCancelacion(e)) err(e);
       busy(0);
       R();
     }
   },
-  /* Guarda la contraseña de una cuenta creada con Google o Facebook.
+  /* Guarda la contraseña de una cuenta creada con Google.
      Sin esto esa persona quedaría sin forma de volver a entrar: el pop-up
      social es el único acceso que tiene y el botón no va a estar en el
      ingreso. Ver la nota del dueño en PRODUCT.md. */
@@ -3593,7 +3594,6 @@ function loginH() {
         <div class="o">o continuá con</div>
         <div style="display:flex;gap:10px">
           <button class="boton secundario" type="button" data-act="red" data-args="${A("google")}" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px"><img src="assets/google.png" alt="" width="20" height="20">Google</button>
-          <button class="boton secundario" type="button" data-act="red" data-args="${A("facebook")}" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px"><img src="assets/facebook.png" alt="" width="20" height="20">Facebook</button>
         </div>
       </div>
       <div class="vista" id="registro" ${up ? "" : "hidden"}>
@@ -3609,12 +3609,11 @@ function loginH() {
         <div class="o" style="margin-top:14px">o continuá con</div>
         <div style="display:flex;gap:10px">
           <button class="boton secundario" type="button" data-act="red" data-args="${A("google", true)}" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px"><img src="assets/google.png" alt="" width="20" height="20">Google</button>
-          <button class="boton secundario" type="button" data-act="red" data-args="${A("facebook", true)}" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px"><img src="assets/facebook.png" alt="" width="20" height="20">Facebook</button>
         </div>
       </div>
       <div class="vista" id="redpass" ${redPass ? "" : "hidden"}>
         <h1>ELEGÍ UNA CONTRASEÑA</h1>
-        <p class="sub">Tu cuenta ya está creada con ${redPass && redPass.red === "facebook" ? "Facebook" : "Google"}. Poné una contraseña para poder entrar después sin usar esa red social.</p>
+        <p class="sub">Tu cuenta ya está creada con Google. Poné una contraseña para poder entrar después sin usar esa red social.</p>
         <div class="campo"><label for="rpw">Contraseña</label><div class="clave"><input class="entrada" id="rpw" name="password" type="password" autocomplete="new-password" placeholder="Tu contraseña" data-in="redPassIn" data-args="${A("n", "@el")}"><button type="button" class="ver" data-act="ver" data-args="${A("@el")}">Ver</button></div><ul class="reglas" id="rpwl">${pwHtml("", "")}</ul></div>
         <div class="campo"><label for="rpw2">Repetí la contraseña</label><div class="clave"><input class="entrada" id="rpw2" name="password2" type="password" autocomplete="new-password" placeholder="Repetí la contraseña" data-in="redPassIn" data-args="${A("c", "@el")}"><button type="button" class="ver" data-act="ver" data-args="${A("@el")}">Ver</button></div></div>
         <button class="boton primario" data-act="redPassOk">Guardar y entrar</button>
@@ -6787,8 +6786,8 @@ if (["localhost", "127.0.0.1", ""].includes(location.hostname)) {
       R();
     },
     /* Estado de la pantalla de contraseña social, para probar los caminos
-       sin abrir el pop-up de Google ni de Facebook (que abriría otra
-       pestaña y pide una cuenta real). */
+       sin abrir el pop-up de Google (que abriría otra pestaña y pide una
+       cuenta real). */
     setRedPass(v) {
       redPass = v;
       tab = v ? "redpass" : "in";

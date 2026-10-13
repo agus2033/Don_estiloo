@@ -247,6 +247,29 @@ async function entrar(b, email, pass, ancho = 1400) {
   ok(/Servicios<\/button><button[^>]*>Puntos</.test(src), "el menú de Ajustes es Horarios / Servicios / Puntos");
   ok(/setFotos\(m\)/.test(src), "el merge de fotos es comprobable desde las pruebas");
 
+  /* ---------- el botón de Facebook no tiene que volver ----------
+     El dueño lo sacó (PRODUCT.md). Estas comprobaciones miran el HTML que se
+     dibuja, no el texto del archivo: en el código quedan comentarios que
+     explican la decisión y tienen la palabra "Facebook", así que buscar la
+     palabra en el fuente daría verde con el botón puesto. */
+  ok(!/data-act="red" data-args="\$\{A\("facebook/.test(src), "no hay ningún botón de Facebook en ninguna pantalla", (src.match(/data-act="red"[^>]*/g) || []).join(" | "));
+  ok(!/FacebookAuthProvider/.test(src), "y no se importa el proveedor de Facebook");
+  const botonesRed = src.match(/data-act="red"[^>]*/g) || [];
+  ok(botonesRed.length === 2, "quedan los dos botones de Google (ingreso y registro), y sólo esos", String(botonesRed.length));
+  ok(
+    botonesRed.every((b) => /google/i.test(b)),
+    "y los dos son de Google, ninguno de otra red",
+    botonesRed.join(" | "),
+  );
+  ok(
+    /async red\(registro\)/.test(src) && !/new FacebookAuthProvider\(\)/.test(src),
+    "red() ya no elige proveedor: entra siempre con Google",
+  );
+  ok(
+    !/assets\/facebook\.png/.test(src),
+    "y el ícono de Facebook ya no se referencia en ninguna pantalla",
+  );
+
   /* ---------- 2. el dueño ---------- */
   console.log("\n=== 2. panel del dueño ===");
   const b = await chromium.launch();
