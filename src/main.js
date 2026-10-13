@@ -3460,7 +3460,7 @@ function loginH() {
         <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l5 5 9-10"/></svg>Sumá ${PTSv} puntos por cada corte</li>
         <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l5 5 9-10"/></svg>Canjeá descuentos y un corte gratis</li>
       </ul>
-      <h2 class="lab" style="margin-top:22px">Servicios y precios</h3>
+      <h2 class="lab" style="margin-top:22px">Servicios y precios</h2>
       <div class="pricing">${lines()}</div>
     </div>
   </section>
@@ -4198,7 +4198,7 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
         ${x.tag ? `<p class="lb-sv-desc">${esc(x.tag)}</p>` : ""}
         <div class="lb-sv-ft"><span class="lb-sv-dur">${esc(x.tx)}</span><span class="lb-price">${$$(x.p)}</span></div>
         </div>
-      </div>`,
+      </article>`,
       ).join("")
     : `<p class="lb-empty">Todavía no hay servicios cargados.</p>`;
 
@@ -4385,7 +4385,7 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
                   ? `<img class="lb-tst-av" src="${esc(t.foto)}" alt="" width="30" height="30" loading="lazy" decoding="async">`
                   : `<span class="lb-tst-av lb-tst-av--ini" aria-hidden="true">${esc((t.nm || "?").trim()[0].toUpperCase())}</span>`}
               <cite>${esc(t.nm || "Cliente")}</cite>
-            </footer></article>`,
+            </footer></div>`,
           ).join("")}
         </div>
         </div>
@@ -4948,14 +4948,14 @@ function homeH() {
       <button class="pillb" data-act="go" data-args="${A("rev")}">${ult ? "Editar reseña" : "Dejar reseña"}</button>
     </div>` +
     /* ---------- premios y canjes: siguen debajo, no se pierden ---------- */
-    `<h2 class="lab" id="premios">Premios</h3><div class="card" style="padding:0">` +
+    `<h2 class="lab" id="premios">Premios</h2><div class="card" style="padding:0">` +
     PRv.map((p, i) => {
       const puede = U.pt >= p.p;
       return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 18px;border-bottom:1px solid var(--line)"><div><b>${esc(p.n)}</b><br><small>${p.p} puntos</small></div><button class="pillb" ${puede ? "" : "disabled"} data-act="redeem" data-args="${A(i)}">${cf === i ? "Confirmar canje" : "Canjear"}</button></div>`;
     }).join("") +
     `</div>` +
     (mine.length
-      ? `<h2 class="lab">Tu código de canje</h3>` +
+      ? `<h2 class="lab">Tu código de canje</h2>` +
         mine
           .map(
             (c) =>
@@ -5777,9 +5777,9 @@ function turH() {
   };
   return (
     `<h1>MIS TURNOS</h1>` +
-    `<h2 class="lab">Próximos</h3>` +
+    `<h2 class="lab">Próximos</h2>` +
     (prox.length ? prox.map(card).join("") : "<p><small>Todavía no reservaste. Tocá “Reservar” para elegir un horario.</small></p>") +
-    `<h2 class="lab">Historial</h3>` +
+    `<h2 class="lab">Historial</h2>` +
     (hist.length ? hist.map(card).join("") : "<p><small>No hay turnos pasados.</small></p>")
   );
 }
@@ -6010,7 +6010,7 @@ function dashH() {
   return (
     `<div class="head" style="margin-top:0"><div><h1 style="margin-bottom:4px">Dashboard</h1><small>${new Date().toLocaleDateString("es-AR", { month: "long", year: "numeric" })} · todos los barberos</small></div></div><div class="chips" style="margin-bottom:18px">${P.map((p) => `<button class="chip ${per === p[0] ? "on" : ""}" aria-pressed="${!!(per === p[0])}" data-act="setPer" data-args="${A(p[0])}">${p[1]}</button>`).join("")}</div>` +
     `<div class="kpis">${kp("Cortes realizados", L.length)}${kp("Ingresos cobrados", $$(tot))}${kp("Promedio por corte", $$(L.length ? Math.round(tot / L.length) : 0))}${kp("Turnos cancelados", CL.length)}${kp("Descuentos otorgados", $$(dsc))}${kp("Canjes entregados", CU.length)}</div>` +
-    `<div class="card" style="margin-bottom:14px"><h2 class="lab" style="margin-top:0">Ventas por día · últimos 7 días</h3><div class="vchart">${dayChart.map((x) => `<div class="col ${x.d === ymd() ? "hoy" : ""}"><small>${$$(x.m)}</small><i style="height:${Math.max(3, Math.round((x.m / maxDay) * 150))}px"></i><small>${["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"][dow(x.d)]}</small></div>`).join("")}</div></div>` +
+    `<div class="card" style="margin-bottom:14px"><h2 class="lab" style="margin-top:0">Ventas por día · últimos 7 días</h2><div class="vchart">${dayChart.map((x) => `<div class="col ${x.d === ymd() ? "hoy" : ""}"><small>${$$(x.m)}</small><i style="height:${Math.max(3, Math.round((x.m / maxDay) * 150))}px"></i><small>${["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"][dow(x.d)]}</small></div>`).join("")}</div></div>` +
     `<div class="grid b"><div><h2 style="margin-top:26px">Ventas por servicio</h2>${bars(by, maxBy)}<h2>Medio de pago</h2>${Object.keys(md).length ? medBar() : "<p><small>Todavía no hay cortes en este período.</small></p>"}</div><div><div class="head"><h2>Registro de cortes</h2><button data-act="exportar" ${L.length ? "" : "disabled"}>Descargar CSV</button></div>` +
     (L.length
       ? '<div class="scr">' +
@@ -6109,7 +6109,7 @@ function cliH() {
           hsel = selU ? CH[selU.id] : null;
         if (!selU)
           return `<div class="card"><small>Elegí un cliente de la lista para ver su detalle.</small></div>`;
-        return `<div class="card"><div style="display:flex;gap:14px;align-items:center;margin-bottom:14px">${selU.foto ? `<img src="${imgCld(esc(selU.foto), 200)}" alt="" width="64" height="64" style="border-radius:50%;object-fit:cover;border:2px solid var(--brass)">` : `<span class="aval">${esc((selU.nm || "?")[0].toUpperCase())}</span>`}<div><b style="font:700 26px 'Barlow Condensed';text-transform:uppercase">${esc(selU.nm)}</b><br><small>${esc(selU.ph || "—")}</small></div></div><div class="grid3"><div class="kv"><small>Puntos</small><b>${selU.pt}</b></div><div class="kv"><small>Cortes</small><b>${(hsel || []).length}</b></div><div class="kv"><small>Faltas</small><b>${selU.ns || 0}</b></div></div><h2 class="lab">Historial</h3>` +
+        return `<div class="card"><div style="display:flex;gap:14px;align-items:center;margin-bottom:14px">${selU.foto ? `<img src="${imgCld(esc(selU.foto), 200)}" alt="" width="64" height="64" style="border-radius:50%;object-fit:cover;border:2px solid var(--brass)">` : `<span class="aval">${esc((selU.nm || "?")[0].toUpperCase())}</span>`}<div><b style="font:700 26px 'Barlow Condensed';text-transform:uppercase">${esc(selU.nm)}</b><br><small>${esc(selU.ph || "—")}</small></div></div><div class="grid3"><div class="kv"><small>Puntos</small><b>${selU.pt}</b></div><div class="kv"><small>Cortes</small><b>${(hsel || []).length}</b></div><div class="kv"><small>Faltas</small><b>${selU.ns || 0}</b></div></div><h2 class="lab">Historial</h2>` +
           (!own
             ? `<small>Este detalle lo administra el dueño.</small>`
             : hsel == null
@@ -6210,7 +6210,7 @@ function finH() {
         "</div>"
       : "");
   const gastosLista =
-    '<h2 class="lab" style="margin-top:0">Gastos</h3>' +
+    '<h2 class="lab" style="margin-top:0">Gastos</h2>' +
     (GL.length
       ? GL.map(
           (g) =>
@@ -6218,7 +6218,7 @@ function finH() {
         ).join("")
       : "<p><small>Todavía no hay gastos en este período.</small></p>");
   const gastoForm = `<div class="card" style="margin-top:14px"><input id="gc" placeholder="Concepto (insumos, alquiler…)" maxlength="40" value="${esc(gx.c)}" data-in="gIn" data-args="${A("c", "@el")}"><input id="gm" inputmode="numeric" placeholder="Monto $" maxlength="8" value="${esc(gx.m)}" data-in="gIn" data-args="${A("m", "@el")}"><button class="main" style="margin-top:0" data-act="gAdd">+ Agregar gasto</button></div>`;
-  const tablaBarb = `<h2 class="lab" style="margin-top:0">Porcentaje por barbero</h3>` +
+  const tablaBarb = `<h2 class="lab" style="margin-top:0">Porcentaje por barbero</h2>` +
     (own && fe
       ? `<div class="card"><div class="bwrap"><div class="clin chead" style="grid-template-columns:44px 1.4fr .6fr 1fr .5fr 1fr"><span></span><span>Barbero</span><span>Cortes</span><span>Facturado</span><span>%</span><span style="text-align:right">Le corresponde</span></div>` +
         (GR.length

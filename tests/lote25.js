@@ -74,9 +74,18 @@ async function entrar(b, email, pass, ancho = 1400) {
   ok(!/Esperá un segundo e intentá de nuevo/.test(src), "el cartel de 'esperá un segundo' desapareció");
   ok(!/FIRESTORE_RULES\.txt, el punto 6/.test(src), "el mensaje de permisos ya no manda a leer un archivo");
   ok(/Math\.min\(50, v\)/.test(src), "el tope de puntos del panel es 50");
+  /* OJO con la forma de estos chequeos. Antes se leía
+     `reglas.split("match /fotoBarbero")[1].split("match /activos")[0]` y si la
+     primera vuelta no encontraba nada, `[1]` era `undefined` y la prueba
+     MORÍA con "Cannot read properties of undefined" en vez de decir que la
+     regla no está. Ahora se comprueba la existencia primero. */
+  const hayFotoBarbero = /match \/fotoBarbero\/\{uid\}/.test(reglas);
+  ok(hayFotoBarbero, "las reglas tienen la colección fotoBarbero");
+  if (hayFotoBarbero) {
+    const bloque = reglas.split("match /fotoBarbero")[1].split("match /activos")[0];
+    ok(/allow read: if true/.test(bloque), "y se lee sin sesión (la landing la necesita)");
+  }
   ok(/request\.resource\.data\.pt <= 50;/.test(reglas), "el tope de puntos de las reglas es 50");
-  ok(/match \/fotoBarbero\/\{uid\}/.test(reglas), "las reglas tienen la colección fotoBarbero");
-  ok(!/allow read: if isSignedIn\(\) && \(request\.auth\.uid == uid \|\| isStaff/.test(reglas.split("match /fotoBarbero")[1].split("match /activos")[0]), "fotoBarbero se lee sin sesión");
   ok(/u\.id !== OWNER_UID/.test(src), "el dueño se excluye de la lista de clientes");
   ok(!/data-act="fotoBarbero"/.test(src), "el botón Foto del dueño ya no está");
   ok(!/const negTab/.test(src), "el apartado Negocio ya no existe");

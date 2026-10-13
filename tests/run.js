@@ -29,6 +29,7 @@ const TODAS = [
   { n: "visual", sesion: false, red: false },
   { n: "accesibilidad", sesion: true, red: true },
   { n: "img.vivas", sesion: false, red: true },
+  { n: "html.valido", sesion: true, red: false },
 
   /* red, sin cuenta */
   { n: "landing.web", sesion: true, red: false },
