@@ -1657,6 +1657,28 @@ body[data-theme="light"] header #nav button {
 .mb .chips button:not(.main) {
   flex: 1;
 }
+/* La fila de botones se queda pegada abajo del modal mientras el contenido
+   scrollea. Sin esto, en el móvil había que bajar hasta el final para llegar a
+   "Guardar", y con seis campos el botón quedaba por debajo del pliegue.
+   Se aplica sólo a `.mb--ancho` (el formulario de perfil): los avisos cortos
+   no scrollean y no necesitan nada pegado. */
+.mb--ancho > .chips {
+  position: sticky;
+  bottom: -26px;
+  margin: 20px -26px -26px;
+  padding: 14px 26px 16px;
+  background: var(--card);
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 18px 18px;
+  z-index: 1;
+}
+@media (max-width: 480px) {
+  .mb--ancho > .chips {
+    bottom: -20px;
+    margin: 18px -18px -20px;
+    padding: 12px 18px 14px;
+  }
+}
 /* Requisitos de contraseña */
 .pwl {
   list-style: none;
@@ -2232,6 +2254,14 @@ h1::after {
 .mb--ancho textarea {
   min-height: 64px;
   resize: vertical;
+}
+/* Menos aire entre campos que en el panel: son seis campos y en el móvil el
+   modal llega casi al alto de la pantalla. */
+.mb--ancho .campo {
+  margin-bottom: 12px;
+}
+.mb--ancho h2 {
+  margin-bottom: 6px;
 }
 @media (max-width: 480px) {
   .mb--ancho .cols2 {
