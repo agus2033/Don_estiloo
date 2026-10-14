@@ -2534,13 +2534,18 @@ body.wz-abierto {
   align-items: start;
 }
 @media (min-width: 640px) {
-  /* Dos columnas, pero la de la izquierda NO puede bajar de 240px.
+  /* Dos columnas. La de la izquierda tiene un piso de 240px para que la celda
+     del valor no se estrangule (medido: con `minmax(0, …)` quedaba en 18px y
+     "Barba · 30 min" salía partido en ocho renglones).
 
-     Con `minmax(0, 1.25fr)` la columna se podía comprimir hasta cero: medido, en
-     una ventana de 900px la tarjeta de la izquierda quedaba en 184px y la
-     celda del valor en 18px. Con un piso de 240px la columna se mantiene y, si
-     no entra, la grilla desborda a una sola columna sola (que es lo que hace
-     `auto`), nunca se estruja la tarjeta. */
+     OJO con lo que dice el comentario de arriba: con `minmax()` los pisos son
+     REALES. Si los dos no entran, la grilla no cae a una columna: se desborda
+     hacia la derecha y el precio, la casilla y el botón quedan fuera de la
+     ventana, con la barra horizontal abajo (medido: 478px de grilla en una hoja
+     de 460px, que es el `max-width` que había en escritorio).
+
+     Por eso el `max-width` de la hoja y estos dos pisos tienen que andar
+     juntos: si sube uno, sube el otro. El chequeo está en tests/lote25.js. */
   .wz-res-cols {
     grid-template-columns: minmax(240px, 1.25fr) minmax(220px, 0.85fr);
     gap: 18px;
@@ -3459,10 +3464,22 @@ body[data-theme="light"] .ver:hover {
 }
 /* El calendario del asistente se desborda en pantallas anchas: las celdas
    quedan de 130 px y hay que scrollear para ver el mes entero. Se limita
-   el ancho de la hoja en escritorio, que es donde el problema aparece. */
+   el ancho de la hoja en escritorio, que es donde el problema aparece.
+
+   Y al tocar ese límite hay que mirar el RESUMEN (paso 6), que tiene dos pisos
+   fijos: 240 + 18 + 220 = 478px, más los 18px de padding de la hoja a cada
+   lado. Con 460px no entraba: el precio, la casilla de los términos y el botón
+   "Ingresar y confirmar" quedaban cortados, con barra horizontal abajo. Eso es lo
+   que reportó el dueño en escritorio.
+
+   720 - 36 = 684px de interior: las dos columnas entran con 206px de aire, y el
+   calendario, en vez de necesitar recorte, se ve más cómodo que antes.
+
+   Ojo: si se cambia alguno de estos dos números, hay que volver a mirar el
+   resumen en escritorio. Es el punto donde se cortaba. */
 @media (min-width: 900px) {
   .wz-sheet {
-    max-width: 460px;
+    max-width: 720px;
   }
   .wz-cel {
     min-height: 46px;

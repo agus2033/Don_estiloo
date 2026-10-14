@@ -491,6 +491,45 @@ async function entrar(b, email, pass, ancho = 1400) {
     bloquesCols.map((b) => b.slice(0, 90)).join(" || "),
   );
 
+  /* ---------- los pisos de la grilla tienen que ENTRAR en la hoja ----------
+     Este es el bug que reportó el dueño en escritorio: en la ventana de
+     resumen el precio, la casilla de los términos y el botón "Ingresar y
+     confirmar" quedaban cortados, con barra horizontal.
+
+     La causa fue mía, del lote 33: puse `minmax(240px, …) minmax(220px, …)` y
+     escribí que si no entraban la grilla caía a una columna. **Eso es falso.**
+     Con `minmax()` los pisos son reales: si los dos no entran, la grilla se
+     desborda y el contenido se sale de la hoja.
+
+     El arreglo fue ensanchar la hoja en escritorio (460 → 720px), así que la
+     cuenta quedó:
+
+         240 (izquierda) + 18 (gap) + 220 (derecha) = 478px de grilla
+         720 (hoja) − 18 − 18 (padding)               = 684px disponibles
+
+     Estas dos comprobaciones hacen esa cuenta con los números del archivo, para
+     que cambiar cualquiera de los dos números sin el otro salte en rojo. */
+  const bloqueDosColumnas = bloquesCols.find((b) => /grid-template-columns:\s*minmax\(\d+px/.test(b)) || "";
+  const pisos = [...bloqueDosColumnas.matchAll(/minmax\((\d+)px/g)].map((m) => +m[1]);
+  const gapCols = +((bloqueDosColumnas.match(/gap:\s*(\d+)px/) || [])[1] || 0);
+  const paddingHoja = +((lcCodigo.match(/\.wz-sheet \{[\s\S]*?padding:\s*(\d+)px/) || [])[1] || 0);
+  const anchosHoja = [...lcCodigo.matchAll(/\.wz-sheet \{[\s\S]*?max-width:\s*(\d+)px/g)].map((m) => +m[1]);
+  const anchoHojaBase = +(lcCodigo.match(/\.wz-sheet \{[\s\S]*?max-width:\s*(\d+)px/) || [])[1];
+
+  ok(
+    pisos.length === 2 && gapCols > 0,
+    "el resumen tiene dos columnas con piso en píxeles y gap, y se pueden sumar",
+    "pisos " + JSON.stringify(pisos) + " gap " + gapCols,
+  );
+  const anchoMinimoGrilla = pisos.reduce((a, b) => a + b, 0) + gapCols;
+  ok(
+    anchosHoja.length >= 2 && anchosHoja.every((w) => w - paddingHoja * 2 >= anchoMinimoGrilla),
+    "y en TODOS los anchos de la hoja la grilla del resumen entra entera",
+    "la grilla necesita " + anchoMinimoGrilla + "px; los max-width son " +
+      JSON.stringify(anchosHoja) + " con padding " + paddingHoja * 2 + " (interior " +
+      JSON.stringify(anchosHoja.map((w) => w - paddingHoja * 2)) + ")",
+  );
+
   /* ---------- 2. el dueño ---------- */
   console.log("\n=== 2. panel del dueño ===");
   const b = await chromium.launch();
