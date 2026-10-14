@@ -494,25 +494,11 @@ body[data-theme="light"] .lb-btn--pri:hover {
   cursor: not-allowed;
 }
 
-/* CTA fijo mobile */
-.lb-sticky {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 50;
-  display: block;
-  padding: 10px var(--lb-pad) calc(10px + env(safe-area-inset-bottom));
-  background: color-mix(in srgb, var(--lb-bg) 94%, transparent);
-  backdrop-filter: blur(12px);
-  border-top: 1px solid var(--lb-line);
-}
-.lb-sticky .lb-btn {
-  width: 100%;
-}
-.lb-sticky[hidden] {
-  display: none;
-}
+/* La barra fija con "Reservar ahora" en el móvil se fue (lo pidió el dueño el
+   13/10): tapaba el contenido de abajo de todo y dejaba dos "Reservar ahora"
+   pegados, el suyo y el del título de la sección de reseñas. Para reservar
+   alcanzan el botón del encabezado, el de cada barbero y el del asistente, que
+   abren la misma ventana. */
 
 /* ---------- 5c. ICONOS DE REDES ----------
    Los iconos son los PNG del dueño (assets/whatsapp.png e
@@ -1440,40 +1426,6 @@ body[data-theme="light"] .lb-btn--pri:hover {
   }
 }
 /* La tarjeta de llamado a reservar, debajo de la grilla del equipo. */
-.lb-elige {
-  margin-top: 22px;
-  padding: 26px 24px 24px;
-  border: 1px solid var(--lb-brass);
-  border-radius: var(--lb-r-md);
-  background: var(--lb-bg);
-}
-.lb-elige-ico {
-  display: grid;
-  place-items: center;
-  width: 46px;
-  height: 46px;
-  margin-bottom: 14px;
-  border-radius: 12px;
-  background: var(--lb-card);
-  border: 1px solid var(--lb-line);
-  color: var(--lb-brass);
-}
-.lb-elige-ico svg {
-  width: 24px;
-  height: 24px;
-}
-.lb-elige h3 {
-  margin: 0 0 6px;
-  font-family: "Barlow Condensed", sans-serif;
-  font-size: clamp(28px, 4vw, 38px);
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  line-height: 1.1;
-}
-.lb-elige p {
-  margin: 0 0 18px;
-  color: var(--lb-mut);
-}
 
 /* ---------- 12b. CARRUSEL DE RESEÑAS ----------
    Una reseña por vez, como los banners de Marketplace: el track se
@@ -2663,8 +2615,15 @@ body.wz-abierto {
   align-items: start;
 }
 @media (min-width: 640px) {
+  /* Dos columnas, pero la de la izquierda NO puede bajar de 240px.
+
+     Con `minmax(0, 1.25fr)` la columna se podía comprimir hasta cero: medido, en
+     una ventana de 900px la tarjeta de la izquierda quedaba en 184px y la
+     celda del valor en 18px. Con un piso de 240px la columna se mantiene y, si
+     no entra, la grilla desborda a una sola columna sola (que es lo que hace
+     `auto`), nunca se estruja la tarjeta. */
   .wz-res-cols {
-    grid-template-columns: minmax(0, 1.25fr) minmax(220px, 0.85fr);
+    grid-template-columns: minmax(240px, 1.25fr) minmax(220px, 0.85fr);
     gap: 18px;
   }
 }
@@ -2706,6 +2665,11 @@ body.wz-abierto {
 .wz-rf {
   display: flex;
   align-items: center;
+  /* Con `wrap` el botón "Cambiar" baja de renglón cuando el texto no entra con
+     él al lado. Antes no había wrap: el botón, que es `flex: 0 0 auto`, se
+     quedaba siempre al lado y el texto se comía lo que quedaba, que era nada.
+     Ver el comentario de `.wz-rf-t`. */
+  flex-wrap: wrap;
   gap: 12px;
   padding: 13px 14px;
   border-bottom: 1px solid var(--lb-line-soft);
@@ -2796,7 +2760,19 @@ body.wz-abierto {
   outline-offset: 2px;
 }
 .wz-rf-t {
-  flex: 1;
+  /* `flex: 1 1 130px` en vez de `flex: 1`.
+
+     La fila del resumen es ícono (38) + texto + botón "Cambiar". Con `flex: 1`
+     el texto se queda con lo que sobre, y en pantalla angosta lo que sobra es
+     casi nada: medido, la celda llegaba a 18px y "Barba · 30 min" salía partido
+     en ocho renglones, un carácter por renglón.
+
+     Con un flex-basis de 130px la fila dice "si no entra el texto con el botón
+     al lado, el botón baja de renglón". El texto nunca queda por debajo de su
+     base, y el botón nunca desaparece: se acomoda abajo. Es la forma de que el
+     problema no vuelva a aparecer a ninguna pantalla, sin tener que adivinar un
+     ancho exacto. */
+  flex: 1 1 130px;
   min-width: 0;
 }
 .wz-rf-t > span {
@@ -2810,7 +2786,13 @@ body.wz-abierto {
 .wz-rf-t b {
   display: block;
   font-weight: 600;
-  overflow-wrap: anywhere;
+  /* `break-word` y no `anywhere`. OJO: esto NO era la causa del texto partido
+     del móvil — medido, con cualquiera de los dos la celda colapsaba igual (la
+     causa es el ancho, más abajo). Se cambia igual porque `anywhere` le avisa a
+     flexbox que el ancho mínimo de la caja es de UN CARÁCTER, y eso le da al
+     layout permiso para estrangular la fila más de lo necesario. `break-word`
+     deja el mínimo en el de la palabra más larga. */
+  overflow-wrap: break-word;
 }
 .wz-rf-t small {
   /* block y no inline: como el <small> va dentro del <b>, inline lo
@@ -3686,9 +3668,6 @@ body[data-theme="light"] .ver:hover {
     align-items: center;
     gap: 10px;
     flex: 0 0 auto;
-  }
-  .lb-sticky {
-    display: none;
   }
 
   .lb-hero {

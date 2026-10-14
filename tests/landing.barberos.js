@@ -304,10 +304,44 @@ const completaBarberos = async (page, out, tag) => {
     chk(pieAbierto.dorsoBoton, `${tag} · el dorso trae su propio botón de reservar`);
     chk(/Reservar con /.test(pieAbierto.dorsoTexto), `${tag} · y dice con quién`, pieAbierto.dorsoTexto);
     await page.locator(".lb-barber--abierta .lb-bd-res").first().click();
-    await page.waitForTimeout(800);
-    const salto = await page.evaluate(() => ({ hash: location.hash, abiertas: document.querySelectorAll(".lb-barber--abierta").length }));
-    chk(/#\/reservar/.test(salto.hash), `${tag} · "Reservar con…" lleva a la reserva`, salto.hash);
-    chk(salto.abiertas === 0, `${tag} · y cierra la ficha al saltar`, `${salto.abiertas}`);
+    await page.waitForTimeout(1000);
+    /* QUÉ HACE ESTE BOTÓN. Antes llevaba a la pantalla del panel (#/reservar) y por eso
+       había que exigir ese hash. El dueño pidió que fuera el MISMO proceso que el
+       botón del encabezado: ahora abre la ventana de reserva de seis pasos, con ese
+       barbero ya elegido, sin sacar al cliente de la web.
+
+       Con sesión sigue yendo a la pantalla del panel, porque ahí el mismo asistente se
+       dibuja como página y no como ventana. Por eso se comprueban las dos formas. */
+    const salto = await page.evaluate(() => {
+      const w = document.getElementById("wzm");
+      return {
+        hash: location.hash,
+        abiertas: document.querySelectorAll(".lb-barber--abierta").length,
+        ventana: !!w && !w.hidden,
+        paso: w ? (w.querySelector(".wz-paso.on b") || {}).innerText : null,
+      };
+    });
+    const aPanel = /#\/reservar/.test(salto.hash);
+    chk(
+      aPanel || salto.ventana,
+      `${tag} · "Reservar con…" abre la reserva: la ventana de seis pasos o la pantalla del panel`,
+      JSON.stringify(salto),
+    );
+    chk(salto.abiertas === 0, `${tag} · y cierra la ficha`, `${salto.abiertas}`);
+    if (salto.ventana) {
+      chk(
+        /^\s*[1-6]/.test(String(salto.paso || "")),
+        `${tag} · y la ventana abre en un paso del asistente`,
+        String(salto.paso),
+      );
+      await page.evaluate(() => document.querySelector('#wzm [data-act="wzCerrar"]')?.click());
+      await page.waitForTimeout(600);
+    } else {
+      await page.evaluate(() => {
+        location.hash = "#inicio";
+      });
+      await page.waitForTimeout(900);
+    }
 
     /* ---------- teléfono y redes del dorso ---------- */
     await page.goto("http://127.0.0.1:8765/index.html", { waitUntil: "domcontentloaded" });

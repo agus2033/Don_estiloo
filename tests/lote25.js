@@ -391,6 +391,88 @@ async function entrar(b, email, pass, ancho = 1400) {
     "si no hay premios cargados, lo dice en vez de mostrar la lista de antes",
   );
 
+  /* ---------- menos botones, todos abriendo lo mismo ----------
+     El dueño pidió quitar la barra fija de "Reservar ahora" y la tarjeta "Elegí
+     con quién cortarte": eran dos botones más para lo mismo, y quedaban pegados
+     al de la sección de reseñas tapando el contenido.
+
+     Y pidió que "Reservar con {barbero}" fuera el MISMO proceso que el otro
+     botón. Antes llamaba a lbReservar(), que sacaba al cliente de la web y lo
+     mandaba a la pantalla del panel: dos botones, dos caminos. Ahora abre la
+     misma ventana de seis pasos con ese barbero puesto. */
+  ok(!/lb-sticky/.test(src), "la barra fija de reservar ya no se dibuja", (src.match(/lb-sticky[^\n]{0,60}/g) || []).join(" | "));
+  ok(!/\.lb-sticky/.test(lc), "y su CSS también está borrado");
+  ok(!/lb-elige/.test(src), "la tarjeta «Elegí con quién cortarte» ya no se dibuja");
+  ok(!/\.lb-elige/.test(lc), "y su CSS también está borrado");
+  const lbReservarBar = src.slice(src.indexOf("lbReservarBar(id)"), src.indexOf("lbReservar() {"));
+  ok(!/\bACT\.lbReservar\(\)/.test(lbReservarBar), "«Reservar con X» ya no manda al panel: usa la misma ventana", lbReservarBar.slice(0, 120));
+  ok(
+    /wzModal\(\)/.test(lbReservarBar) && /sel\.b = id/.test(lbReservarBar),
+    "abre la ventana de reserva con ese barbero ya elegido",
+  );
+  ok(/lbPrimerPaso/.test(lbReservarBar), "y arranca en el primer paso que falta, no en el 1");
+  /* Ojo: que `lbPrimerPaso` esté fuera del `Object.assign(ACT, …)` ya lo
+   garantiza el parser — si estuviera dentro del objeto, `node --check`
+   fallaría y el archivo ni siquiera cargaría. Lo que sí importa acá es que
+   devuelva el paso 6 cuando ya está todo elegido, y no un número fijo. */
+  const cuerpoPrimerPaso = (src.match(/const lbPrimerPaso = \(\) => \{[\s\S]*?\n\};/) || [""])[0];
+  ok(
+    /if \(!S\.length \|\| sel\.s < 0\) return 1;/.test(cuerpoPrimerPaso) && /return 6;/.test(cuerpoPrimerPaso),
+    "y lbPrimerPaso devuelve el 6 con todo elegido y el 1 sin servicio",
+    cuerpoPrimerPaso.slice(0, 90),
+  );
+  ok(
+    /function lbCerrarMenu\(\)/.test(src) && /e\.target\.closest\("#lbPanel"\)\)\s*lbCerrarMenu\(\)/.test(src),
+    "el menú móvil se cierra solo al tocar algo de la bandeja",
+  );
+
+  /* ---------- el resumen no se parte letra por letra ----------
+     En el móvil el valor de cada fila salía partido en ocho renglones, un
+     carácter por renglón: "B a r b a 3 0 m i n".
+
+     La causa NO era el `overflow-wrap` (medido: con `anywhere` y con
+     `break-word` la celda colapsaba igual). Era el ancho:
+
+     - `.wz-res-cols` tenía `minmax(0, 1.25fr)` para la columna de la izquierda,
+       que puede llegar a CERO. En una ventana de 900px la tarjeta quedó en
+       184px y la celda del valor en 18px.
+     - dentro de la fila, `.wz-rf-t` era `flex: 1`: se quedaba con lo que
+       sobrara después del ícono y del botón "Cambiar", que es `flex: 0 0 auto`.
+
+     El arreglo es que la fila se acomode sola en vez de depender del ancho:
+     con `flex-wrap` y un flex-basis el botón baja de renglón antes de que el
+     texto se estruje. */
+  const filaRf = (lc.match(/\.wz-rf \{[\s\S]*?\}/) || [""])[0];
+  ok(/flex-wrap:\s*wrap/.test(filaRf), "la fila del resumen tiene flex-wrap: wrap, para que el botón baje antes de estrujar el texto", filaRf);
+  const tRf = (lc.match(/\.wz-rf-t \{[\s\S]*?\}/) || [""])[0];
+  ok(
+    /flex:\s*1 1 \d+px/.test(tRf) && !/flex:\s*1;/.test(tRf),
+    "y el texto tiene un flex-basis en píxeles, no `flex: 1` a secas",
+    tRf,
+  );
+  /* Y acá va sobre el CÓDIGO, no sobre todo el archivo: el comentario que explica
+     el bug menciona `minmax(0, 1.25fr)` a propósito, y buscarlo en el archivo
+     entero lo encontraba y daba falso negativo. Es el mismo tropiezo de antes,
+     dos veces en el mismo lote.
+
+     Y se miran TODOS los bloques `.wz-res-cols`, no el primero: hay dos (el
+     base, que es de una columna, y el del media query, que es el de dos). Con el
+     primero la comprobación daba falso constante y "detectaba" cualquier cosa,
+     que es peor que no comprobar. */
+  const lcCodigo = lc.replace(/\/\*[\s\S]*?\*\//g, "");
+  const bloquesCols = lcCodigo.match(/\.wz-res-cols \{[\s\S]*?\}/g) || [];
+  ok(
+    bloquesCols.length >= 2,
+    "la grilla del resumen tiene un bloque base y uno de dos columnas",
+    bloquesCols.length + " bloques",
+  );
+  ok(
+    bloquesCols.every((b) => !/minmax\(0,\s*1\.25fr\)/.test(b)) &&
+      bloquesCols.some((b) => /grid-template-columns:\s*minmax\(\d+px/.test(b)),
+    "y en el de dos columnas la izquierda tiene piso en píxeles, no `minmax(0, …)`",
+    bloquesCols.map((b) => b.slice(0, 90)).join(" || "),
+  );
+
   /* ---------- 2. el dueño ---------- */
   console.log("\n=== 2. panel del dueño ===");
   const b = await chromium.launch();

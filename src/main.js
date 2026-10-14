@@ -3394,6 +3394,18 @@ const dRun = (el, k) => {
 };
 document.addEventListener("click", (e) => {
   const el = e.target.closest("[data-act]");
+  /* La bandeja del menú del móvil se cierra sola al elegir algo (lo pidió el
+     dueño). Los links de la bandeja son <a href="#seccion">: cambian el hash y
+     la página baja, pero la bandeja seguía abierta tapando media pantalla, y
+     había que tocarla afuera para poder ver a dónde se fue.
+
+     Se delega y no se pone un data-act en cada link porque los <a> necesitan
+     su href para el scroll suave y para el teclado: si se les cambia el
+     comportamiento, se rompe la navegación sin JavaScript.
+
+     El botón de hamburguesa queda fuera del chequeo (no está DENTRO de la
+     bandeja), así que seguir alternando funciona. */
+  if (e.target.closest("#lbPanel")) lbCerrarMenu();
   /* Antes la foto (#mebadge) tenía aquí un caso propio que hacía `return`,
      y por eso nunca llegaba a dRun. Ahora la foto es un <button> con
      data-act="toggleMebadge" como cualquier otro: si el caso especial
@@ -4551,17 +4563,14 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
       }).join("")
     : `<p class="lb-todo"><b>Equipo sin cargar</b>Cargá los barberos desde el panel de la barbería y aparecen acá solos.</p>`;
 
-  /* Tarjeta de llamado que el mockup pone debajo de la grilla. */
-  const ctaEquipo = BARS.length
-    ? `<div class="lb-elige">
-         <span class="lb-elige-ico" aria-hidden="true">
-           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
-         </span>
-         <h3>Elegí con quién cortarte</h3>
-         <p>Elegís barbero, día y horario en menos de un minuto.</p>
-         <button class="lb-btn lb-btn--pri lb-btn--full" type="button" data-act="lbReservar">Reservar ahora</button>
-       </div>`
-    : "";
+  /* La tarjeta de "Elegí con quién cortarte" se fue (lo pidió el dueño el
+     13/10): era un cuarto botón de "Reservar ahora" para hacer lo mismo que el
+     del encabezado, el del asistente y el de cada barbero. Cuatro botones
+     iguales cargan la pantalla y hacen que ninguno parezca el principal.
+
+     La grilla de barberos que estaba arriba no se toca: cada tarjeta tiene su
+     "Reservar con {nombre}", que abre la misma ventana con ese barbero puesto. */
+  const ctaEquipo = "";
 
   /* ---------- 13. testimonios: carrusel ----------
      En escritorio se ven 3 por vez y en el celomar 1. Antes se veía una sola
@@ -4849,11 +4858,56 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
 
   <!-- El pie compacto de la landing se fue (lo pidió el dueño): era una
        franja con "© Codigo Barber · Turnos y puntos" y las redes, que
-       repetía lo que ya está en la sección de Contacto. Sin él la landing
-       cierra con la banda dorada de "Reservar ahora". -->
+       repetía lo que ya está en la sección de Contacto. -->
 
-  <div class="lb-sticky">${lbCta("lb-btn--lg")}</div>
+  <!-- La barra fija con "Reservar ahora" también se fue (lo pidió el dueño el
+       13/10). Tapaba el contenido abajo de todo: en el móvil caía justo sobre
+       el título de "Lo que dicen nuestros clientes" y sobre el botón de esa
+       sección, y quedaban dos "Reservar ahora" pegados.
+
+       Para reservar alcanza con el botón del encabezado, el del asistente de
+       la sección EQUIPO y el de cada barbero, que abren la misma ventana. -->
 </div>`;
+}
+
+/* El primer paso del asistente que todavía falta completar.
+
+   Se usa cuando se abre la ventana desde un botón que ya dejó algo elegido (por
+   ejemplo "Reservar con Roman"): abrir siempre en el paso 1 haría que el
+   cliente perdiera lo que ya había hecho, que es exactamente la queja de que
+   cada botón sea un proceso distinto.
+
+   El orden es el del asistente: 1 servicio · 2 barbero · 3 día · 4 turno ·
+   5 horario · 6 resumen.
+
+   Va FUERA del `Object.assign(ACT, …)` de más abajo a propósito: una `const`
+   declarada dentro de un objeto literal es un error de sintaxis. */
+const lbPrimerPaso = () => {
+  if (!S.length || sel.s < 0) return 1;
+  if (!sel.b) return 2;
+  if (!sel.d) return 3;
+  if (!WZ.turno) return 4;
+  if (!sel.t) return 5;
+  return 6;
+};
+
+/* Cierra la bandeja del menú móvil sin alternar.
+
+   Hace falta como función aparte de lbMenu() porque ese botón es un
+   interruptor: llamarlo para cerrar la volvería a abrir.
+
+   Se usa cuando se elige algo dentro de la bandeja (un apartado, "Ingresar") o
+   cuando un botón abre la ventana de reserva: si no, la bandeja queda abierta
+   encima de la ventana y hay que cerrarla a mano. Lo pidió el dueño. */
+function lbCerrarMenu() {
+  const p = document.getElementById("lbPanel"),
+    h = document.getElementById("lbBurg");
+  if (!p || p.hasAttribute("hidden")) return;
+  p.setAttribute("hidden", "");
+  if (h) {
+    h.setAttribute("aria-expanded", "false");
+    h.setAttribute("aria-label", "Abrir menú");
+  }
 }
 
 /* --- Handlers del widget, del menú y del color del estado del formulario.
@@ -4865,17 +4919,58 @@ Object.assign(ACT, {
   lbFlip(id) {
     lbFlip(id);
   },
-  /* Reservar eligiendo a ese barbero: lo deja puesto en el widget antes de
-     saltar a la agenda, así el cliente no tiene que volver a elegirlo. */
+  /* Reservar eligiendo a ese barbero.
+
+     Antes: dejaba el barbero puesto y llamaba a lbReservar(), que sacaba al
+     cliente de la web y lo mandaba a la pantalla del panel (#/reservar). O sea
+     que el botón de la tarjeta y el botón del encabezado acababan en pantallas
+     distintas: uno en la web, otro adentro del panel.
+
+     Ahora los dos abren la MISMA ventana de reserva, la de seis pasos, con ese
+     barbero ya elegido. Es lo que pidió el dueño: que "Reservar con Roman" sea
+     el mismo proceso que el otro botón, no otro camino.
+
+     El paso en el que arranca depende de lo que ya esté cargado: si ya eligió
+     servicio, día y hora, se abre en el resumen (paso 6); si no, en el primer
+     paso pendiente. Así el botón nunca tira al cliente atrás. */
   lbReservarBar(id) {
-    if (id && BARS.some((b) => b.id === id)) {
-      lbw.b = lbw.b === id ? "" : id;
-      lbw.t = "";
-    }
-    /* El botón vive en el dorso de la tarjeta: se cierra para que el
-       usuario vea a dónde lo lleva el widget. */
+    const elegido = !!(id && BARS.some((b) => b.id === id));
+    lbw.b = elegido ? id : "";
+    lbw.t = "";
+    /* El botón vive en el dorso de la tarjeta: se cierra para que el usuario
+       vea a dónde lo lleva la ventana. */
     lbCierraTodos();
-    ACT.lbReservar();
+    /* Es un toggle: si el cliente le saca el barbero con el mismo botón, no se
+       abre nada. Abrirla sin barbero elegido sería llevarlo al mismo lugar de
+       siempre y se vería como que el botón no funciona. */
+    if (!lbw.b) return;
+    /* El asistente usa `sel`, no el widget `lbw` de la landing. Son dos
+       estados distintos: sin esto la ventana se abría en el paso 2 pidiendo
+       barbero, justo el que el cliente acababa de tocar. */
+    sel.b = id;
+    lbCerrarMenu();
+    if (me && rd) {
+      /* Con sesión: la pantalla del panel, que es el mismo asistente. */
+      WZ.paso = lbPrimerPaso();
+      WZ.mes = ymd().slice(0, 7);
+      rtPush("res");
+      prep("res");
+      R();
+      return;
+    }
+    /* Sin sesión: la misma ventana modal del encabezado, con el barbero puesto.
+       Se abre en el PRIMER PASO QUE FALTE, no en el 1: si ya eligió servicio y
+       día, tira al resumen y no lo hace volver atrás. */
+    WZ.paso = lbPrimerPaso();
+    WZ.turno = "";
+    WZ.mes = ymd().slice(0, 7);
+    const p = document.getElementById("wzm");
+    if (!p) return;
+    p.innerHTML = wzModal();
+    p.hidden = false;
+    document.body.classList.add("wz-abierto");
+    if (!S.length) ldEspera("Cargando servicios…");
+    WZ.pintar();
   },
   /* Reservar: con sesión va directo a la agenda; sin sesión deja el hash en
      #/reservar y muestra el login. Al loguearse, el router de la app
@@ -4917,6 +5012,10 @@ Object.assign(ACT, {
     else p.setAttribute("hidden", "");
     h.setAttribute("aria-expanded", open ? "true" : "false");
     h.setAttribute("aria-label", open ? "Cerrar menú" : "Abrir menú");
+  },
+  /* Ver lbCerrarMenu(), la función de módulo que llama. */
+  lbCerrarMenu() {
+    lbCerrarMenu();
   },
   lbS(i) {
     const n = +i;
@@ -7094,3 +7193,4 @@ WZ.pintar = () => {
   if (p && !p.hidden) { p.innerHTML = wzModal(); return; }
   R();
 };
+
