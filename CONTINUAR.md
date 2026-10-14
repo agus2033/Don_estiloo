@@ -2454,3 +2454,57 @@ widget menciona `lbWidget()` y `lbPaint()`.
 sw.js v14 -> v15.
 
 Suite: 37 pruebas · 895 comprobaciones · 0 en rojo.
+
+## 35. El resumen se salía de la ventana en escritorio
+
+Detalle en `PRODUCT.md`, sección 35. Lo técnico:
+
+### La causa era del lote 33
+
+`minmax()` tiene **pisos reales**. Si los dos tracks no entran, la grilla **no**
+cae a una columna: se desbora. Eso es lo que dice el comentario correcto ahora,
+y lo que decía al revés antes.
+
+La cuenta que faltaba, y que ahora está en `tests/lote25.js`:
+
+```js
+const pisos = [...bloque.matchAll(/minmax\((\d+)px/g)].map((m) => +m[1]);
+const gap = +((bloque.match(/gap:\s*(\d+)px/) || [])[1] || 0);
+const padding = +((lc.match(/\.wz-sheet \{[\s\S]*?padding:\s*(\d+)px/) || [])[1] || 0);
+const anchos = [...lc.matchAll(/\.wz-sheet \{[\s\S]*?max-width:\s*(\d+)px/g)].map((m) => +m[1]);
+
+const minimo = pisos.reduce((a, b) => a + b, 0) + gap;
+ok(anchos.every((w) => w - padding * 2 >= minimo), "...");
+```
+
+El `max-width` de `.wz-sheet` y los pisos de `.wz-res-cols` **andan juntos**.
+Cambiar uno sin mirar el otro rompe el resumen en escritorio, y el síntoma es
+contento cortado, no un error.
+
+### El arreglo
+
+`@media (min-width: 900px) { .wz-sheet { max-width: 720px } }` (era 460px).
+
+### Cómo medir este tipo de bug
+
+No alcanza con ver capturas: hay que preguntar al DOM qué elemento se sale del
+borde de su contenedor. El script que lo encontró recorre los hijos de la hoja y
+compara cada `getBoundingClientRect()` contra el de la hoja:
+
+```js
+sheet.querySelectorAll("*").forEach((el) => {
+  const b = el.getBoundingClientRect();
+  if (b.right > sr.right + 1) culpables.push(el.className);
+});
+```
+
+Y el desborde horizontal se ve en dos números, no en uno:
+`sheet.scrollWidth > sheet.clientWidth`. Con `scrollWidth` solo no se nota si
+nada se sale.
+
+Anchos medidos: 320, 360, 390, 430, 540, 600, 640, 700, 768, 860, 880, 900, 940,
+1024, 1100, 1280, 1440, 1600, 1920.
+
+sw.js v15 -> v16.
+
+Suite: 37 pruebas · 897 comprobaciones · 0 en rojo.

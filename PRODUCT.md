@@ -999,3 +999,76 @@ desbalanceado. Se detectó **contando llaves**, no mirando: ahora `{` = 562 y `}
 sw.js v14 -> v15.
 
 Suite: 37 pruebas, 895 comprobaciones, 0 en rojo.
+
+## 35. En escritorio el resumen se salía de la ventana
+
+### El bug era del lote 33
+
+El dueño mandó una captura de la ventana de resumen en computadora: el precio, la
+casilla de los términos y el botón **"Ingresar y confirmar"** quedaban cortados,
+con barra horizontal abajo.
+
+Al arreglar el texto partido del móvil (lote 33) puse en la grilla del resumen:
+
+```css
+grid-template-columns: minmax(240px, 1.25fr) minmax(220px, 0.85fr);
+```
+
+y escribí en el comentario que *"si no entra, la grilla desborda a una sola
+columna (que es lo que hace `auto`)"*.
+
+**Eso es falso.** Con `minmax()` los pisos son reales: si los dos no entran, la
+grilla no cae a una columna — se desbora hacia la derecha y el contenido se sale
+de la hoja. Lo medido en el navegador, elemento por elemento:
+
+| ventana | hoja | grilla | desborde |
+|---|---|---|---|
+| 1920 px | 460 px | 478 px | **11 elementos fuera** |
+| 1280 px | 460 px | 478 px | **11 elementos fuera** |
+| 900 px | 460 px | 478 px | **11 elementos fuera** |
+| 860 px | 520 px | 478 px | ok |
+| 390 px | 358 px | una columna | ok |
+
+El botón final quedaba con 37 px afuera de la hoja.
+
+### El arreglo
+
+Ensanchar la hoja en escritorio: `max-width: 460px` → `720px` (de 900 px en
+adelante). En la captura del dueño la ventana ocupaba 460 px en el medio de una
+pantalla de 1900: había espacio de sobra.
+
+```
+240 (izquierda) + 18 (gap) + 220 (derecha) = 478px de grilla
+720 (hoja) − 18 − 18 (padding)               = 684px disponibles
+```
+
+De paso el calendario se ve **mejor** que antes: las celdas pasaron de 130 px a
+77 px justas y el mes entero entra sin recorte, que era el motivo original de
+achicar la hoja.
+
+### Medido en 19 anchos
+
+320, 360, 390, 430, 540, 600, 640, 700, 768, 860, 880, 900, 940, 1024, 1100,
+1280, 1440, 1600 y 1920 px: sin desborde horizontal, cero elementos fuera de la
+hoja, botón final entero y texto de la política completo. **0 con problema.**
+
+### La prueba que faltaba
+
+Había una comprobación de que la grilla tuviera pisos en píxeles, pero **ninguna de
+que esos pisos entraran en la hoja**. Eran dos números sin relación entre sí, y
+yo cambié uno sin mirar el otro. Esa es exactamente la clase de error que la
+prueba tenía que impedir.
+
+Ahora hay dos que hacen la cuenta con los números del archivo:
+
+```
+pisos [240,220] + gap 18 = 478   ·   hojas [520,720] − 40 = [480,680]
+```
+
+Se verificó que muerden, reintroduciendo el bug y tres variantes (hoja a 460 px,
+piso izquierdo a 300 px, piso derecho a 260 px, hoja base a 380 px): las cuatro
+las detectan.
+
+sw.js v15 -> v16.
+
+Suite: 37 pruebas, 897 comprobaciones, 0 en rojo.
