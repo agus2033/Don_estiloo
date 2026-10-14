@@ -2358,3 +2358,99 @@ que la ficha se cierre: 147 → 156.
 sw.js v13 -> v14.
 
 Suite: 37 pruebas · 883 comprobaciones · 0 en rojo.
+
+## 34. Los cuatro botones hacen los pasos, y el ingreso se pide al final
+
+Detalle en `PRODUCT.md`, sección 34. Lo técnico:
+
+### `lbAbreReserva()`
+
+Los cuatro botones de reserva de la web pasan por una sola función nueva:
+
+- el del encabezado y el de la banda dorada (`data-act="lbReservar"`)
+- el de cada barbero (`data-act="lbReservarBar"`)
+- y el "Elegir mi turno" de la tarjeta, que ya llamaba a `wzAbrir`
+
+Sin sesión abre `wzModal()` en `lbPrimerPaso()`. Con sesión va a la pantalla del
+panel (`rtPush("res")`), porque ahí el asistente se dibuja como página.
+
+### `turnoEnVuelo`
+
+El bug de fondo: el turno se perdía al registrarse. Eran **tres** bugs, cada uno
+por su cuenta. Ver detalle en PRODUCT.md; el resumen:
+
+```js
+function unsub(conservarTurno) {
+  ...
+  if (!conservarTurno) sel = { s: 0, d: "", t: "", b: "", pol: 0 };
+}
+
+onAuthStateChanged(auth, (a) => {
+  unsub(a ? turnoEnVuelo : 0);   // no `unsub()`
+  ...
+});
+
+// en setup(), donde antes pisaba el día sin condición:
+if (!turnoEnVuelo) sel.d = days()[0] || "";
+
+// en el listener de config/horario: ya no `days().includes(sel.d)` sino
+if (sel.d && !diaUsable(sel.d)) { ... }
+
+// y se enciende y apaga junto a WZ.resumir
+turnoEnVuelo = WZ.resumir ? 1 : 0;   // en wzEntrar
+turnoEnVuelo = 0;                     // en prep(), donde se consume WZ.resumir
+```
+
+**`turnoEnVuelo` está en el bloque de estado, no en `WZ`.** `WZ` se declara en la
+línea ~5200 y `onAuthStateChanged` corre en la ~1260: leerlo ahí lo metería en la
+zona muerta temporal. Con `let turnoEnVuelo = 0` arriba no hay problema.
+
+`diaUsable(d)` reemplaza a `diaReservable(bid, d)`, que se probó y se descartó:
+consultar el horario del barbero desde el listener hacía que el día se cayera
+solo al registrarse.
+
+### Código muerto que se borró
+
+`lbWidget()`, `lbPaint()`, `lbSlots()`, `lbPaso()`, `lbPasoOn()`, los handlers
+`lbS`/`lbB`/`lbT` y `const lbw`. El widget compacto de 4 pasos: no se dibuja desde
+que la reserva es el modal de 6 pasos.
+
+Verificado en el navegador antes de borrar: `#lbw` = 0 elementos, `.lb-wl` = 0,
+`.lb-chip` = 0.
+
+Su CSS: `.lb-wl` (9 reglas) y `.lb-chip` (8), en `src/landing.css`.
+
+**Al borrar `.lb-wl:hover` se fue la llave de apertura** del bloque
+`@media (hover: none)` que la compartía con `.lb-btn:hover`. El CSS quedó
+desbalanceado (562 `{` contra 563 `}`).
+
+Se detectó **contando llaves**, no mirando el archivo. Conviene correr ese chequeo
+después de borrar reglas que comparten bloque:
+
+```js
+const css = fs.readFileSync("src/landing.css", "utf8");
+const a = (css.match(/\{/g) || []).length, c = (css.match(/\}/g) || []).length;
+console.log(a === c ? "balanceado" : "DESBALANCEADO");
+```
+
+### El arnés que verifica que las pruebas muerden
+
+Las 13 comprobaciones nuevas se verificaron una por una reintroduciendo el bug
+sobre una copia del archivo.
+
+**El arnés casi repite el error conocido.** Las primeras cinco pruebas usaban
+variables calculadas una vez por fuera (`cuerpoLbReservar`, `cuerpoLbAbre`), así
+que cuando el ataque cambiaba el código, la prueba seguía mirando el texto
+viejo y daba verde con el bug presente. Cinco de trece NO detectaban nada.
+
+Ahora cada prueba recibe `(s, c)` y **deriva** de los archivos lo que necesita
+(`cuerpo(s, a, b)`). Esa es la corrección: el arnés también tiene que leer el
+archivo mutado, no el texto que tenía antes del ataque.
+
+`tests/lote25.js`: 98 -> 110 comprobaciones. Una de las nuevas mira
+`sinComentarios` y no `src`, porque el comentario que explica el borrado del
+widget menciona `lbWidget()` y `lbPaint()`.
+
+sw.js v14 -> v15.
+
+Suite: 37 pruebas · 895 comprobaciones · 0 en rojo.

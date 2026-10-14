@@ -899,3 +899,103 @@ bloques.
 sw.js v13 -> v14.
 
 Suite: 37 pruebas, 883 comprobaciones, 0 en rojo.
+
+## 34. Los cuatro botones hacen los pasos, y el ingreso se pide al final
+
+### Qué hacía cada botón
+
+El dueño mandó dos capturas: el "RESERVAR AHORA" del hero y el de la banda
+dorada, y pidió que hicieran los pasos y obriguen a ingresar para reservar.
+
+Antes de tocar nada, el estado real de los cuatro botones de la web:
+
+| botón | qué hacía |
+|---|---|
+| "Elegir mi turno" (la tarjeta) | abría la ventana de 6 pasos |
+| "Reservar con Roman" (cada barbero) | mandaba al panel, `#/reservar` |
+| "Reservar ahora" (encabezado) | mandaba al login de una |
+| "Reservar ahora" (banda dorada) | mandaba al login de una |
+
+Cuatro botones, cuatro caminos para la misma tarea.
+
+Y el del login de una era el peor de todos: **el cliente se registraba antes de
+saber si había horarios**. Armaba la cuenta y recién ahí se enteraba de que ese
+día no había ningún turno libre. Con el orden nuevo hace el turno primero, y la
+cuenta se crea para confirmarlo.
+
+### Ahora
+
+Los cuatro pasan por `lbAbreReserva()`, una sola función.
+
+**Sin sesión**: la ventana de los seis pasos. El resumen (paso 6) dice
+**"Ingresar y confirmar"**, no "Confirmar".
+
+**Con sesión**: la pantalla del panel, porque ahí el mismo asistente se dibuja
+como página y no como ventana.
+
+### El bug de fondo: el turno se perdía al registrarse
+
+Al probar el viaje entero —elegir sin sesión, registrarse, confirmar— apareció
+que volvía al **paso 1**, con el servicio, el barbero, el día y la hora en cero.
+
+No era un bug: eran **tres**, y cada uno rompía por su cuenta.
+
+**1. `unsub()` borraba la selección entera.** Corre en cada cambio de sesión, y
+ponía `sel` en cero. Ahora conserva la selección cuando hay un turno a medio
+confirmar.
+
+**2. `setup()` pisaba el día sin condición.** La línea era
+`sel.d = days()[0] || ""`, sin preguntar nada. Al registrarse le reponía el primer
+día libre encima del que había tocado: **del 17 de octubre al 14**.
+
+**3. El listener de `config/horario` caía el día si no estaba entre los SEIS
+próximos días con turno libre.** El calendario del asistente deja reservar
+cualquier día del mes, así que las dos reglas se contradecían y esta ganaba sin
+que nadie lo viera.
+
+> Sobre el 3 hubo un intento que se descartó y queda escrito por qué. Se probó
+> usar el horario del barbero (`diaReservable`). Al registrarse, el listener se
+> vuelve a disparar en un instante en que el horario puede no ser el mismo con el
+> que el cliente miró el calendario, y el día se caía solo (medido: del 17 al 14).
+> Ahora sólo se caen los días **pasados** y lo que no sea una fecha
+> (`diaUsable`). Si el dueño cierra un día que alguien ya había elegido, el
+> asistente se frena solo en el paso 5: `wzLibres` devuelve cero horarios y no
+> hay forma de llegar al resumen. Perderle el turno al cliente es peor que un
+> día cerrado que lo frena con un mensaje.
+
+La bandera `turnoEnVuelo` vive en el bloque de estado y **no** en `WZ` a
+propósito: `WZ` está declarado 4000 líneas más abajo y `onAuthStateChanged` corre
+antes, así que leerlo ahí lo metería en zona muerta temporal.
+
+### Verificado de punta a punta en el navegador
+
+Sin sesión, en el resumen:
+
+    botón: INGRESAR Y CONFIRMAR
+    filas: Corte (Incluye cejas) 30 min / Roman / sáb, 17 oct / 09:00hs
+
+Tras registrarse:
+
+    paso 6
+    botón: CONFIRMAR TURNO      (ya no pide ingresar otra vez)
+    filas: las cuatro idénticas  ok
+
+Al cerrar sesión: la selección se limpia y no queda nada colgado.
+
+### Código muerto que apareció
+
+`lbWidget()`, `lbPaint()`, `lbSlots()`, `lbPaso()`, `lbPasoOn()`, los handlers
+`lbS`/`lbB`/`lbT` y el estado `lbw`: el widget compacto de **4 pasos**. No se
+dibuja desde que la reserva pasó a ser el modal de 6 pasos — verificado en el
+navegador, `#lbw` es 0 elementos — y sus funciones sólo se llamaban entre sí.
+
+Con su CSS: `.lb-wl` (9 reglas) y `.lb-chip` (8).
+
+Al borrar `.lb-wl:hover` se fue por el camino la llave de apertura del bloque
+`@media (hover: none)` que lo compartía con `.lb-btn:hover`, y el CSS quedó
+desbalanceado. Se detectó **contando llaves**, no mirando: ahora `{` = 562 y `}`
+= 562.
+
+sw.js v14 -> v15.
+
+Suite: 37 pruebas, 895 comprobaciones, 0 en rojo.
