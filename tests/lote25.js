@@ -51,6 +51,16 @@ async function entrar(b, email, pass, ancho = 1400) {
   const src = fs.readFileSync(path.join(__dirname, "..", "src", "main.js"), "utf8");
   const reglas = fs.readFileSync(path.join(__dirname, "..", "FIRESTORE_RULES.txt"), "utf8");
 
+  /* El código de main.js SIN comentarios, para las comprobaciones negativas.
+     Repetido tres veces en este archivo y por lo mismo: un comentario que nombra
+     el símbolo que se está buscando cuenta como código, y la comprobación pasa
+     con el símbolo borrado. */
+  const sinComentarios = src.replace(/\/\*[\s\S]*?\*\//g, "");
+  const cuerpo = (ini, fin) => src.slice(src.indexOf(ini), src.indexOf(fin));
+  const cuerpoLbReservar = cuerpo("\n  lbReservar() {", "\n  lbTema() {");
+  const cuerpoLbReservarBar = cuerpo("\n  lbReservarBar(id) {", "\n  lbReservar() {");
+  const cuerpoLbAbre = cuerpo("function lbAbreReserva()", "\n/* --- Handlers del widget");
+
   /* Lo que se publica no debe imprimir nada en la consola. Antes quedaban tres
      console.error, y uno volcaba el turno entero (uid, nombre, barbero, fecha,
      hora, cupos) en el navegador de quien lo aborted. */
@@ -407,10 +417,18 @@ async function entrar(b, email, pass, ancho = 1400) {
   const lbReservarBar = src.slice(src.indexOf("lbReservarBar(id)"), src.indexOf("lbReservar() {"));
   ok(!/\bACT\.lbReservar\(\)/.test(lbReservarBar), "«Reservar con X» ya no manda al panel: usa la misma ventana", lbReservarBar.slice(0, 120));
   ok(
-    /wzModal\(\)/.test(lbReservarBar) && /sel\.b = id/.test(lbReservarBar),
-    "abre la ventana de reserva con ese barbero ya elegido",
+    /wzModal\(\)/.test(cuerpoLbAbre) &&
+      /sel\.b = elegido && sel\.b === id \? "" : id;/.test(lbReservarBar),
+    "abre la ventana de reserva con ese barbero ya elegido (y lo puede sacar con el mismo botón)",
+    cuerpoLbAbre.slice(0, 110),
   );
-  ok(/lbPrimerPaso/.test(lbReservarBar), "y arranca en el primer paso que falta, no en el 1");
+  /* `lbPrimerPaso` lo llama la función compartida (lote 34), no el botón: los
+     cuatro botones de reserva arrancan en el primer paso que falte. */
+  ok(
+    /lbPrimerPaso/.test(cuerpoLbAbre),
+    "y arranca en el primer paso que falta, no en el 1",
+    cuerpoLbAbre.slice(0, 110),
+  );
   /* Ojo: que `lbPrimerPaso` esté fuera del `Object.assign(ACT, …)` ya lo
    garantiza el parser — si estuviera dentro del objeto, `node --check`
    fallaría y el archivo ni siquiera cargaría. Lo que sí importa acá es que
@@ -666,6 +684,71 @@ async function entrar(b, email, pass, ancho = 1400) {
     ok(!despues.quedaCampo, "y el formulario sale del documento");
     ok(ba.jsErr.length === 0, "sin errores de JS", [...new Set(ba.jsErr)].join(" / "));
   }
+  /* ---------- los cuatro botones hacen los pasos y el ingreso va al final ----------
+     El dueño pidió que "Reservar ahora" (el del encabezado y el de la banda
+     dorada) también haga los pasos y pida ingresar, como el botón del barbero. */
+  {
+    console.log("\n--- los cuatro botones de reserva ---");
+    ok(
+      /function lbAbreReserva\(\)/.test(src) && /lbAbreReserva\(\);/.test(cuerpoLbReservar),
+      '«Reservar ahora» pasa por la misma función que abre la ventana',
+      cuerpoLbReservar.slice(0, 110),
+    );
+    ok(
+      !/#\/reservar/.test(cuerpoLbReservar) && !/authOpen = 1/.test(cuerpoLbReservar),
+      "y ya no manda al login de una",
+      cuerpoLbReservar.slice(0, 110),
+    );
+    ok(
+      /lbAbreReserva\(\);/.test(cuerpoLbReservarBar) && /if \(me && rd\)/.test(cuerpoLbAbre),
+      "con sesión sigue yendo a la pantalla del panel",
+      cuerpoLbAbre.slice(0, 110),
+    );
+    ok(/turnoEnVuelo/.test(cuerpoLbAbre) === false, "«Elegir mi turno» no cambia: ya abría la ventana");
+    /* El widget compacto de 4 pasos ya no se dibuja desde que la reserva es el
+       modal de 6 pasos. Verificado en el navegador: #lbw = 0. */
+    /* Sobre el código SIN comentarios: queda un comentario que menciona
+       `lbWidget()`/`lbPaint()` para explicar qué se borró, y buscarlo en `src`
+       lo encontraría. */
+    ok(!/lbWidget|lbPaint|lbSlots|lbPasoOn/.test(sinComentarios), "el widget viejo de 4 pasos se borró entero");
+    ok(!/\blbw\b/.test(sinComentarios), "y su estado `lbw` también (le quedan sólo comentarios)");
+    ok(!/\.lb-wl\b/.test(lcCodigo) && !/\.lb-chip\b/.test(lcCodigo), "con su CSS (.lb-wl y .lb-chip)");
+  }
+
+  /* ---------- el turno no se pierde al registrarse ----------
+     Este es el bug de fondo del pedido. El cliente elige servicio, barbero, día y
+     hora SIN sesión; el resumen ofrece "Ingresar y confirmar"; se registra y tiene
+     que volver al resumen con todo lo que eligió.
+
+     Se rompía en tres lugares distintos, y cada uno lo rompía por su cuenta:
+
+     1. `unsub()` — que corre en cada cambio de sesión — ponía `sel` en cero.
+     2. `setup()` repía el día por defecto, sin condición.
+     3. el listener de `config/horario` caía el día si no estaba entre los SEIS
+        próximos días con turno libre, y el calendario deja reservar todo el mes. */
+  console.log("\n--- el turno sobrevive al ingreso ---");
+  ok(
+    /function unsub\(conservarTurno\)/.test(src) && /if \(!conservarTurno\) sel = \{/.test(src),
+    "unsub() conserva la selección si hay un turno en vuelo",
+    (src.match(/function unsub\([^)]*\)[\s\S]{0,900}/) || [""])[0].slice(0, 120),
+  );
+  ok(
+    /unsub\(a \? turnoEnVuelo : 0\)/.test(src),
+    "y se le pasa la bandera desde onAuthStateChanged",
+  );
+  ok(
+    /if \(!turnoEnVuelo\) sel\.d = days\(\)\[0\] \|\| "";/.test(src),
+    "setup() no pisa el día elegido cuando hay un turno en vuelo",
+  );
+  ok(
+    /if \(sel\.d && !diaUsable\(sel\.d\)\)/.test(src) && !/days\(\)\.includes\(sel\.d\)/.test(sinComentarios),
+    "y el listener del horario ya no exige que el día esté entre los 6 próximos",
+  );
+  ok(
+    /const diaUsable = \(d\) =>/.test(src) && /turnoEnVuelo = 0/.test(src) && /turnoEnVuelo = 1/.test(src.replace(/turnoEnVuelo = WZ\.resumir \? 1 : 0/, "turnoEnVuelo = 1")),
+    "la bandera se enciende y se apaga en los dos momentos justos",
+  );
+
   await ba.ctx.close();
   await b.close();
 

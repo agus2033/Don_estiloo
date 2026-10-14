@@ -492,7 +492,16 @@ let me = null,
   claseNav = "nav-todo",
   perfilOpen = 0, // menú que abre la foto del header (los tres roles)
   verWeb = 0, // 1 = viendo la landing con sesión (botón "ver la web")
-  resStep = 1;
+  resStep = 1,
+  /* 1 = hay un turno a medio confirmar: el cliente lo está haciendo sin sesión y
+     se registró para cerrarlo. La pone el botón "Ingresar y confirmar" del
+     resumen.
+
+     Vive acá y no en `WZ` a propósito: `WZ` está declarado mucho más abajo del
+     archivo y `onAuthStateChanged` corre antes, así que leerlo ahí lo metería en
+     la zona muerta temporal. `WZ.resumir` dice lo mismo y `prep()` los consume
+     juntos. */
+  turnoEnVuelo = 0;
 const isAdm = () => me && (me.uid === ADMIN_UID || !!SB); // barbero: dueño o cuenta de barbero
 let H = [],
   CU = [],
@@ -586,6 +595,21 @@ const daysFor = (bid) => {
   return o;
 };
 const days = () => daysFor(sel.b);
+/* ¿Este día todavía puede ser una opción? Sólo descarta lo que ya no puede estar
+   bien: los días pasados y lo que no sea una fecha.
+
+   NO decide si el barbero trabaja ese día, y es a propósito. Se intentó con el
+   horario del barbero y rompía el turno a medio confirmar: al registrarse, el
+   listener de `config/horario` se vuelve a disparar en un instante en que el
+   horario puede no ser el mismo con el que el cliente miró el calendario, y el
+   día elegido se caía solo (medido: del 17 de octubre al 14).
+
+   El calendario del asistente es el que manda sobre qué días están abiertos, y
+   ya lo valida cuando el cliente lo elige (`wzEstado`). Si después el dueño
+   cierra ese día, el asistente se frena solo en el paso 5: `wzLibres` devuelve
+   cero horarios y no hay forma de llegar al resumen. Perder el turno del cliente
+   es peor que un día cerrado que lo frena con un mensaje. */
+const diaUsable = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= ymd();
 const fd = (d) =>
   dAR(d).toLocaleDateString("es-AR", {
     timeZone: TZ,
@@ -750,7 +774,7 @@ const err = (e) => {
       (porQue ? "" : ` — ${esc(e.message || "")}`.slice(0, 180)),
   });
 };
-function unsub() {
+function unsub(conservarTurno) {
   us.forEach((f) => f());
   us = [];
   ou && ou();
@@ -764,10 +788,21 @@ function unsub() {
   C = [];
   OC = {};
   UA = [];
-  /* El tilde de "pol" también se limpia al salir de sesión: si alguien
-     aceptó una vez, no tiene que volver a aceptar en el próximo turno, pero
-     tampoco debe quedar marcado de antes. */
-  sel = { s: 0, d: "", t: "", b: "", pol: 0 };
+  /* La selección del asistente se conserva CUANDO hay un turno en vuelo, o sea
+     cuando el cliente estaba reservando sin sesión y se acaba de registrar para
+     confirmarlo.
+
+     Esto era lo que rompía el "hacemos los pasos primero y te pido el ingreso al
+     final": `unsub()` se corre en cada cambio de sesión y ponía `sel` en cero.
+     El resumen prometía "te devuelve acá con lo que elegiste" y volvía al paso
+     1, con el servicio, el barbero, el día y la hora perdidos. El cliente
+     había hecho todo el trabajo y se le perdía al registrarse.
+
+     En cualquier otro arranque, y al cerrar sesión, `sel` sí se limpia. */
+  if (!conservarTurno) sel = { s: 0, d: "", t: "", b: "", pol: 0 };
+  /* El tilde de "pol" se limpia al salir de sesión: si alguien aceptó una vez,
+     no tiene que volver a aceptar en el próximo turno, pero tampoco debe
+     quedar marcado de antes. */
   cd = null;
   VT = [];
   sd = null;
@@ -898,7 +933,11 @@ function setup(a) {
   rd = 1;
   view = ad ? (isOwner() ? "dash" : "bar") : "home";
   rtInit = 0;
-  sel.d = days()[0] || "";
+  /* Día por defecto. No se pisa el que ya eligió el cliente cuando viene un turno
+     a medio confirmar: `setup()` corre también al registrarse, y esta línea, sin
+     condición, le reponía el primer día libre encima del que había tocado
+     (medido: del 17 de octubre al 14, con el horario hecho). */
+  if (!turnoEnVuelo) sel.d = days()[0] || "";
   ls(doc(db, "users", id), (x) => {
     U = x.exists() ? x.data() : null;
     // DB limpia/cuenta nueva: creá el perfil básico si no existe
@@ -924,7 +963,16 @@ function setup(a) {
     doc(db, "config", "horario"),
     (x) => {
       CF = x.exists() ? { ...CFD, ...x.data() } : { ...CFD };
-      if (!days().includes(sel.d)) {
+      /* Sólo se cae el día si ya no puede estar bien: pasó o no es una fecha.
+         Antes era `days().includes(sel.d)`, y `days()` devuelve los SEIS
+         próximos días con turno libre: sirve para sugerir un día por defecto,
+         no para decidir si el día que ya eligió el cliente es válido. Con ese
+         chequeo, elegir el 17 de octubre —más allá del sexto día— y recalcular el
+         horario le borraba el día y la hora al cliente.
+
+         El calendario del asistente deja reservar cualquier día del mes, así que
+         las dos reglas se contradecían y esta ganaba sin que nadie lo viera. */
+      if (sel.d && !diaUsable(sel.d)) {
         sel.d = days()[0] || "";
         sel.t = "";
         occ();
@@ -1019,7 +1067,15 @@ function setup(a) {
          los dos listeners siguen vivos, así que el crudo seguía gaining y la
          foto tampoco aparecía en la landing. */
       BARS = conFotos(x.exists() && x.data().l ? x.data().l : []);
-      if (sel.b && !BARS.some((b) => b.id === sel.b)) {
+      /* La selección se descarta sólo si la lista de barberos YA llegó y el
+         elegido no está en ella.
+
+         Sin la guarda de `BARS.length` esto rompía el ida y vuelta del resumen:
+         al iniciar sesión estas suscripciones se vuelven a crear, corren antes de
+         que carguen los barberos, y un `BARS` vacío hacía pensar que el barbero
+         se había dado de baja. Se le borraban el barbero, el día y la hora al
+         cliente, que tenía el turno listo y se le desapareció al registrarse. */
+      if (sel.b && BARS.length && !BARS.some((b) => b.id === sel.b)) {
         sel.b = "";
         sel.d = "";
         sel.t = "";
@@ -1212,7 +1268,10 @@ onSnapshot(collection(db, "resenas"), (x) => {
 });
 onAuthStateChanged(auth, (a) => {
   ready = 1;
-  unsub();
+  /* `turnoEnVuelo` lo pone el botón "Ingresar y confirmar" del resumen: quiere
+     decir que el cliente venía eligiendo el turno sin sesión y se registra para
+     confirmarlo. `unsub()` tiene que preservar esa selección. */
+  unsub(a ? turnoEnVuelo : 0);
   me = a;
   view = "home";
   rtInit = 0;
@@ -1295,6 +1354,10 @@ function prep(v) {
        asistente arranca limpio en el paso 1. */
     const seguir = WZ.resumir && !!sel.t;
     WZ.resumir = false;
+    /* La bandera se apaga en el mismo lugar, o el próximo ingreso (o el de otro
+       cliente en el mismo navegador) creería que hay un turno a medio confirmar
+       y conservaría una selección que no es suya. */
+    turnoEnVuelo = 0;
     WZ.paso = seguir ? 6 : 1;
     WZ.turno = seguir ? WZ.turno : "";
     WZ.mes = ymd().slice(0, 7);
@@ -3707,10 +3770,6 @@ function authH() {
    El nombre de marca sale siempre de NOMBRE (src/config.js).
    ===================================================================== */
 
-/* Estado local del widget de reserva rápida (la reserva real sigue
-  salta a #login; acá no se escribe nada en Firestore). */
-const lbw = { s: -1, b: "", t: "" };
-
 /* Emoji y signos del nombre del premio, para leerlo como frase. */
 const lbLimpio = (n) =>
   String(n || "")
@@ -3756,127 +3815,6 @@ function lbCargarMapas() {
   marcos.forEach((m) => ob.observe(m));
 }
 
-/* Horarios libres de HOY para una duración dada. Replica la lógica de
-   slots() del flujo real, sin escribir nada. */
-function lbSlots(dur) {
-  const c = CFB(lbw.b);
-  const hoy = ymd();
-  const d = new Date();
-  const dow = d.getDay();
-  if (!c.dias.includes(dow)) return [];
-  const o = [];
-  for (let m = c.a; m + dur <= c.c; m += GRID) {
-    if (c.al && m < c.ah && m + dur > c.al) continue;
-    if (m <= mAR()) continue;
-    if (blocks(hm(m), dur).some((t) => OC[t])) continue;
-    o.push(hm(m));
-  }
-  return o;
-}
-
-/* Paso actual del widget: 1 servicio · 2 barbero · 3 horario · 4 resumen */
-const lbPaso = () =>
-  lbw.s >= 0 ? (lbw.b ? (lbw.t ? 4 : 3) : 2) : BARS.length > 1 ? 2 : 1;
-
-const lbPasoOn = (n) => lbPaso() >= n;
-
-/* --- servicios elegibles (paso 1) --- */
-const lbServicios = () =>
-  S.length
-    ? S.map(
-        (x, i) => `<button type="button" class="lb-wl" aria-pressed="${lbw.s === i}" data-act="lbS" data-args="${A(i)}">
-      <span class="lb-wl-t"><b>${esc(x.n)}</b><small>${esc(x.tx)}</small></span>
-      <span class="lb-price">${$$(x.p)}</span></button>`,
-      ).join("")
-    : `<p class="lb-empty">Todavía no hay servicios cargados.</p>`;
-
-/* --- barberos (paso 2). Si hay uno solo se preselecciona. --- */
-const lbBarberos = () => {
-  if (!BARS.length)
-    return `<p class="lb-empty">Todavía no hay barberos cargados. Te atendemos igual.</p>`;
-  return BARS.map(
-    (b) => `<button type="button" class="lb-wl" aria-pressed="${lbw.b === b.id}" data-act="lbB" data-args="${A(b.id)}">
-      <span class="lb-wl-t"><b>${esc(b.n)}</b></span></button>`,
-  ).join("");
-};
-
-/* --- chips de horarios de hoy (paso 3), grilla de 4 columnas --- */
-const lbHorarios = () => {
-  const dur = lbw.s >= 0 && S[lbw.s] ? S[lbw.s].m : 30;
-  const libre = lbSlots(dur);
-  /* Marcamos como deshabilitados algunos horarios futuros para que el estado
-     "tachado y apagado" sea visible aunque la agenda esté vacía. */
-  const tono = libre.slice(0, 8);
-  if (!tono.length)
-    return `<p class="lb-empty">Hoy no hay horarios libres. Mañana se actualiza.</p>`;
-  const apagados = tono.filter((_, i) => i % 4 === 3);
-  return `<div class="lb-slots" role="group" aria-label="Horarios de hoy">${tono
-    .map(
-      (t) => `<button type="button" class="lb-chip" aria-pressed="${lbw.t === t}"
-      ${apagados.includes(t) ? "disabled" : ""}
-      data-act="lbT" data-args="${A(t)}">${esc(t)}</button>`,
-    )
-    .join("")}</div>`;
-};
-
-/* --- resumen (paso 4) --- */
-const lbResumen = () => {
-  const s = lbw.s >= 0 && S[lbw.s] ? S[lbw.s] : null;
-  const b = BARS.find((x) => x.id === lbw.b);
-  const listo = s && lbw.t;
-  const pie = `<p class="lb-hint">${
-    listo
-      ? "Te llevamos al ingreso para guardar el turno."
-      : "Elegí servicio y horario para reservar."
-  }</p>`;
-  return `<div class="lb-sum">
-      <div><span>Servicio</span><b>${s ? esc(s.n) : ""}</b></div>
-      <div><span>Duración</span><b>${s ? esc(s.tx) : ""}</b></div>
-      <div><span>Precio</span><b>${s ? esc($$(s.p)) : ""}</b></div>
-      <div><span>Barbero</span><b>${b ? esc(b.n) : ""}</b></div>
-      <div><span>Día</span><b>${lbw.t ? "Hoy" : ""}</b></div>
-      <div><span>Hora</span><b>${esc(lbw.t || "")}</b></div>
-    </div>
-    ${listo ? lbCta("lb-btn--lg lb-w", "Reservar ahora") : pie}`;
-};
-
-/* Widget completo */
-function lbWidget() {
-  return `<div class="lb-widget" id="lbw">
-    <div class="lb-widget-head">
-      <!-- h2 y no h3: venía justo después del <h1> del héroe, así que un h3
-        se saltaba un nivel (axe: heading-order). El comentario va en HTML y no
-        en JSX ({/* */}) porque dentro de una plantilla de JavaScript un
-        comentario de JSX sale LITERAL en la página. -->
-     <h2>Reservá tu turno</h2>
-      <span class="lb-prog-lbl">4 pasos</span>
-    </div>
-    <ol class="lb-steps">
-      <li class="lb-step-i" data-on="${lbPasoOn(1) ? 1 : 0}">Servicio</li>
-      <li class="lb-step-i" data-on="${lbPasoOn(2) ? 1 : 0}">Barbero</li>
-      <li class="lb-step-i" data-on="${lbPasoOn(3) ? 1 : 0}">Horario</li>
-      <li class="lb-step-i" data-on="${lbPasoOn(4) ? 1 : 0}">Resumen</li>
-    </ol>
-
-    <p class="lb-widget-lbl">1 · Elegí tu servicio</p>
-    ${lbServicios()}
-
-    <p class="lb-widget-lbl">2 · Con quién</p>
-    ${lbBarberos()}
-
-    <p class="lb-widget-lbl">3 · Horarios de hoy</p>
-    ${lbHorarios()}
-
-    <p class="lb-widget-lbl">4 · Revisá y confirmá</p>
-    ${lbResumen()}
-  </div>`;
-}
-
-/* Repinta solo el widget: no re-renderiza la página ni pierde el scroll. */
-function lbPaint() {
-  const n = document.getElementById("lbw");
-  if (n) n.outerHTML = lbWidget();
-}
 
 /* Tarjeta que abre el asistente de reserva. El widget de 4 pasos que
    estaba acá pasa a ser el modal: son los mismos 6 pasos. */
@@ -4910,6 +4848,51 @@ function lbCerrarMenu() {
   }
 }
 
+/* Abre la reserva, la misma de siempre, desde cualquiera de los botones.
+
+   Por qué es una función y no dos: hasta el lote 33 cada botón tenía su propio
+   camino. El del encabezado y el de la banda dorada mandaban al login directo
+   (hash `#/reservar`), el de cada barbero abría la ventana, y el "Elegir mi
+   turno" de la tarjeta abría la ventana por otro lado. Cuatro botones, cuatro
+   recorridos distintos para la misma tarea.
+
+   Ahora los cuatro pasan por acá. Lo pidió el dueño: que todos hagan los pasos,
+   y que el ingreso se pida al final.
+
+   SIN SESIÓN: se abre la ventana de los seis pasos y se elige el turno. El
+   resumen (paso 6) ofrece "Ingresar y confirmar", no "Confirmar": el cliente
+   arma el turno primero y se registra después. Al registrarse, el router
+   devuelve al resumen con todo lo que ya había elegido (`WZ.resumir`), así que
+   no tiene que elegirlo de nuevo.
+
+   CON SESIÓN: la misma pantalla del panel, porque ahí el asistente se dibuja
+   como página y no como ventana.
+
+   En los dos casos arranca en `lbPrimerPaso()`, el primer paso pendiente, y no
+   en el 1: si ya eligió servicio, barbero, día y hora, cae en el resumen en vez
+   de hacerlo empezar de cero. */
+function lbAbreReserva() {
+  WZ.paso = lbPrimerPaso();
+  WZ.turno = "";
+  WZ.mes = ymd().slice(0, 7);
+  if (me && rd) {
+    rtPush("res");
+    prep("res");
+    R();
+    return;
+  }
+  const p = document.getElementById("wzm");
+  if (!p) return;
+  p.innerHTML = wzModal();
+  p.hidden = false;
+  document.body.classList.add("wz-abierto");
+  /* Si se abre antes de que lleguen los servicios, el asistente se pinta con la
+     lista vacía y el paso 1 queda trancado. `datosLlegos()` levanta el loader y
+     repinta el modal. */
+  if (!S.length) ldEspera("Cargando servicios…");
+  WZ.pintar();
+}
+
 /* --- Handlers del widget, del menú y del color del estado del formulario.
        Aditivos: no modifican ningún handler existente. --- */
 Object.assign(ACT, {
@@ -4934,63 +4917,45 @@ Object.assign(ACT, {
      servicio, día y hora, se abre en el resumen (paso 6); si no, en el primer
      paso pendiente. Así el botón nunca tira al cliente atrás. */
   lbReservarBar(id) {
-    const elegido = !!(id && BARS.some((b) => b.id === id));
-    lbw.b = elegido ? id : "";
-    lbw.t = "";
-    /* El botón vive en el dorso de la tarjeta: se cierra para que el usuario
-       vea a dónde lo lleva la ventana. */
-    lbCierraTodos();
     /* Es un toggle: si el cliente le saca el barbero con el mismo botón, no se
        abre nada. Abrirla sin barbero elegido sería llevarlo al mismo lugar de
        siempre y se vería como que el botón no funciona. */
-    if (!lbw.b) return;
-    /* El asistente usa `sel`, no el widget `lbw` de la landing. Son dos
-       estados distintos: sin esto la ventana se abría en el paso 2 pidiendo
-       barbero, justo el que el cliente acababa de tocar. */
-    sel.b = id;
+    const elegido = !!(id && BARS.some((b) => b.id === id));
+    /* El estado `lbw` (servicio, barbero y hora del widget compacto de 4 pasos)
+   se fue en el lote 34: ese widget ya no se dibuja desde que la reserva pasó a
+   ser el modal de 6 pasos, y `lbWidget()`/`lbPaint()` sólo lo buscaban en un
+   `#lbw` que no existe en ningún lado. Verificado en el navegador: 0 elementos.
+   Los botones que escribían en `lbw` ahora escriben en `sel`, que es lo que usa
+   el asistente. */
+    sel.b = elegido && sel.b === id ? "" : id;
+    sel.t = "";
+    /* El botón vive en el dorso de la tarjeta: se cierra para que el usuario
+       vea a dónde lo lleva la ventana. */
+    lbCierraTodos();
     lbCerrarMenu();
-    if (me && rd) {
-      /* Con sesión: la pantalla del panel, que es el mismo asistente. */
-      WZ.paso = lbPrimerPaso();
-      WZ.mes = ymd().slice(0, 7);
-      rtPush("res");
-      prep("res");
-      R();
-      return;
-    }
-    /* Sin sesión: la misma ventana modal del encabezado, con el barbero puesto.
-       Se abre en el PRIMER PASO QUE FALTE, no en el 1: si ya eligió servicio y
-       día, tira al resumen y no lo hace volver atrás. */
-    WZ.paso = lbPrimerPaso();
-    WZ.turno = "";
-    WZ.mes = ymd().slice(0, 7);
-    const p = document.getElementById("wzm");
-    if (!p) return;
-    p.innerHTML = wzModal();
-    p.hidden = false;
-    document.body.classList.add("wz-abierto");
-    if (!S.length) ldEspera("Cargando servicios…");
-    WZ.pintar();
+    if (!sel.b) return;
+    lbAbreReserva();
   },
-  /* Reservar: con sesión va directo a la agenda; sin sesión deja el hash en
-     #/reservar y muestra el login. Al loguearse, el router de la app
-     (rtView/rtOk, líneas ~3756) toma ese hash y abre la reserva solo. */
+  /* Reservar. Es el botón del encabezado y el de la banda dorada ("Reservar
+     ahora"), los dos que quedan en la landing.
+
+     ANTES: sin sesión mandaba al login de una (`#/reservar` + `authOpen`), y
+     con sesión saltaba directo a la pantalla del panel. O sea que había que
+     crear la cuenta ANTES de saber si había horarios: el cliente se registraba
+     para descubrir después que no había ningún turno libre. Ese era también el
+     camino de "Reservar con Roman", y por eso los botones iban por lados
+     distintos.
+
+     AHORA: los dos hacen los pasos primero y piden el ingreso al final, en el
+     resumen. Es lo que pidió el dueño. */
   lbReservar() {
     /* Si veníamos mirando la web con la sesión abierta, hay que apagar el
        modo web: si no, R() seguiría dibujando la landing y el usuario no
        llega nunca al panel. */
     verWeb = 0;
     document.body.classList.remove("ver-web");
-    if (me && rd) {
-      rtPush("res");
-      prep("res");
-      R();
-      return;
-    }
-    if (location.hash !== "#/" + RT.res)
-      history.replaceState(null, "", "#/" + RT.res);
-    authOpen = 1;
-    R();
+    lbCerrarMenu();
+    lbAbreReserva();
   },
   /* Mismo contrato que el toggle global #thm (localStorage "theme" +
      body[data-theme]), replicado para la landing, que no tiene header global. */
@@ -5016,22 +4981,6 @@ Object.assign(ACT, {
   /* Ver lbCerrarMenu(), la función de módulo que llama. */
   lbCerrarMenu() {
     lbCerrarMenu();
-  },
-  lbS(i) {
-    const n = +i;
-    lbw.s = lbw.s === n ? -1 : n;
-    lbw.t = ""; // cambiar de servicio reinicia el horario
-    if (BARS.length === 1) lbw.b = BARS[0].id;
-    lbPaint();
-  },
-  lbB(id) {
-    lbw.b = lbw.b === id ? "" : id;
-    lbw.t = "";
-    lbPaint();
-  },
-  lbT(t) {
-    lbw.t = lbw.t === t ? "" : t;
-    lbPaint();
   },
   /* Carrusel de reseñas: -1 / +1 avanza o retrocede; un índice exacto va a esa. */
   /* Avanza o retrocede UNA PÁGINA (no una reseña). Las flechas mandan -1/+1
@@ -7008,6 +6957,23 @@ if (["localhost", "127.0.0.1", ""].includes(location.hostname)) {
     get fotos() {
       return FOTOS;
     },
+    /* Estado del asistente de reserva. Hace falta para probar el ida y vuelta
+       del resumen: el cliente elige el turno sin sesión, se registra y tiene que
+       volver al paso 6 con todo lo que eligió. `resumir` es lo que decide eso, y
+       sin exponerlo la prueba sólo vería que volvió al paso 1, sin poder saber
+       por qué. */
+    get wz() {
+      return {
+        paso: WZ.paso,
+        mes: WZ.mes,
+        turno: WZ.turno,
+        resumir: WZ.resumir,
+        sel: { s: sel.s, b: sel.b, d: sel.d, t: sel.t },
+        view,
+        authOpen,
+        conSesion: !!me,
+      };
+    },
     voltear: (id) => ACT.lbFlip(id),
     ficha: (id) => lbFichaBarbero(BARS.find((b) => b.id === id) || {}),
     telWa: lbTelWa,
@@ -7180,6 +7146,7 @@ Object.assign(ACT, {
     /* si ya eligió hora, al loguearse vuelve al resumen en vez de
      arrancar de nuevo en el paso 1 */
     WZ.resumir = !!sel.t;
+    turnoEnVuelo = WZ.resumir ? 1 : 0;
     if (location.hash !== "#/reservar")
       history.replaceState(null, "", "#/reservar");
     authOpen = 1;

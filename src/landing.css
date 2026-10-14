@@ -626,47 +626,6 @@ body[data-theme="light"] .lb-btn--pri:hover {
   color: var(--lb-brass);
   border-top-color: var(--lb-brass);
 }
-.lb-wl {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-  text-align: left;
-  padding: 11px 13px;
-  margin-bottom: 7px;
-  background: var(--lb-bg);
-  border: 1px solid var(--lb-line);
-  border-radius: var(--lb-r-sm);
-  color: var(--lb-ink);
-  font-family: "Barlow", sans-serif;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: border-color var(--lb-t-fast) var(--lb-ease),
-    background-color var(--lb-t-fast) var(--lb-ease);
-}
-.lb-wl-t {
-  min-width: 0;
-}
-.lb-wl-t b {
-  display: block;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.lb-wl-t small {
-  color: var(--lb-mut);
-  font-size: 0.86rem;
-}
-.lb-wl[aria-pressed="true"] {
-  border-color: var(--lb-brass);
-  background: color-mix(in srgb, var(--lb-brass) 12%, var(--lb-bg));
-}
-.lb-wl:focus-visible {
-  outline: 2px solid var(--lb-brass);
-  outline-offset: 2px;
-}
 
 .lb-widget-lbl {
   font-family: "Barlow", sans-serif;
@@ -683,40 +642,6 @@ body[data-theme="light"] .lb-btn--pri:hover {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 7px;
-}
-.lb-chip {
-  min-height: 46px;
-  padding: 0 4px;
-  font-family: "Barlow Condensed", sans-serif;
-  font-size: 1.12rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  background: var(--lb-bg);
-  border: 1px solid var(--lb-line);
-  border-radius: var(--lb-r-sm);
-  color: var(--lb-ink);
-  cursor: pointer;
-  transition: background-color var(--lb-t-fast) var(--lb-ease),
-    border-color var(--lb-t-fast) var(--lb-ease),
-    color var(--lb-t-fast) var(--lb-ease);
-}
-.lb-chip[aria-pressed="true"] {
-  background: var(--lb-brass-solid);
-  border-color: var(--lb-brass-solid);
-  color: var(--lb-on-brass);
-}
-.lb-chip:focus-visible {
-  outline: 2px solid var(--lb-brass);
-  outline-offset: 2px;
-}
-/* deshabilitado: tachado y apagado */
-.lb-chip[disabled] {
-  cursor: not-allowed;
-  color: var(--lb-mut);
-  opacity: 0.5;
-  text-decoration: line-through;
-  text-decoration-thickness: 1px;
-  background: transparent;
 }
 
 /* resumen del paso 4 */
@@ -2048,19 +1973,13 @@ body[data-theme="light"] .lb-btn--pri:hover {
 /* ---------- 18. HOVER SOLO EN PUNTERO REAL (mobile-native) ---------- */
 @media (hover: none) {
   .lb .lb-nav a:hover,
-  .lb-btn:hover,
-  .lb-chip:not([disabled]):hover,
-  .lb-wl:hover {
+  .lb-btn:hover {
     /* sin estado pegado en táctil: se revierte al valor base */
     color: inherit;
     border-bottom-color: transparent;
     background-color: transparent;
   }
   .lb-btn--pri:hover {
-    background: var(--lb-brass-solid);
-    color: var(--lb-on-brass);
-  }
-  .lb-chip[aria-pressed="true"]:hover {
     background: var(--lb-brass-solid);
     color: var(--lb-on-brass);
   }
@@ -3783,7 +3702,7 @@ body[data-theme="light"] .ver:hover {
 }
 
 /* ---------- 19b. TRANSICIÓN DEL TOGGLE CLARO/OSCURO ----------
-   Solo en las superficies que cambian de tono. .lb-btn y .lb-chip ya tienen
+   Solo en las superficies que cambian de tono. `.lb-btn` ya tiene
    su propia transition (gana la regla del componente, no se pisa). */
 body,
 .lb,
@@ -3795,7 +3714,6 @@ body,
 .lb-prog,
 .lb-barber,
 .lb-tst,
-.lb-wl,
 .lb-gal figure,
 .lb-barber-ph,
 .lb-field input,
@@ -3890,8 +3808,6 @@ body,
   .lb-mut {
     color: var(--lb-ink);
   }
-  .lb-chip,
-  .lb-wl,
   .lb-btn--ghost {
     border-width: 2px;
   }
