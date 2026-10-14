@@ -2193,3 +2193,168 @@ Medido por separado, en las tres pantallas y a 390x844:
 
 36 pruebas · 832 comprobaciones · 1 en rojo durante la corrida
 (`accesibilidad`, por el CDN; pasa sola con 0 violaciones).
+
+## 29 a 32: backfill
+
+**Este archivo se había quedado en el lote 28.** Los lotes 29, 30, 31 y 32
+estaban en el historial de git y en `PRODUCT.md`, pero no acá: el que abriera este
+archivo para seguir trabajando no se enteraba de cuatro lotes enteros.
+
+Las decisiones de producto de esos cuatro lotes **sí** están en `PRODUCT.md`
+(secciones 29, 30, 31 y 32). Acá va lo técnico.
+
+### 29. La foto del barbero llega a la web, y "Editar perfil" guarda y es modal
+
+- La foto del barbero pasó a su propio documento `fotoBarbero/{uid}` (foto, n, esp,
+  desc, tel, ig, redes), con lectura pública y escritura sólo del propio. Decisión
+  del dueño. Sin `diff(resource.data)`: en el *create* eso no existe y la regla
+  tiraba 403.
+- `config/barberos` vuelve a ser sólo del dueño, y el barbero **no** se agrega a
+  la lista pública.
+- `guardarPerfil` y `fotoTomar` dejaron de usar `Promise.all`: cada escritura va
+  por separado y si una falla se dice **cuál**, en vez de perder el error de la
+  otra.
+- `motivoFirestore()` explica `ERR_BLOCKED_BY_CLIENT` (Brave Shields, una
+  extensión), red caída y permiso denegado por separado.
+- "Editar perfil" pasó a ser un modal (`#mo`, `role="dialog"`), no un `<details>`
+  inline. Cancelar usa `data-act="Mx"`. El helper se llama `cerrarModalPerfil`,
+  porque `cerrarPerfil` ya lo tenía la acción del menú del encabezado.
+- Tope de puntos de bienvenida: 20 → **50**.
+
+### 30. Se saca el botón de Facebook
+
+Del ingreso y del registro. Se fue también el import de `FacebookAuthProvider` y
+`red(p, registro)` pasó a `red(registro)`.
+
+**El proveedor sigue habilitado en Firebase** (no se puede desactivar desde el
+cliente). El dueño tiene que apagarlo en la consola.
+
+Riesgo sin resolver: **no se pueden listar los usuarios de Firebase Auth** sin
+OAuth de administrador, así que no se pudo verificar si quedó alguna cuenta creada
+con Facebook. Esa cuenta no tendría contraseña y quedaría bloqueada para siempre.
+
+### 31. Scroll suave, la foto en el panel, los mensajes y el tope de bienvenida
+
+- `html { scroll-behavior: smooth }` + `scroll-margin-top` en `.lb-sec[id]`. El
+  override de `prefers-reduced-motion` va en `html`, no en `.lb *`.
+- **`BARS` tenía tres asignaciones y dos se saltaban `conFotos`**. El dueño veía
+  "R" en vez de la foto, y la foto también desaparecía de la web al volver del
+  panel. Las tres pasan por `conFotos` ahora.
+- **La consulta de `mensajes` nunca se abría.** Estaba como
+  `if (isOwner())` a nivel de módulo, cuando `me` todavía es `null`. Había 3
+  mensajes y la pantalla decía 0. Se movió dentro de `setup()`.
+- El tope de bienvenida volvió a 50 (el lote 29 lo había dejado en 20).
+- `sw.js` v7 → v12 en estos lotes.
+
+### 32. Las políticas leen la configuración
+
+`PTSv`, `PTSRv`, `CHSv`, `PRv` y `lbHorarioTxt("")` salen de la configuración
+real. Los premios estaban escritos a mano (25/50/100) contra los reales
+(20/40/100): el documento que firma el usuario decía un premio que no existía.
+`POL_VERSION` y `POL_FECHA` quedan manuales, y son la versión del **texto**, no de
+los datos.
+
+### Un incidente con datos de producción
+
+Una prueba de políticas cambió `config/reglas` a `pts:12, cancelHs:8`. **El script
+de restauración falló** (el click a la pestaña tenía `.catch()`, que se tragó el
+error, y los `fill` siguientes escribieron sobre nada). Restaurado a mano por la
+API de Firestore y **verificado**:
+
+    antes de restaurar: {"pts":12, "cancelHs":8}
+    después:           {"pts":5,  "cancelHs":5}
+
+`premios` (20/40/100) y `ptsRegistro` nunca se tocaron.
+
+Otro: un script de diagnóstico escribió `foto: ""` en `fotoBarbero/{barberUid}`.
+Para cuando se detectó, el barbero ya había vuelto a guardarla
+(`v1791910269`).
+
+## 33. Menos botones de reservar, y el resumen legible en el móvil
+
+Cinco pedidos del dueño. El detalle está en `PRODUCT.md`, sección 33. Lo técnico:
+
+### El bug del resumen
+
+El síntoma era que el valor de cada fila se partía letra por letra en el móvil.
+
+**El primer diagnóstico falló.** Se cambió `overflow-wrap: anywhere` por
+`break-word` y no cambió nada: medido, con los dos la celda colapsaba igual. La
+propiedad estaba bien, lo que estaba mal era el ancho.
+
+Las dos causas:
+
+- `.wz-res-cols` usaba `minmax(0, 1.25fr)` para la columna izquierda: un piso de
+  **cero**. En una ventana de 900px la tarjeta quedaba en 184px y la celda del
+  valor en **18px**.
+- `.wz-rf-t` era `flex: 1`: se quedaba con lo que sobrara después del ícono (38px)
+  y del botón "Cambiar" (`flex: 0 0 auto`). No sobraba nada.
+
+El arreglo:
+
+```css
+.wz-res-cols { grid-template-columns: minmax(240px, 1.25fr) minmax(220px, 0.85fr); }
+.wz-rf       { flex-wrap: wrap; }
+.wz-rf-t     { flex: 1 1 130px; }
+```
+
+Con `flex-wrap` + un flex-basis, si el texto no entra con el botón al lado **el
+botón baja de renglón**. El texto nunca queda por debajo de su base. No hay que
+adivinar un ancho: se acomoda sola en cualquier pantalla.
+
+Medido en la ventana real a 390px (hoja de 358px), las cuatro filas:
+
+| fila | antes | ahora |
+|---|---|---|
+| SERVICIO | 18px / 8 líneas | 154px / 2 líneas |
+| BARBERO | 18px / 5 líneas | 154px / 1 línea |
+| FECHA | 18px / 5 líneas | 154px / 1 línea |
+| HORA | 18px / 5 líneas | 154px / 2 líneas |
+
+Y con la grilla real a 360, 430, 540, 700 y 900px: todo entra en **una** línea.
+
+### "Reservar con {barbero}" ahora abre la misma ventana
+
+`lbReservarBar(id)` ya no llama a `lbReservar()` (que sacaba al cliente de la web y
+lo mandaba a `#/reservar`). Ahora:
+
+- pone `sel.b = id` (**no** `lbw.b`: son dos estados distintos, y con sólo `lbw` la
+  ventana se abría en el paso 2 pidiendo barbero),
+- arranca en `lbPrimerPaso()`, el primer paso que falte,
+- sin sesión abre el modal (`wzModal()`); con sesión va a la pantalla del panel,
+  porque ahí el mismo asistente se dibuja como página.
+
+`lbCerrarMenu()` es una función de módulo, no una acción: `lbMenu()` es un
+interruptor, así que llamarla para cerrar la habría vuelto a abrir.
+
+El cierre automático del menú va en el listener global de click
+(`e.target.closest("#lbPanel")`), no en un `data-act` por link, porque los `<a>`
+necesitan su href para el scroll suave y para el teclado.
+
+### Dos cosas que quedaron fuera
+
+`.lb-sticky` (4 reglas) y `.lb-elige` (5 reglas) quedaron sin uso y se borraron.
+`tests/css.muerto.js` lo confirma.
+
+### Dos pruebas que mentían
+
+- Una buscaba `minmax(0, 1.25fr)` en todo el archivo CSS y lo encontraba **en el
+  comentario que explica el bug**. Ahora busca en el código sin comentarios.
+- La siguiente miraba el **primer** bloque `.wz-res-cols` (el base, de una columna)
+  en vez del del media query. Con el primero daba **falso constante**: detectaba
+  cualquier cosa, que es peor que no comprobar. Ahora mira los dos bloques.
+
+Es la tercera vez en este repo que una afirmación pasa con un selector roto. La
+regla que sale de esto: **una comprobación negativa necesita su contrapartida
+positiva, y tiene que correr sobre el código sin comentarios.**
+
+`tests/lote25.js`: 85 → 98 comprobaciones. Las 7 nuevas se verificaron una por una
+reintroduciendo el bug sobre una copia del archivo: las 7 lo detectan.
+
+`tests/landing.barberos.js` exigía el hash `#/reservar`, que era el comportamiento
+viejo. Ahora comprueba las dos formas (ventana sin sesión, pantalla con sesión) y
+que la ficha se cierre: 147 → 156.
+
+sw.js v13 -> v14.
+
+Suite: 37 pruebas · 883 comprobaciones · 0 en rojo.

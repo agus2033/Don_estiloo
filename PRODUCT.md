@@ -697,7 +697,7 @@ aquí: es el **Perfil de Negocio de Google**, que hay que crear a mano. El sitio
 tiene sus datos estructurados y su SEO local listo, pero Google no muestra un
 sitio en el mapa local sin ese perfil.
 
-Las políticas leen los datos de la configuración en vez de escribirlos
+## 32. Las políticas leen los datos de la configuración en vez de escribirlos
 
 Lo pidió el dueño: que cuando cambie los puntos, las horas de cancelar, etc., el
 documento de políticas, condiciones y privacidad se actualice solo.
@@ -799,3 +799,103 @@ que se tragó el error, y los `fill` siguientes escribieron sobre nada.
 sw.js v12 -> v13.
 
 Suite: 37 pruebas, 871 comprobaciones, 0 en rojo.
+
+## 33. Menos botones de reservar, todos al mismo lugar, y el resumen legible en el móvil
+
+Cinco pedidos del dueño en una tanda, con capturas. Uno era un bug de layout, tres
+eran quitar cosas y uno era un comportamiento.
+
+### El resumen se partía letra por letra
+
+En el móvil el valor de cada fila del resumen salía partido en ocho renglones, un
+carácter por renglón: `B a r b a 3 0 m i n`, `R o m a n`, `1 1 : 3`.
+
+**El primer diagnóstico fue incorrecto.** El sospechoso obvio era
+`overflow-wrap: anywhere`, que además de romper la palabra le avisa a flexbox que
+el ancho mínimo de la caja es de **un carácter**. Se cambió a `break-word` y no
+cambió nada: medido, con cualquiera de los dos la celda colapsaba igual.
+
+La causa era el ancho, en dos lugares:
+
+| dónde | antes | por qué colapsaba |
+|---|---|---|
+| `.wz-res-cols` | `minmax(0, 1.25fr)` | piso de **cero**: la columna izquierda se podía estrujar hasta 18px |
+| `.wz-rf-t` | `flex: 1` | se quedaba con lo que sobrara después del ícono (38px) y del botón "Cambiar", que es `flex: 0 0 auto` |
+
+**El arreglo no es un ancho, es que la fila se acomode sola:**
+
+- `minmax(240px, 1.25fr)`: la columna tiene piso en píxeles. Si no entra, la grilla
+  desborda a una sola columna (que es lo que hace `auto`), nunca se estruja.
+- `.wz-rf-t { flex: 1 1 130px }` + `.wz-rf { flex-wrap: wrap }`: si el texto no
+  entra con el botón al lado, **el botón baja de renglón**. El texto nunca queda
+  por debajo de su base y el botón nunca desaparece.
+
+Es la forma de que el problema no vuelva a aparecer a ninguna pantalla, sin tener
+que adivinar un ancho exacto.
+
+Medido en la ventana real del asistente a 390px (hoja de 358px):
+
+| fila | antes | ahora |
+|---|---|---|
+| SERVICIO | 18px / 8 líneas | 154px / 2 líneas |
+| BARBERO | 18px / 5 líneas | 154px / 1 línea |
+| FECHA | 18px / 5 líneas | 154px / 1 línea |
+| HORA | 18px / 5 líneas | 154px / 2 líneas |
+
+Y con la grilla real a cinco anchos (360, 430, 540, 700, 900): todas las filas
+entran en **una** línea. Antes, a 700px ya iban a dos y a 900px a ocho.
+
+### "Reservar con {barbero}" abre la misma ventana
+
+Antes ese botón dejaba el barbero puesto y llamaba a `lbReservar()`, que sacaba al
+cliente de la web y lo mandaba a la pantalla del panel (`#/reservar`). El botón de
+la tarjeta y el del encabezado acababan en **pantallas distintas**: dos botones,
+dos caminos.
+
+Ahora los dos abren la misma ventana de seis pasos, con ese barbero ya elegido. Y
+arranca en el **primer paso que falte**, no en el 1: si el cliente ya eligió
+servicio y día, no lo tira atrás.
+
+Un detalle que hacía falta: el asistente usa `sel` y el widget de la landing usa
+`lbw`. Son dos estados distintos. Sin copiar el barbero de uno al otro, la ventana
+se abría en el paso 2 pidiendo barbero —justo el que el cliente acababa de tocar.
+
+Con sesión sigue yendo a la pantalla del panel, porque ahí el mismo asistente se
+dibuja como página y no como ventana.
+
+### Se sacan dos botones
+
+- **La barra fija de "Reservar ahora".** Tapaba el contenido de abajo de todo: en
+  el móvil caía sobre el título de "Lo que dicen nuestros clientes" y sobre el
+  botón de esa sección, y quedaban dos "Reservar ahora" pegados.
+- **La tarjeta "Elegí con quién cortarte".** Era un cuarto botón de reservar para
+  lo mismo. Cuatro botones iguales cargan la pantalla y hacen que ninguno parezca
+  el principal. La grilla de barberos que estaba arriba no se toca.
+
+En la landing quedan **2** botones de reservar: el del encabezado y el del título
+de la sección de reseñas.
+
+### El menú móvil se cierra solo
+
+Los links de la bandeja son `<a href="#seccion">`: cambiaban el hash y la página
+bajaba, pero la bandeja seguía abierta tapando media pantalla.
+
+Se delega en el listener global de click en lugar de poner un `data-act` en cada
+link, porque los `<a>` necesitan su href para el scroll suave y para el teclado:
+cambiarles el comportamiento rompe la navegación sin JavaScript.
+
+### Una prueba que daba falso constante
+
+Una comprobación nueva buscaba `minmax(0, 1.25fr)` en todo el archivo de CSS y lo
+encontraba **en el comentario que explica el bug**. La siguiente miraba el
+*primer* bloque `.wz-res-cols` (el base, de una columna) en vez del del media query:
+con el primero daba falso constante y "detectaba" cualquier cosa, que es peor que
+no comprobar.
+
+Es la tercera vez en este repo que una afirmación pasa con un selector roto. Las
+dos están arregladas: se busca en el código (sin comentarios) y se miran los dos
+bloques.
+
+sw.js v13 -> v14.
+
+Suite: 37 pruebas, 883 comprobaciones, 0 en rojo.
