@@ -1,4 +1,4 @@
-# robots.txt de Codigo Barber
+# robots.txt de SSJ Barber
 # El dominio tiene que coincidir con DOMINIO en src/config.js, con el
 # <link rel="canonical"> y con og:url del index.html, y con cada <loc> del
 # sitemap.xml. `tests\seo.js` compara los cuatro y falla si se separan.

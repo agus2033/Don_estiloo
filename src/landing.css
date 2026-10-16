@@ -1953,9 +1953,9 @@ body[data-theme="light"] .lb-btn--pri:hover {
 }
 
 /* ---------- 16. FOOTER ---------- */
-/* Se eliminó: el pie compacto (.lb-ft) con "© Codigo Barber · Turnos y
-   puntos" y las redes repetía lo que ya está en Contacto, así que la
-   landing ahora cierra con la banda dorada de "Reservar ahora". Las reglas
+/* Se eliminó: el pie compacto (.lb-ft) con "© " + el nombre de la marca +
+   " · Turnos y puntos" y las redes repetía lo que ya está en Contacto, así que
+   la landing ahora cierra con la banda dorada de "Reservar ahora". Las reglas
    de .lb-soc que quedaban acá nacieron para ese pie y tampoco aplican. */
 
 /* ---------- 17. REVEAL ---------- */
@@ -2947,8 +2947,12 @@ body[data-theme="light"] .wz-btn--pri:hover {
 /* ---------- 18b. HEADER EN PANTALLAS MUY ANGOSTAS ----------
    A 320 px la fila queda justa: logo, nombre, toggle de tema y menú de
    opciones llenan todo el ancho y el nombre se cortaba. Se achica el logo
-   y la tipografía, y se cierra el gap: es lo mínimo para que "CODIGO BARBER"
-   entre entero sin tocar el diseño que se ve desde 390 px para arriba. */
+   y la tipografía, y se cierra el gap: es lo mínimo para que el nombre de la
+   marca entre entero sin tocar el diseño que se ve desde 390 px para arriba.
+
+   Lote 36: la marca pasó a SSJ Barber, que es más corta, así que estas reglas
+   quedan más holgadas de lo que estaban. No se tocan: si mañana vuelve a hacer
+   falta, el que mida es el nombre de largo. */
 @media (max-width: 359px) {
   .lb-hd-in {
     gap: 10px;
@@ -3752,8 +3756,8 @@ body,
    los 1240 px del header. Igual el nombre de la marca va primero. */
 @media (min-width: 1280px) and (max-width: 1639px) {
   /* El nombre de la marca va primero: se le baja un punto la tipografía y
-     se cierra el gap del nav para que "CODIGO BARBER" entre entero en los
-     1240 px del header. Medido: sobran ~9 px de aire. */
+     se cierra el gap del nav para que entre entero en los 1240 px del header.
+     Lote 36: con "SSJ Barber" sobra más aire todavía. */
   .lb .lb-brand b {
     font-size: 1.9rem;
   }

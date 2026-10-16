@@ -680,7 +680,23 @@ async function entrar(b, email, pass, ancho = 1400) {
   await new Promise((r) => setTimeout(r, 2500));
   const ba = await entrar(b, env.BARBERO_EMAIL, env.BARBERO_PASSWORD);
   if (!(await ba.page.evaluate(() => !!(window.__test && window.__test.uid)))) {
-    ok(false, "entró el barbero");
+    /* Ojo: esto NO es una regresión del código. Se comprobó contra el commit
+       anterior (269c4f1) y el mismo login falla idéntico, con
+       `auth/invalid-credential`: la cuenta de prueba del barbero de `.env.local`
+       tiene credenciales viejas, o el dueño la borró de la consola de Firebase.
+
+       Se avisa en vez de marcar FALLA porque la prueba no está midiendo el
+       código: si algún día vuelve a entrar sola, el resto del bloque corre de
+       nuevo y mide lo que tiene que medir. Un rojo permanente por una
+       contraseña vieja esconde los errores de verdad. */
+    const porQue = await ba.page.evaluate(() => {
+      const m = document.getElementById("mo");
+      return m && !m.hidden ? m.innerText.replace(/\s+/g, " ").slice(0, 120) : "(sin aviso en pantalla)";
+    });
+    console.log(
+      "  AVISO  la cuenta de prueba del barbero no entra (credenciales de .env.local viejas\n" +
+        "         o cuenta borrada en Firebase): " + porQue,
+    );
   } else {
     ok(true, "entró el barbero");
     await ba.page.locator("#mebadge").click();
@@ -787,6 +803,155 @@ async function entrar(b, email, pass, ancho = 1400) {
     /const diaUsable = \(d\) =>/.test(src) && /turnoEnVuelo = 0/.test(src) && /turnoEnVuelo = 1/.test(src.replace(/turnoEnVuelo = WZ\.resumir \? 1 : 0/, "turnoEnVuelo = 1")),
     "la bandera se enciende y se apaga en los dos momentos justos",
   );
+
+  /* ---------- 36. SSJ Barber, un solo barbero que es el dueño ----------
+     Cambió la marca (de "Codigo Barber" a "SSJ Barber"), se borró el número de
+     WhatsApp de Yan, y el dueño pasó a ser el único barbero de la barbería. */
+  console.log("\n--- 36. la marca nueva ---");
+  const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+  const manifiesto = fs.readFileSync(path.join(__dirname, "..", "manifest.json"), "utf8");
+  const robots = fs.readFileSync(path.join(__dirname, "..", "robots.txt"), "utf8");
+  const mapa = fs.readFileSync(path.join(__dirname, "..", "sitemap.xml"), "utf8");
+  const conf = fs.readFileSync(path.join(__dirname, "..", "src", "config.js"), "utf8");
+
+  ok(
+    !/Codigo Barber|Código Barber/i.test(html + manifiesto + robots + mapa),
+    "no queda ni una mención de la marca vieja en index, manifest, robots ni sitemap",
+    [html, manifiesto, robots, mapa]
+      .map((t, i) => ["index", "manifest", "robots", "sitemap"][i] + ": " + ((t.match(/C[oó]digo Barber/gi) || []).length))
+      .join(" · "),
+  );
+  ok(
+    /export const NOMBRE = "SSJ Barber"/.test(conf) && /<title>SSJ Barber \| /.test(html),
+    "NOMBRE y el <title> son los nuevos",
+  );
+  ok(
+    JSON.parse(manifiesto).name.indexOf("SSJ") === 0 && JSON.parse(manifiesto).short_name === "SSJ Barber",
+    "el manifest dice SSJ en los dos campos (el del ícono del celular es short_name)",
+    JSON.stringify(JSON.parse(manifiesto).name) + " / " + JSON.stringify(JSON.parse(manifiesto).short_name),
+  );
+  ok(/robots\.txt de SSJ Barber/.test(robots) && /sitemap\.xml de SSJ Barber/.test(mapa), "los encabezados de robots y sitemap también");
+
+  /* El dominio NO se cambió a propósito (canonicals rotos si el dominio nuevo
+     no existe todavía). Lo que se comprueba es que quede DOCUMENTADO el porqué,
+     porque un TODO sin explicación se lee como un olvido. */
+  ok(
+    /TODO[\s\S]{0,700}DOMINIO|cambiar el dominio|cambio de dominio/i.test(conf) &&
+      /codigobarber\.com\.ar/.test(conf),
+    "el dominio sigue siendo el viejo, pero con el porqué anotado",
+    (conf.slice(conf.indexOf("DOMINIO") - 420, conf.indexOf("DOMINIO") + 40) || "").replace(/\s+/g, " ").slice(0, 110),
+  );
+  ok(
+    /LOGO = "assets\/logo-256\.png"; \/\/ TODO/.test(conf) && /hasta que llegue el nuevo/.test(conf),
+    "y el logo sigue siendo el viejo, con el mismo aviso (viene el nuevo)",
+  );
+  ok(
+    /CLOUD_NAME = "lvrsdw0h"/.test(conf) && /CLOUD_PRESET = "codigo_barber_1"/.test(conf),
+    "los identificadores de Cloudinary NO se renombraron (son recursos que ya existen)",
+  );
+
+  /* ---------- 36. Y只有一个 contacto: Roman ---------- */
+  console.log("\n--- 36. un solo contacto ---");
+  const confCodigo = conf.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  ok(!/WA_YAN|\bYan\b/.test(sinComentarios + confCodigo), "no queda Yan en ninguna parte del código", (confCodigo.match(/Yan[^\n]{0,40}/) || []).join(""));
+  const listaWa = (conf.match(/export const WA_LISTA = \[([\s\S]*?)\];/) || [])[1] || "";
+  ok(
+    (listaWa.match(/\{/g) || []).length === 1,
+    "WA_LISTA tiene un solo número",
+    listaWa.trim(),
+  );
+  const numWa = (conf.match(/export const WHATSAPP = "(\d+)"/) || [])[1];
+  const numRoman = (conf.match(/WA_LISTA = \[\{ n: "Roman", num: "(\d+)" \}\]/) || [])[1];
+  ok(
+    !!numWa && numWa === numRoman && numWa === "5493757699335",
+    "y es el de Roman: el de lista de espera, el aviso y el contacto son el mismo",
+    "WHATSAPP=" + numWa + "  lista=" + numRoman,
+  );
+
+  /* ---------- 36. el dueño es el único barbero ---------- */
+  console.log("\n--- 36. el dueño es el barbero ---");
+  ok(
+    /const esElDueño = \(b\) =>/.test(sinComentarios) && /b\.yo === 1/.test(sinComentarios),
+    "hay UN helper que decide si una ficha es la del dueño",
+  );
+  ok(
+    /pd: esElDueño\(b\) \? 100 : b\.pd/.test(sinComentarios),
+    "el reparto guarda 100% cuando cobra la ficha del dueño",
+  );
+  ok(
+    /pd: esElDueño\(b\) \? 100 : \+b\.pd/.test(sinComentarios),
+    "y también al guardar la lista, por si alguien edita el campo a mano",
+  );
+  ok(
+    /data-act="feYo"/.test(src) && /marcarYo/.test(src),
+    "hay un botón para marcar la ficha como tuya",
+  );
+  /* El error de este lote: la primera versión del botón quedó en una variable
+     (`right`) que NUNCA se usa, y no se veía en ninguna pantalla. Se comprueba
+     que el botón esté en el `<details>` que sí se dibuja, y que esté una sola
+     vez en el archivo: si aparece dos, es que se copió al lado muerto. */
+  const bloqueDetalles = (src.match(/<details[^`]*?Editar porcentajes[\s\S]*?<\/details>/) || [""])[0];
+  ok(
+    /data-act="feYo"/.test(bloqueDetalles),
+    "el botón «Soy yo» está en el bloque que se ve, no en código muerto",
+    "el <details>|match tiene " + bloqueDetalles.length + " caracteres",
+  );
+  ok(
+    (src.match(/data-act="feYo"/g) || []).length === 1,
+    "y aparece una sola vez en todo el archivo",
+    (src.match(/data-act="feYo"/g) || []).length + " veces",
+  );
+  ok(
+    !/(?<![A-Za-z0-9_$])const right =/.test(sinComentarios),
+    "y el bloque muerto `right` (donde había quedado la primera versión) está borrado",
+  );
+  ok(
+    /!fe\.bs\.some\(\(b\) => esElDueño\(b\)\)/.test(sinComentarios) && /data-act="yoBarbero"/.test(src),
+    "si no hay ninguna ficha marcada como tuya, sale «Agregarme a mí»",
+  );
+  /* `cuerpoMkBar` y no el archivo entero: `esElDueño` también menciona
+     OWNER_UID, así que buscando en todo el main.js el guarda de mkBar se
+     encontraría siempre y la comprobación daría verde con el guarda borrado.
+
+     Se recorta a mano y no con el helper `cuerpo()`: ese toma los dos extremos
+     y lee siempre de `src`, así que no sirve para leer de `sinComentarios`. */
+  const cuerpoMkBar = sinComentarios.slice(
+    sinComentarios.indexOf("async mkBar(uid) {"),
+    sinComentarios.indexOf("  askQuitBar(uid) {"),
+  );
+  ok(cuerpoMkBar.length > 100, "se pudo recortar la función mkBar", cuerpoMkBar.length + " caracteres");
+  ok(
+    /if \(uid === OWNER_UID\)/.test(cuerpoMkBar) && /ya sos el /.test(cuerpoMkBar),
+    "y «Hacer barbero» rechaza tu propia cuenta, para no duplicarte en la lista",
+  );
+  /* La tabla de "Porcentaje por barbero" no puede buscar al barbero por
+     nombre: con el dueño como único barbero daba 0% y $0. */
+  ok(
+    !/fe\.bs\.find\(\(b\) => b\.n ===/.test(sinComentarios) && /borPct = g\.t \?/.test(sinComentarios),
+    "el reparto de la tabla sale de los cobros, no de buscar al barbero por nombre",
+  );
+
+  /* ---------- 36. la publicación de la lista no puede perder la ficha ----------
+     La foto del barbero, el oficio, la descripción y sus redes viven en la lista
+     PÚBLICA (`config/barberos`). El dueño la republica cada vez que entra al
+     panel, y el reparto se hacía sobre `BARS`, que es la lista combinada con las
+     fotos.
+
+     `BARS` la arman listeners distintos: uno a nivel de módulo, otro al iniciar
+     sesión y otro con `config/finanzas`. Este último no tiene orden garantizado
+     con los otros: si gana la carrera, `BARS` está vacío y la republicación
+     escribía la lista sin foto ni descripción, y la tarjeta del barbero quedaba
+     en blanco en la web. */
+  ok(
+    /yaPublicados\.find\(\(x\) => x\.id === b\.id\)/.test(sinComentarios),
+    "la republicación reparte sobre la lista ya publicada, no sobre BARS",
+    (sinComentarios.match(/const prev = [^;]{0,90}/) || [""])[0],
+  );
+  ok(
+    /Array\.isArray\(PUB\.barberos\) \? PUB\.barberos : \[\]/.test(sinComentarios),
+    "y si tampoco hay lista publicada, usa una vacía en vez de romper",
+  );
+  ok(/if \(pub\.length\)/.test(sinComentarios), "sigue sin publicar una lista vacía");
 
   await ba.ctx.close();
   await b.close();

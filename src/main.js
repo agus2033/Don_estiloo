@@ -292,10 +292,29 @@ const imgCld = (u, ancho) => {
 const bsnap = () => {
   if (!isOwner() && SB) return { bid: me.uid, bn: SB.n, pd: SB.pd };
   const b = bar(dbi);
-  if (!b)
-    return { bid: "", bn: "", pd: FN.pd }; // todavía no hay barberos cargados
-  return { bid: b.id, bn: b.n, pd: b.pd };
+  if (!b) return { bid: "", bn: "", pd: FN.pd }; // todavía no hay barberos cargados
+  /* Si el barbero que cobra es el mismo dueño, no hay nada que repartir.
+     La barbería tiene un solo barbero y es el dueño (lote 36): se queda el
+     100%, aunque el campo siga editable en Finanzas para cuando entre otro.
+
+     El 100% va en la VENTA (aquí, y no sólo al mostrarla), porque el porcentaje
+     se guarda en cada cobro: los cobros viejos conservan el suyo y los nuevos
+     se guardan con 100. Así el histórico no se reescribe. */
+  return { bid: b.id, bn: b.n, pd: esElDueño(b) ? 100 : b.pd };
 };
+/* ¿Esta ficha de la lista es el dueño?
+
+   Hay dos formas de que lo sea, y el código acepta las dos a propósito:
+     - `yo: 1`, que el dueño marca desde Finanzas. Es la vía normal: la ficha
+       que ya está cargada tiene foto, oficio y descripción, y cambiarle el id
+       las haría perder (la foto se busca por `fotoBarbero/{id}`).
+     - que el `id` sea el del dueño, que es lo que deja la acción "Agregarme a
+       mí" cuando la lista estaba vacía.
+
+   No se deduce del nombre: con dos fichas que se llamen igual —o con una ficha
+   vieja apuntando a una cuenta que ya no usás— el nombre no dice nada. Por eso la
+   marca es explícita. */
+const esElDueño = (b) => !!b && (b.yo === 1 || b.id === OWNER_UID || (!!b.uid && b.uid === OWNER_UID));
 const HA = () => [...H, ...VT];
 const isOwner = () => me && me.uid === OWNER_UID;
 
@@ -1130,8 +1149,26 @@ function setup(a) {
              corre cada vez que el dueño entra, cada entrada a Finanzas
              borraba deconfig la ficha que el barbero cargó en "Mi perfil en
              la web" (oficio, descripción, WhatsApp, Instagram, redes). */
+          /* El reparto sale de la lista PÚBLICA que ya está publicada, no de `BARS`.
+
+             `BARS` es la lista ya combinada con las fotos de `fotoBarbero`, y la
+             arman listeners distintos: el de módulo (`config/barberos`) y el que
+             se vuelve a crear al iniciar sesión. Este bloque corre con el de
+             `config/finanzas`, que es un tercero: no hay ningún orden
+             garantizado entre ellos. Si `finanzas` gana la carrera, `BARS` está
+             VACÍO en el momento de publicar.
+
+             Con `BARS` vacío, `prev` era `{}` para cada barbero y esta línea
+             reescribía la lista pública sin foto, sin oficio, sin descripción,
+             sin WhatsApp y sin Instagram. Con una sola entrada del dueño al
+             panel, la tarjeta del barbero de la web se quedaba en blanco.
+
+             `PUB.barberos` es justamente "lo último que se publicó", que es lo que
+             hay que preservar: `conFotos` lo usa al salir de sesión, así que
+             siempre está al día con lo que hay en Firestore. */
+          const yaPublicados = Array.isArray(PUB.barberos) ? PUB.barberos : [];
           const pub = FN.bs.map((b) => {
-            const prev = BARS.find((x) => x.id === b.id) || {};
+            const prev = yaPublicados.find((x) => x.id === b.id) || BARS.find((x) => x.id === b.id) || {};
             return {
               ...prev,
               id: b.id,
@@ -3079,7 +3116,10 @@ Object.assign(W, {
         id: b.id,
         ...(b.uid ? { uid: b.uid } : {}),
         n: b.n.trim(),
-        pd: +b.pd,
+        /* La fila del dueño queda clavada en 100, aunque el campo se hubiera
+           podido editar. Es una red más: el reparto se calcula en bsnap(), pero
+           también conviene que el dato guardado no diga otra cosa. */
+        pd: esElDueño(b) ? 100 : +b.pd,
       })),
       bt = writeBatch(db);
     bt.set(doc(db, "config", "finanzas"), { pd: +fe.pd, bs });
@@ -3163,8 +3203,18 @@ Object.assign(W, {
     });
   },
   async mkBar(uid) {
+    /* El dueño no se agrega por acá: es barbero por otra vía (`yoBarbero`), que
+       no le crea ficha de barbero. Sin este guarda, "Hacer barbero" sobre su
+       propia cuenta lo metía en la lista DOS veces: una como dueño y otra como
+       barbero, y la web mostraba dos fichas suyas. */
+    if (uid === OWNER_UID)
+      return M({
+        k: "w",
+        h: "Vos ya sos el dueño",
+        b: "Para que tu ficha aparezca en la web, usá “Agregarme a mí” en Finanzas.",
+      });
     const u = UA.find((x) => x.id === uid);
-    if (!u || FN.bs.some((b) => b.uid === uid)) return;
+    if (!u || FN.bs.some((b) => b.uid === uid || b.id === uid)) return;
     const bs = [...FN.bs, { id: uid, uid, n: u.nm, pd: FN.pd }],
       bt = writeBatch(db);
     bt.set(doc(db, "config", "finanzas"), { pd: FN.pd, bs });
@@ -3225,6 +3275,102 @@ Object.assign(W, {
       await bt.commit();
       msg = b.uid ? "Listo, volvió a la lista de clientes." : "Listo, se lo sacó del equipo.";
       R();
+    } catch (e) {
+      err(e);
+    }
+  },
+  /* Marcar una ficha de la lista como "el dueño" (lote 36).
+
+     Esta es la vía normal: la ficha que ya está cargada tiene foto, oficio y
+     descripción, y cambiarle el `id` las haría perder. Marcarla deja todo eso
+     intacto y sólo agrega la bandera `yo`.
+
+     Qué cambia al marcarla:
+       - el reparto: los cobros de esa ficha se guardan con 100% para el dueño,
+         porque `bsnap()` devuelve 100 cuando la ficha es suya;
+       - Finanzas deja de mostrar "Para el dueño / Para los barberos" cuando es
+         la única;
+       - su fila queda con el porcentaje clavado y sin poder editarlo.
+
+     Un solo botón: si ya está marcada, el mismo botón la desmarca, por si al
+     final resultara que no era él. */
+  feYo(i) {
+    if (!isOwner()) return;
+    const b = FN.bs[i];
+    if (!b) return;
+    const yaEs = esElDueño(b);
+    M({
+      k: "q",
+      h: yaEs ? "¿Dejar de marcar esta ficha como tuya?" : "¿Esta ficha sos vos?",
+      b: yaEs
+        ? "Vuelve a repartir con el porcentaje de la lista. Los cobros que ya guardaste con 100% no cambian."
+        : "Tus cortes se van a guardar con el 100% para vos, en vez de repartirse. La foto, el oficio y la descripción no se tocan.",
+      ok: yaEs ? "Desmarcar" : "Sí, soy yo",
+      no: "Volver",
+      fn: () => W.marcarYo(b.id, yaEs ? 0 : 1),
+    });
+  },
+  async marcarYo(id, yo) {
+    if (!isOwner()) return;
+    const bs = FN.bs.map((b) => {
+      if (b.id !== id) return b;
+      if (yo) return { ...b, yo: 1 };
+      /* Se saca la bandera en vez de dejar `yo: 0`: sólo vale 1, y mandar
+         `yo: undefined` en un `set` la borra en Firestore. */
+      const { yo: _fuera, ...resto } = b;
+      return resto;
+    });
+    try {
+      await setDoc(doc(db, "config", "finanzas"), { pd: FN.pd, bs });
+      msg = yo ? "Listo. Esa ficha ahora sos vos: tus cortes no se reparten." : "Listo. Vuelve el reparto.";
+      R();
+    } catch (e) {
+      err(e);
+    }
+  },
+  /* El dueño también es el barbero (lote 36).
+
+     La barbería quedó con un solo barbero, y ese barbero es el dueño: no hay dos
+     personas. Antes esto se resolvía "Hacer barbero" desde Clientes, pero esa
+     acción escribe `staff/{uid}` y con eso el dueño pasa a tener ficha de
+     barbero, que dispara un montón de ramas del panel escritas para "no soy el
+     dueño" (`bsnap`, la agenda, el selector de barbero, el pie). Por eso esta
+     acción escribe SÓLO la lista del equipo.
+
+     La ficha del dueño va SIN `uid`, a propósito: es el comportamiento que ya
+     tienen los barberos agregados a mano, no le crea documento de barbero, y
+     `quitBar` no intenta ni borrarlo ni tocarle el rol en `users`.
+
+     El 100% no se guarda como "el dueño se queda todo" en un campo editable:
+     se calcula en `bsnap()` y se clava acá al guardar. Así, si mañana entra
+     otro barbero, el reparto entre los dos sigue funcionando con el campo
+     normal. */
+  yoBarbero() {
+    if (!isOwner()) return;
+    if (FN.bs.some((b) => esElDueño(b)))
+      return M({
+        k: "w",
+        h: "Ya estás en el equipo",
+        b: "Tu ficha ya figura entre los barberos. Para cambiar tu foto o tu oficio, usá “Mi perfil en la web”.",
+      });
+    /* El nombre sale de SU perfil, no se inventa. Si no lo tiene cargado, se le
+       dice dónde cargarlo en vez de guardar un nombre inventado que después hay
+       que corregir a mano. */
+    const n = String((U && U.nm) || "").trim();
+    if (!n)
+      return M({
+        k: "w",
+        h: "Falta tu nombre",
+        b: "Cargá tu nombre en tu perfil (el ícono de tu foto, arriba a la derecha) y volvé a tocar este botón.",
+      });
+    const bs = [...FN.bs, { id: OWNER_UID, n, pd: 100 }];
+    try {
+      setDoc(doc(db, "config", "finanzas"), { pd: FN.pd, bs })
+        .then(() => {
+          msg = "Listo. Ahora sos el barbero de la barbería y aparece en la web.";
+          R();
+        })
+        .catch(err);
     } catch (e) {
       err(e);
     }
@@ -4795,8 +4941,8 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
   </section>
 
   <!-- El pie compacto de la landing se fue (lo pidió el dueño): era una
-       franja con "© Codigo Barber · Turnos y puntos" y las redes, que
-       repetía lo que ya está en la sección de Contacto. -->
+       franja con "© " + el nombre de la marca + " · Turnos y puntos" y las
+       redes, que repetía lo que ya está en la sección de Contacto. -->
 
   <!-- La barra fija con "Reservar ahora" también se fue (lo pidió el dueño el
        13/10). Tapaba el contenido abajo de todo: en el móvil caía justo sobre
@@ -6528,20 +6674,22 @@ function finH() {
         )
         .join("") || "<small>Todavía no hay cobros hoy.</small>"
     }<div class="line"><span><b>Total</b> <small>${hy.length} ${hy.length === 1 ? "cobro" : "cobros"}</small></span><span class="price">${$$(hy.reduce((a, t) => a + (t.precio || 0), 0))}</span></div></div>`;
+  /* Lote 36: la barbería tiene un solo barbero y es el dueño, así que mostrar
+     "Para el dueño" y "Para los barberos" con el 100% y el 0% al lado no dice
+     nada. Cuando TODOS los barberos de la lista son el dueño, el reparto no
+     existe y se muestran los números que de verdad importan: lo facturado, lo
+     que se gastó y el neto. En cuanto entre otro barbero, el reparto vuelve a
+     aparecer solo, sin tocar nada. */
+  const soloYo = FN.bs.length > 0 && FN.bs.every(esElDueño);
   const kps = own
-    ? kp("Facturado", $$(TT)) +
-      kp("Para el dueño", $$(OO)) +
-      kp("Para los barberos", $$(TT - OO)) +
-      kp("Gastos", $$(GT)) +
-      kp("Neto del dueño", $$(OO - GT))
+    ? soloYo
+      ? kp("Facturado", $$(TT)) + kp("Gastos", $$(GT)) + kp("Neto tuyo", $$(TT - GT))
+      : kp("Facturado", $$(TT)) +
+        kp("Para el dueño", $$(OO)) +
+        kp("Para los barberos", $$(TT - OO)) +
+        kp("Gastos", $$(GT)) +
+        kp("Neto del dueño", $$(OO - GT))
     : kp("Facturado", $$(TT)) + kp("Mi ganancia", $$(TT - OO));
-  const right = own
-    ? `<h2>Porcentajes</h2>` +
-      (fe
-        ? `<div class="card"><small>Porcentaje que se queda el dueño. Se aplica a los cobros nuevos; los anteriores conservan el suyo.</small><h3>% del dueño por defecto</h3><input id="fpd" inputmode="numeric" maxlength="3" value="${esc(fe.pd)}" data-in="feDef" data-args="${A("@el")}">${fe.bs.map((b, i) => `<div class="svr"><input id="fn${i}" aria-label="Nombre del barbero" placeholder="Nombre" maxlength="30" value="${esc(b.n)}" data-in="feIn" data-args="${A(i, "n", "@el")}"><div class="two"><input id="fp${i}" aria-label="Porcentaje del dueño" inputmode="numeric" maxlength="3" value="${esc(b.pd)}" data-in="feIn" data-args="${A(i, "pd", "@el")}"><button data-act="feDel" data-args="${A(i)}" ${fe.bs.length < 2 ? "disabled" : ""}>Quitar</button></div><small>% dueño · el barbero se queda con el resto${b.uid ? " · tiene cuenta propia" : ""}</small></div>`).join("")}<div class="chips"><button data-act="feAdd">+ Agregar barbero sin cuenta</button></div><small style="display:block;margin-top:8px">Para que un barbero entre con su usuario: que se cree una cuenta y usá “Hacer barbero” en Clientes.</small><button class="main" data-act="feGuardar">Guardar porcentajes</button></div>`
-        : "") +
-      caja
-    : caja;
   const gastoBlock =
     `<h2>Gastos</h2><div class="card"><input id="gc" placeholder="Concepto (insumos, alquiler…)" maxlength="40" value="${esc(gx.c)}" data-in="gIn" data-args="${A("c", "@el")}"><input id="gm" inputmode="numeric" placeholder="Monto $" maxlength="8" value="${esc(gx.m)}" data-in="gIn" data-args="${A("m", "@el")}"><button class="main" style="margin-top:0" data-act="gAdd">+ Agregar gasto</button></div>` +
     (GL.length
@@ -6565,17 +6713,47 @@ function finH() {
     (own && fe
       ? `<div class="card"><div class="bwrap"><div class="clin chead" style="grid-template-columns:44px 1.4fr .6fr 1fr .5fr 1fr"><span></span><span>Barbero</span><span>Cortes</span><span>Facturado</span><span>%</span><span style="text-align:right">Le corresponde</span></div>` +
         (GR.length
-          ? GR.map((g, i) => {
-              const fe2 = (fe.bs.find((b) => b.n === g.n) || {}),
-                pdB = fe2.pd ?? FN.pd,
-                borPct = 100 - pdB;
-              return `<div class="clin" style="grid-template-columns:44px 1.4fr .6fr 1fr .5fr 1fr"><span class="aval" style="width:36px;height:36px;font-size:16px">${esc((g.n || "?")[0].toUpperCase())}</span><b>${esc(g.n)}</b><span>${g.c}</span><span>${$$(g.t)}</span><span>${borPct} %</span><b style="color:var(--brass);text-align:right">${$$(Math.round((g.t * borPct) / 100))}</b></div>`;
+          ? GR.map((g) => {
+              /* El reparto sale de los PROPIOS cobros, no de la lista de
+                 porcentajes.
+
+                   Antes se buscaba al barbero por NOMBRE (`fe.bs.find(b => b.n
+                   === g.n)`) y de ahí salía `100 - pdB`. Tres cosas malas: si dos
+                   barberos tienen el mismo nombre tomaba el primero; ese
+                   porcentaje se imponía sobre TODO el facturado del barbero
+                   aunque cada cobro traiga el suyo; y con el dueño como único
+                   barbero daba 0% y $0, al revés de lo que pasa.
+
+                   `g.o` ya acumula la parte del dueño de cada cobro, usando el
+                   `pd` que ese cobro guardó. La del barbero es la resta, y el
+                   porcentaje sale de ahí. Así los cobros viejos conservan su
+                   reparto, los nuevos usan el de ahora, y el dueño-barbero
+                   muestra 100% sin ningún caso especial. */
+                parteBarbero = g.t - g.o,
+                borPct = g.t ? Math.round((parteBarbero / g.t) * 100) : 0;
+              return `<div class="clin" style="grid-template-columns:44px 1.4fr .6fr 1fr .5fr 1fr"><span class="aval" style="width:36px;height:36px;font-size:16px">${esc((g.n || "?")[0].toUpperCase())}</span><b>${esc(g.n)}</b><span>${g.c}</span><span>${$$(g.t)}</span><span>${borPct} %</span><b style="color:var(--brass);text-align:right">${$$(parteBarbero)}</b></div>`;
             }).join("")
           : `<p style="padding:14px"><small>Todavía no hay cobros en este período.</small></p>`) +
         `</div>` +
         `<p style="padding:14px 14px 4px;margin:0;border-top:1px solid var(--line)"><small>El porcentaje de cada barbero se cambia desde la pantalla Barberos.</small></p>` +
         (fe
-          ? `<details style="padding:0 14px 14px"><summary style="cursor:pointer;color:var(--brass)">Editar porcentajes</summary><small>Porcentaje que se queda el dueño. Se aplica a los cobros nuevos.</small><h3>% del dueño por defecto</h3><input id="fpd" inputmode="numeric" maxlength="3" value="${esc(fe.pd)}" data-in="feDef" data-args="${A("@el")}">${fe.bs.map((b, i) => `<div class="svr"><input id="fn${i}" aria-label="Nombre del barbero" value="${esc(b.n)}" data-in="feIn" data-args="${A(i, "n", "@el")}"><div class="two"><input id="fp${i}" aria-label="Porcentaje del dueño" inputmode="numeric" value="${esc(b.pd)}" data-in="feIn" data-args="${A(i, "pd", "@el")}"><button data-act="feDel" data-args="${A(i)}" ${fe.bs.length < 2 ? "disabled" : ""}>Quitar</button></div></div>`).join("")}<div class="chips"><button data-act="feAdd">+ Agregar barbero sin cuenta</button></div><button class="main" data-act="feGuardar">Guardar porcentajes</button></details>`
+          ? `<details style="padding:0 14px 14px"><summary style="cursor:pointer;color:var(--brass)">Editar porcentajes</summary><small>Porcentaje que se queda el dueño. Se aplica a los cobros nuevos; los anteriores conservan el suyo.</small><h3>% del dueño por defecto</h3><input id="fpd" inputmode="numeric" maxlength="3" value="${esc(fe.pd)}" data-in="feDef" data-args="${A("@el")}">${fe.bs.map((b, i) => {
+            /* La fila del dueño se ve distinta y su porcentaje no se edita: es siempre
+               100 (lote 36). Se calcula en bsnap() y además se clava al guardar.
+          
+               El campo va con `readonly` y no `disabled`: un input deshabilitado ni lo
+               leen los lectores de pantalla ni entra en el orden de tabulación, y acá
+               es un dato, no un control. */
+            const soyYo = esElDueño(b);
+            return `<div class="svr">${soyYo ? `<small style="display:block;margin-bottom:6px;color:var(--brass);font-weight:700">SOS VOS</small>` : ""}<input id="fn${i}" aria-label="${soyYo ? "Tu nombre" : "Nombre del barbero"}" value="${esc(b.n)}" data-in="feIn" data-args="${A(i, "n", "@el")}"><div class="two"><input id="fp${i}" aria-label="Porcentaje del dueño" inputmode="numeric" maxlength="3" value="${soyYo ? "100" : esc(b.pd)}" ${soyYo ? ` readonly title="Siempre 100: sos el dueño y el barbero"` : ` data-in="feIn" data-args="${A(i, "pd", "@el")}"`}><button data-act="feYo" data-args="${A(i)}" title="${soyYo ? "Dejar de marcarme como el dueño" : "Esta ficha soy yo"}">${soyYo ? "✓ Sos vos" : "Soy yo"}</button><button data-act="feDel" data-args="${A(i)}" ${fe.bs.length < 2 ? "disabled" : ""}>Quitar</button></div><small style="display:block;margin-top:4px">${soyYo ? "100% para vos · no hay reparto porque sos el dueño y el barbero" : "% dueño · el barbero se queda con el resto" + (b.uid ? " · tiene cuenta propia" : "")}</small></div>`;
+          }).join("")}${
+            /* Lote 36: la barbería tiene un solo barbero y es el dueño. Si todavía no
+               figura en la lista, sale el botón para agregarse: es lo único que falta
+               para que su ficha aparezca en la web. */
+            !fe.bs.some((b) => esElDueño(b))
+              ? `<div class="chips"><button class="main" data-act="yoBarbero">+ Agregarme a mí (yo soy el barbero)</button></div><small style="display:block;margin:8px 0">Tu ficha sale en la web con tu foto, tu oficio y tu descripción. Cargalos en “Mi perfil en la web”, desde el ícono de tu foto.</small>`
+              : ""
+          }<div class="chips"><button data-act="feAdd">+ Agregar barbero sin cuenta</button></div><small style="display:block;margin-top:8px">Para que otro barbero entre con su usuario: que se cree una cuenta y usá “Hacer barbero” en Clientes.</small><button class="main" data-act="feGuardar">Guardar porcentajes</button></details>`
           : "") +
         `</div>`
       : `<p><small>Todavía no hay cobros en este período.</small></p>`);

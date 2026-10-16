@@ -7,8 +7,15 @@
         messagingSenderId: "968927411493",
         appId: "1:968927411493:web:cacd75772f2fb791132ecc"
       };
-      export const ADMIN_UID = "LQ7IkEfxEKNXajx4SEs378n390i2";
-      export const NOMBRE = "Codigo Barber"; // nombre de la barbería
+      // ADMIN_UID / OWNER_UID: el dueño es Roman (lo confirmó el 16/10/26: la cuenta
+// del dueño y la que figuraba como barbero son la misma persona). O sea que el
+// barbero de la barbería ES el dueño: no hay dos personas.
+export const ADMIN_UID = "LQ7IkEfxEKNXajx4SEs378n390i2"; // Roman, dueño
+      export const NOMBRE = "SSJ Barber"; // nombre de la barbería (lote 36: era "Codigo Barber")
+// TODO(dueño, 16/10/26): me dijiste "SSJ BARBER" en mayúsculas. Está guardado en
+// mixed case, como estaba el nombre anterior. Los lugares que muestran el logo en
+// versalita lo pasan a mayúsculas solos por CSS. Si lo querés TODO en mayúscula
+// (en el <title> y las metas también), es este único valor.
       export const AUTOR = "Agustín Ibarra"; // nombre que aparece en el pie de la web
       export const S = [
         { n: "Corte (Incluye cejas)", m: 30, p: 15000 },
@@ -24,17 +31,27 @@
       export const MC = ["No puedo asistir", "Me surgió un imprevisto", "Me equivoqué de día u hora", "Otro motivo"]; // motivos (cliente)
       export const MB = ["El cliente avisó que no viene", "No se presentó", "Imprevisto del barbero", "Otro motivo"]; // motivos (barbero)
       export const MP = ["Efectivo", "Transferencia"]; // medios de pago
-      export const WHATSAPP = "5493757644751"; // número con código de país, sin + ni espacios. Ej: "5491122334455"
-// Los dos números del local, con nombre para poder distinguirlos. El primero
-// de la lista es al que se le manda el aviso de lista de espera (WHATSAPP).
-export const WA_ROMAN = { n: "Roman", num: "5493757699335" };
-export const WA_YAN = { n: "Yan", num: "5493757644751" };
-export const WA_LISTA = [WA_ROMAN, WA_YAN];
+      // ===== Números de contacto (lote 36) =====
+// La barbería quedó con UN solo barbero, que además es el dueño: Roman. Se
+// borró el número de Yan.
+//
+// Ojo con el cambio: `WHATSAPP` no es sólo un contacto de la web. Es el número
+// al que se manda el aviso de lista de espera cuando se libera un horario, y el
+// que aparece en "Avisar por WhatsApp" después de reservar, en el aviso de
+// cancelación y en el de que falta confirmar. Con el cambio, todo eso va a
+// Roman. Es lo que pidió el dueño, pero conviene que lo sepa: si algún día
+// vuelve a haber dos personas, hay que volver a separar el número de avisos del
+// número de contacto.
+export const WHATSAPP = "5493757699335"; // avisos de lista de espera y de turnos. Código de país, sin + ni espacios.
+// Los números a los que se puede escribir desde la web. La lista se dibuja en
+// "También podés escribirnos por" y en el pie. Con un solo barbero queda una
+// sola pastilla; si se suman más, se agrega una línea más acá.
+export const WA_LISTA = [{ n: "Roman", num: "5493757699335" }];
 // Los íconos de Instagram y WhatsApp se aplican con CSS mask sobre
 // assets/instagram.svg y assets/whatsapp.svg (ver .ic-ig / .ic-wa en
 // src/landing.css), no con <img>: así heredan el color del texto y se ven
 // igual en modo claro y oscuro. Los PNG de 388 KB y 30 KB ya no se usan.
-export const INSTAGRAM = "codigobarber_1"; // usuario de Instagram (sin @)
+export const INSTAGRAM = "romanssj"; // usuario de Instagram (sin @). Antes "codigobarber_1".
 export const RESERVAR_URL = "#login"; // destino único y configurable de los botones "Reservar ahora"
 // ===== SEO local =====
 // El dominio con el que se publica. OJO: si esto cambia hay que cambiar, en
@@ -44,7 +61,21 @@ export const RESERVAR_URL = "#login"; // destino único y configurable de los bo
 //   robots.txt   la línea Sitemap:
 //   sitemap.xml  cada <loc>
 // `tests\seo.js` compara las cinco contra este valor y falla si se separan.
-export const DOMINIO = "https://codigobarber.com.ar";
+// ====== PENDIENTE DEL DUEÑO (lote 36, 16/10/26) ======
+// Pediste cambiar la marca a SSJ BARBER "todo, incluido el dominio". El dominio
+// nuevo NO se cambia acá a propósito, y hay que entender por qué:
+//
+// Este valor se repite en cinco lugares del index.html (canonical, og:url,
+// twitter:url, el @id y el "url" del JSON-LD) y `tests/seo.js` falla si se
+// separan. Si se pone un dominio que todavía no está apuntando a este hosting,
+// Google recibe canonical y og:url de una dirección que no existe: deja de
+// indexar la que sí funciona, y cuando el dominio nuevo esté listo hay que
+// rehacer la month's indexación de cero.
+//
+// O sea: el nombre de la marca ya cambió a SSJ Barber, pero el dominio sigue
+// siendo el viejo a propósito. Pasame el nuevo y se cambian los SEIS lugares en
+// el mismo lote.
+export const DOMINIO = "https://codigobarber.com.ar"; // TODO: el nuevo, cuando exista
 export const CP = "3370"; // código postal (es el de toda la ciudad)
 // Coordenadas del local. Tienen que coincidir con MAP_IFRAME y con el "geo"
 // del JSON-LD, o Google muestra el negocio en el punto equivocado.
@@ -64,10 +95,18 @@ export const BARRIO = "Los Trabajadores";
 export const CALLE = "Av. Su Santidad y Papa Francisco";
 export const CIUDAD = "Puerto Iguazú";
 export const PROVINCIA = "Misiones";
+// CLOUD_NAME, CLOUD_PRESET y CLOUD_FOLDER NO se renombran con la marca, aunque
+// todavía digan "codigo_barber_1". Son identificadores de recursos que YA
+// existen en Cloudinary: cambiar la carpeta de destino manda todas las fotos
+// nuevas a una carpeta vacía y rompe los `transform` que las muestran.
+// Lote 36: se anotan acá para que quede claro que es a propósito.
 export const CLOUD_NAME = "lvrsdw0h"; // Cloudinary
 export const CLOUD_PRESET = "codigo_barber_1"; // Upload Preset unsigned
-export const CLOUD_FOLDER = "codigo-barber-1"; // carpeta destino en Cloudinary
-export const EMAIL = "hola@codigobarber1.com"; // email de contacto visible en la landing
+export const CLOUD_FOLDER = "codigo-barber-1"; // carpeta destino en Cloudinary (NO cambiar con la marca)
+// TODO(dueño, 16/10/26): el email visible en la landing. Sigue el anterior
+// (hola@codigobarber1.com), que además ya estaba marcado antes como dudoso: el
+// dominio es codigobarber.com.ar y no codigobarber1.com. Pasame el correcto.
+export const EMAIL = "hola@codigobarber1.com";
 export const RECAPTCHA_KEY = ""; // clave de sitio reCAPTCHA v3 para App Check (vacío = desactivado)
 export const CANCEL_HS = 2; // horas mínimas de anticipación para que el cliente cancele
       // Logo: el original assets/logo.png pesa 1,6 MB (1254×1254, y además es un
@@ -76,7 +115,12 @@ export const CANCEL_HS = 2; // horas mínimas de anticipación para que el clien
 // 82 KB, sirve para el header de 38 px y para el modal.
 // TODO: si conseguís el SVG original del diseñador, replacear esto y sacar el
 // recorte circular del CSS (.lb-logo, .wz-logo).
-export const LOGO = "assets/logo-256.png";
+//
+// Lote 36: la marca pasó a SSJ Barber y este logo es todavía el de Codigo
+// Barber. Sigue el mismo archivo hasta que llegue el nuevo: cambiarlo por un
+// nombre adivinado dejaría la web sin logo. Cuando mandes el tuyo, este valor y
+// los <link>/<meta> del index.html que lo nombran se cambian en el mismo lote.
+export const LOGO = "assets/logo-256.png"; // TODO: el logo de SSJ Barber
 export const OWNER_UID = ADMIN_UID; // único usuario que puede editar los porcentajes de ganancia (el dueño)
 export const PD_DEF = 40; // % que se queda el dueño por defecto en cada corte (editable desde Finanzas)
 export const GRID = 30; // grilla de horarios en minutos: 30 o 15. Pasá a 15 solo cuando no queden turnos pendientes viejos (ver notas)
