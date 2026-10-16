@@ -1072,3 +1072,117 @@ las detectan.
 sw.js v15 -> v16.
 
 Suite: 37 pruebas, 897 comprobaciones, 0 en rojo.
+
+## 36. SSJ Barber, un solo barbero que es el dueño
+
+Cuatro pedidos en un lote: cambiar la marca, dejar un solo barbero que además es
+el dueño (pudiendo agregar más después), la división, y borrar el WhatsApp de Yan.
+
+### Lo que NO se cambió, y por qué
+
+| dato | estado | por qué |
+|---|---|---|
+| **dominio** | sigue `codigobarber.com.ar` | se repite en 6 lugares; si se pone uno que no existe, Google deja de indexar el que sí funciona |
+| **email** | sigue `hola@codigobarber1.com` | no pasó el nuevo, y el anterior ya estaba marcado como dudoso |
+| **logo** | sigue el de Codigo Barber | el nuevo llega después; adivinar el nombre dejaría la web sin logo |
+| **Cloudinary** | sigue `codigo_barber_1` | son recursos que YA existen; cambiar la carpeta manda las fotos nuevas a una vacía |
+
+El dominio y el email quedan con un TODO grande en `config.js` que explica qué
+falta y qué hay que tocar junto cuando lleguen.
+
+### Lo que sí cambió de la marca
+
+`NOMBRE` = **SSJ Barber**, y con él: `<title>`, las 3 descripciones, `author`,
+`og:site_name`, `og:title`, `og:image:alt`, `twitter:title`, el `name` del
+JSON-LD, `manifest.json` (los dos campos, porque `short_name` es el que muestra el
+ícono en la pantalla de inicio del celular), los encabezados de `robots.txt` y
+`sitemap.xml`, y el Instagram: `codigobarber_1` → **`romanssj`**.
+
+Se guardó en *mixed case*, como estaba antes. Si lo querés todo en mayúscula
+(inclusive en el `<title>` y las metas) es una línea.
+
+### El WhatsApp de Yan
+
+Se borró `WA_YAN` y `WA_LISTA` quedó con un solo número.
+
+> **Ojo con lo que ese número era.** `WHATSAPP` no era sólo un contacto de la web:
+> es al que se manda el **aviso de lista de espera** cuando se libera un horario,
+> y el del botón "Avisar por WhatsApp" después de reservar, el del aviso de
+> cancelación y el del email sin confirmar. Con el cambio, **todo eso va a
+> Roman**. Si algún día vuelve a haber dos personas, hay que volver a separar el
+> número de avisos del número de contacto.
+
+### El dueño como único barbero
+
+Confirmaste que tu cuenta y la que figuraba como barbero son la misma persona. No
+hay dos personas: hay una.
+
+**El camino descartado:** usar la acción que ya existía, "Hacer barbero" desde
+Clientes. Escribe `staff/{uid}`, y con eso el dueño pasa a tener ficha de
+barbero, lo que dispara ramas del panel escritas para "no soy el dueño" (`bsnap`,
+la agenda, el selector de barbero, el pie).
+
+**Lo que quedó, en dos caminos:**
+
+1. **El botón "Soy yo"**, al lado de cada ficha. Marca esa ficha con `yo: 1` y no
+   cambia nada más: la foto, el oficio, la descripción y las redes siguen ahí.
+   Es el camino normal, porque la ficha que ya está cargada ("Roman Ayala") lo
+   tiene todo y cambiarle el id lo haría perder — la foto se busca por
+   `fotoBarbero/{id}`.
+2. **"Agregarme a mí"**, que sale sólo si no hay ninguna ficha marcada. Para
+   cuando la lista está vacía.
+
+**El reparto:** cuando la ficha que cobra es la tuya, `bsnap()` devuelve 100 y eso
+se guarda **en el cobro**, no sólo al mostrarlo. Los cobros viejos conservan su
+porcentaje; los nuevos se guardan con 100. Si mañana entra otro barbero, el
+campo sigue editable como siempre.
+
+Cuando **todos** los barberos de la lista sos vos, Finanzas deja de mostrar
+"Para el dueño / Para los barberos" (que serían 100% y 0%) y muestra *Facturado*,
+*Gastos* y *Neto tuyo*. En cuanto entre otro, el reparto vuelve solo.
+
+### Dos errores míos dentro de este lote
+
+**El botón se puso primero en código muerto.** Lo coloqué en una variable `right`
+que se armaba y nunca se usaba: no se veía en ninguna pantalla. Ahora hay dos
+comprobaciones: una exige que el botón esté **en el `<details>` que sí se dibuja**,
+y otra que aparezca **una sola vez** en todo el archivo — si aparece dos, es que
+se copió al lado muerto.
+
+**La tabla "Porcentaje por barbero" buscaba al barbero por nombre**
+(`fe.bs.find(b => b.n === g.n)`). Con dos barberos del mismo nombre tomaba el
+primero; ese porcentaje se imponía sobre **todo** el facturado del barbero aunque
+cada cobro traiga el suyo; y con vos como único barbero daba **0% y $0**, al
+revés de lo que pasa. Ahora el reparto sale de los cobros.
+
+### Un bug latente que salió en el camino
+
+Cada vez que entrás al panel se **republica** la lista pública de barberos, y el
+reparto se hacía sobre `BARS` (la lista ya combinada con las fotos).
+
+`BARS` la arman tres listeners distintos: uno a nivel de módulo, otro al iniciar
+sesión y otro con `config/finanzas`. Este último no tiene orden garantizado con
+los otros: si gana la carrera, `BARS` está **vacío** al publicar, y con `BARS`
+vacío cada `prev` era `{}` — la lista se reescribía **sin foto, sin oficio, sin
+descripción, sin WhatsApp y sin Instagram**.
+
+Ahora reparte sobre `PUB.barberos`, que es justamente "lo último que se publicó".
+
+### Pruebas
+
+`tests/lote25.js`: 110 → 126 comprobaciones. Las 15 nuevas se verificaron una por
+una reintroduciendo cada bug: las 15 lo detectan.
+
+Suite: 37 pruebas, 844 comprobaciones, **2 en rojo**. Los dos rojos son datos
+tuyos, no código:
+
+- **La foto del barbero no aparece** en la tarjeta de la web. La foto está en
+  `fotoBarbero/{omXpDusSJ6PQ9D8I9JGHgsYvpyJ2}`, pero la entrada de la lista
+  pública es `Ni5wOQLghvPLZc2Er2sOQARmhnq1`: son ids distintos, así que no se
+  cruzan. Y la entrada quedó con **tres campos solamente** (`id`, `n`, `foto`
+  vacío): sin oficio, sin descripción, sin redes.
+- **Las dos cuentas de prueba no entran** (la del barbero y la del cliente) con
+  `auth/invalid-credential`. Comprobado contra el commit anterior: fallan
+  idéntico, así que no lo causó este lote.
+
+sw.js v16 -> v17.

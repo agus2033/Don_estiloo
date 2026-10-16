@@ -2508,3 +2508,103 @@ Anchos medidos: 320, 360, 390, 430, 540, 600, 640, 700, 768, 860, 880, 900, 940,
 sw.js v15 -> v16.
 
 Suite: 37 pruebas · 897 comprobaciones · 0 en rojo.
+
+## 36. SSJ Barber, un solo barbero que es el dueño
+
+Detalle en `PRODUCT.md`, sección 36. Lo técnico:
+
+### `esElDueño(b)`
+
+Un solo helper decide si una ficha de la lista es la del dueño:
+
+```js
+const esElDueño = (b) =>
+  !!b && (b.yo === 1 || b.id === OWNER_UID || (!!b.uid && b.uid === OWNER_UID));
+```
+
+Dos formas, y el código acepta las dos a propósito: la marca `yo: 1` (la normal,
+porque la ficha cargada tiene foto y descripción y cambiarle el `id` las haría
+perder) y que el `id` sea el del dueño (lo que deja "Agregarme a mí" cuando la
+lista está vacía).
+
+**No se deduce del nombre.** Con dos fichas del mismo nombre —o una ficha vieja
+apuntando a una cuenta que ya no usás— el nombre no dice nada.
+
+### `bsnap()` y el 100
+
+```js
+return { bid: b.id, bn: b.n, pd: esElDueño(b) ? 100 : b.pd };
+```
+
+El 100 va **en el cobro**, no sólo al mostrarlo: cada cobro guarda su `pd`, así
+que los viejos conservan el suyo y los nuevos se guardan con 100.
+
+### Por qué NO se usa "Hacer barbero"
+
+Esa acción escribe `staff/{uid}`. Con eso el dueño pasa a tener `SB` cargado, y
+`SB` aparece en un montón de ramas escritas para "no soy el dueño":
+
+- `bsnap`: `if (!isOwner() && SB)` → el dueño se excluye a propósito
+- la agenda: `T.filter((t) => !SB || isOwner() || ...)` → el dueño tiene que ver todo
+- el selector de barbero: `FN.bs.filter((b) => !SB || isOwner() || ...)`
+- el pie: `quien = isAdm() ? (SB && SB.n) || "Dueño" : ...`
+
+Por eso la ficha del dueño va **sin `uid`**, como los barberos agregados a mano:
+no le crea documento de barbero, y `quitBar` no intenta ni borrarlo ni tocarle el
+rol en `users`. Y `mkBar` rechaza al dueño explícitamente, para que no se
+duplique en la lista.
+
+### La publicación de la lista no puede perder la ficha
+
+Cada vez que el dueño entra al panel se republica `config/barberos`, y el reparto
+se hacía sobre `BARS`:
+
+```js
+const prev = BARS.find((x) => x.id === b.id) || {};
+```
+
+`BARS` la arman tres listeners (módulo, inicio de sesión, `config/finanzas`) sin
+orden garantizado. Si `finanzas` gana la carrera, `BARS` está vacío y cada `prev`
+es `{}`: **la lista se reescribía sin foto, oficio, descripción, WhatsApp ni
+Instagram**.
+
+Ahora usa `PUB.barberos`, que es "lo último que se publicó" y siempre está al día
+(`conFotos` lo usa al cerrar sesión).
+
+### Comprobaciones que miran dónde está el código, no sólo si existe
+
+La primera versión del botón cayó en una variable `right` que se armaba y nunca
+se usaba. Dos comprobaciones lo evitan:
+
+- que `data-act="feYo"` esté **dentro** del `<details>` que sí se dibuja;
+- que `data-act="feYo"` aparezca **una sola vez** en todo el archivo.
+
+### La tabla de "Porcentaje por barbero"
+
+Buscaba al barbero por nombre (`fe.bs.find(b => b.n === g.n)`) e imponía ese
+porcentaje sobre todo su facturado. Ahora usa los propios cobros: `g.o` ya
+acumula la parte del dueño de cada uno, la del barbero es `g.t - g.o`, y el
+porcentaje sale de ahí. Con el dueño como único barbero da 100% sin ningún caso
+especial.
+
+### Leer el estado de Firestore desde el navegador
+
+La API REST **no sirve** para varias de estas colecciones:
+
+- `config/barberos` por REST responde **403**: las reglas dan `get`, no `list`.
+- `fotoBarbero` responde **200** al principio y **403** después: es cuota de la API
+  key, y a veces hay que reintentar.
+
+La forma que sí funciona es leerlo desde la página, con el gancho de pruebas:
+
+```js
+await page.evaluate(() => ({
+  fotos: window.__test.fotos,            // la colección fotoBarbero
+  bars: window.__test.bars.map((x) => ({ id: x.id, n: x.n, foto: x.foto })),
+}));
+```
+
+sw.js v16 -> v17.
+
+Suite: 37 pruebas · 844 comprobaciones · 2 en rojo (los dos son datos del dueño:
+la foto del barbero y las dos cuentas de prueba; ver `PRODUCT.md`).
