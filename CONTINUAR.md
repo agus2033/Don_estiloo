@@ -2669,3 +2669,75 @@ Firebase. Corré `node tests\owner.js` antes: compara los dos y falla si se sepa
 **Flake conocido:** corriendo la suite entera, `lote25` a veces falla "entró el
 dueño": Firebase limita los intentos de ingreso seguidos y hay pruebas que
 entran varias veces. Corrida sola da verde. No es un error del código.
+
+## 38. Los gastos (el alquiler) y un asunto de contraseñas
+
+**El dueño preguntó dónde cargar el alquiler del local. Ya se puede: en
+Finanzas, abajo de todo.** Antes estaba escrito pero no se dibujaba, así que no
+se podía cargar. Detalle en PRODUCT.md §38.
+
+### Hay que hacer YA: rotar las tres contraseñas
+
+Las contraseñas de las cuentas de prueba (`Agus203.` para las tres) están
+**en la historia del repositorio**, en el commit `54c9d20` del 8 de octubre, en
+`.env.example`. Ese commit está en `main` **y está pusheado**:
+
+```
+  remote  https://github.com/agus2033/Don_estiloo.git
+  commit  54c9d20884e638a4e732817cd55910e32f3daff2   (8/10/2026)
+  archivo .env.example, con las tres contraseñas
+```
+
+Está publicado en GitHub. **Rotá las tres contraseñas**: con eso las viejas
+dejan de servir y la exposición deja de importar. Reescribir la historia del
+repo es más peligroso que el problema (hay que hacer force-push y todos los que
+clonen tienen que volver a hacerlo), así que **la rotación es la solución**.
+
+Ya se había arreglado una vez en el lote 26: `.env.example` volvió a la
+plantilla vacía. Volvió a llenarse (esto pasó durante este lote, por un ciclo de
+`git stash`) y ya está restaurado a vacío. **Es la segunda vez**: conviene
+mirar `.env.example` antes de cada commit.
+
+Y dos cosas más del mismo tema:
+
+- **Desactivar el proveedor de Facebook** en la consola de Firebase.
+- El `apiKey` de Firebase está en `src/config.js`, que es lo normal, pero tiene
+  que tener la restricción de dominio puesta en la consola: sin ella cualquiera
+  puede usarlo.
+
+### La foto del barbero
+
+Ya se ve en la web (nombre publicado: *Juan*). Era el último rojo.
+
+### La cuenta de prueba del barbero ya no es barbero
+
+`BARBERO_EMAIL` entra, pero **no tiene documento `staff`**, así que la app la
+trata como cliente y muestra la barra de cliente. Si querés que las pruebas
+midan la ficha pública del barbero, esa cuenta tiene que volver a ser barbero
+desde el panel. Mientras tanto, la prueba mide su comportamiento de cliente y
+lo dice con un AVISO, no con un rojo.
+
+### La barra de cliente va a `#/mi-cuenta`, no a `#/ajustes`
+
+En el mapa de rutas: `ajus: "mi-cuenta"` es el cliente y `cfg: "ajustes"` es el
+dueño. Es fácil confundirlos al escribir una prueba.
+
+### Details de este lote, para el que siga
+
+- **Insertar código con `String.replace` es dangerous.** En el texto de
+  reemplazo `$$` significa un `$` literal, así que el formateador de dinero
+  (`$$`) quedó escrito `$` y el archivo dejó de parsear. Con
+  `split`/`splice` sobre un arreglo de líneas no hay nada que escapar. **Y
+  revisar siempre con `node --check` después de editar.**
+- **`tests/lote25.js` se había duplicado entero** (el contenido dos veces) y con
+  un `ñ` convertido en caracteres chinos en un comentario del lote 36. Se volvió
+  a `HEAD` y se reescribió la sección. Vale la pena contar `function entrar`
+  después de tocar ese archivo: si aparece 2 veces, está duplicado.
+- Un patrón de prueba que depende de los finales de línea (`;\n` sobre un
+  archivo CRLF) falla sin que cambie nada de lo que se quiere medir — y manda a
+  buscar un bug donde no lo hay.
+- `__test.rol` nuevo: dice el uid y si la sesión es barbero o dueño. Antes las
+  pruebas deducían el rol de que "entrara", y eso es suponer.
+
+**Nada de esto está en vivo.** Sigue sin desplegar: en `codigobarber.com.ar`
+está `sw.js` v11 y acá va v19. Los lotes 29 a 38 son **diez** sin publicar.

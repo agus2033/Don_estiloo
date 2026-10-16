@@ -697,8 +697,9 @@ async function entrar(b, email, pass, ancho = 1400) {
       "  AVISO  la cuenta de prueba del barbero no entra (credenciales de .env.local viejas\n" +
         "         o cuenta borrada en Firebase): " + porQue,
     );
-  } else {
-    ok(true, "entró el barbero");
+  } else if (await ba.page.evaluate(() => window.__test.rol.adm)) {
+    /* Entró Y tiene panel de barbero: se puede medir la ficha pública. */
+    ok(true, "entró el barbero con su panel");
     await ba.page.locator("#mebadge").click();
     await ba.page.waitForTimeout(600);
     await ba.page.locator('#pmenu button:has-text("Editar perfil")').click();
@@ -737,6 +738,68 @@ async function entrar(b, email, pass, ancho = 1400) {
     });
     ok(despues.oculto, "el botón Cancelar cierra la ventana", JSON.stringify(despues));
     ok(!despues.quedaCampo, "y el formulario sale del documento");
+    ok(ba.jsErr.length === 0, "sin errores de JS", [...new Set(ba.jsErr)].join(" / "));
+  } else {
+    /* Entró, pero como CLIENTE: no tiene documento `staff`, así que la app le
+       muestra la barra de cliente y su "Editar perfil" va a Ajustes, no a la
+       ficha pública del barbero.
+
+       Antes esta rama no existía: el bloque daba por hecho que entrar significaba
+       ser barbero, buscaba el botón, lo apretaba y se quedaba esperando un
+       formulario que no correspondía a ese rol. Cinco rojos y un crash, por una
+       suposición que el código nunca hizo.
+
+       Se mide lo que ese rol hace de verdad, que también vale: para un cliente,
+       "Editar perfil" tiene que llevar a Ajustes y NO abrir la ficha del
+       barbero. Si algún día la cuenta vuelve a ser barbero, entra por la rama
+       de arriba y se mide la ficha. */
+    const rolB = await ba.page.evaluate(() => window.__test.rol);
+    console.log(
+      "  AVISO  la cuenta de prueba del barbero (" + env.BARBERO_EMAIL + ") entra, pero\n" +
+        "         como CLIENTE (uid " + rolB.uid + ", sin documento staff). Se mide su\n" +
+        "         comportamiento de cliente. Para medir la ficha pública del barbero,\n" +
+        "         esa cuenta tiene que volver a ser barbero en el panel.",
+    );
+    ok(!rolB.dueno, "entra como cliente, no como dueño");
+    await ba.page.locator("#mebadge").click();
+    await ba.page.waitForTimeout(800);
+    const cli = await ba.page.evaluate(() => ({
+      barra: [...document.querySelectorAll("#nav button, #nav a")].map((x) => x.innerText.trim()),
+      menu: [...document.querySelectorAll("#pmenu button")].map((x) => x.innerText.trim()),
+    }));
+    ok(
+      cli.barra.length > 0 && cli.barra.length < 8,
+      "y ve la barra de cliente, no la de dueño",
+      JSON.stringify(cli.barra),
+    );
+    ok(
+      cli.menu.some((m) => /Editar perfil/.test(m)),
+      "su menú tiene \"Editar perfil\"",
+      JSON.stringify(cli.menu),
+    );
+    await ba.page.locator('#pmenu button:has-text("Editar perfil")').click();
+    await ba.page.waitForTimeout(1800);
+    const aCli = await ba.page.evaluate(() => {
+      const mo = document.getElementById("mo");
+      return {
+        hash: location.hash,
+        modalAbierto: !!mo && !mo.hidden,
+        hayFicha: !!document.querySelector("#pfNombre"),
+        estaEnSuCuenta: location.hash === "#/mi-cuenta",
+      };
+    });
+    /* La vista de ajustes del cliente se llama "mi-cuenta" en el mapa de rutas
+       (`RT.ajus`), no "ajustes": esa es la del dueño (`RT.cfg`). */
+    ok(
+      aCli.hash === "#/mi-cuenta",
+      "y \"Editar perfil\" lo lleva a su cuenta (RT.ajus = mi-cuenta)",
+      JSON.stringify(aCli),
+    );
+    ok(
+      !aCli.hayFicha,
+      "no le muestra la ficha pública de barbero (no es su rol)",
+      JSON.stringify(aCli),
+    );
     ok(ba.jsErr.length === 0, "sin errores de JS", [...new Set(ba.jsErr)].join(" / "));
   }
   /* ---------- los cuatro botones hacen los pasos y el ingreso va al final ----------
@@ -850,7 +913,7 @@ async function entrar(b, email, pass, ancho = 1400) {
     "los identificadores de Cloudinary NO se renombraron (son recursos que ya existen)",
   );
 
-  /* ---------- 36. Y只有一个 contacto: Roman ---------- */
+  /* ---------- 36. Y un solo contacto: Roman ---------- */
   console.log("\n--- 36. un solo contacto ---");
   const confCodigo = conf.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
   ok(!/WA_YAN|\bYan\b/.test(sinComentarios + confCodigo), "no queda Yan en ninguna parte del código", (confCodigo.match(/Yan[^\n]{0,40}/) || []).join(""));
@@ -1066,14 +1129,206 @@ ok(
   /const mailto = \(\) =>/.test(sinComentarios) && /sin definir todavía/.test(sinComentarios),
   "el email vacío se muestra como \"(sin definir todavía)\" en vez de un mailto roto",
 );
+/* El patrón acaba en `;\r?\n` y no en `;\n`.
+
+   `src/main.js` tiene finales de línea CRLF, así que `;\n` no aparecía nunca y el
+   recorte del helper no quitaba nada: la comprobación se ponía roja por el mailto
+   que está DENTRO del helper, que es justo donde tiene que estar. Un patrón que
+   depende de cómo están guardados los finales de línea falla sin que cambie nada
+   de lo que se quiere medir — y es peor cuando falla, porque manda a buscar un
+   bug donde no lo hay. */
+const mailtoFuera = sinComentarios.replace(/const mailto[\s\S]*?;\r?\n/, "");
 ok(
-  !/mailto:\$\{esc\(EMAIL\)\}/.test(sinComentarios.replace(/const mailto[\s\S]*?;\n/, "")),
+  !/mailto:\$\{esc\(EMAIL\)\}/.test(mailtoFuera),
   "y no queda ningún mailto con EMAIL directo fuera del helper",
+  "quedan " + (mailtoFuera.match(/mailto:\$\{esc\(EMAIL\)\}/g) || []).length + " fuera del helper",
 );
 ok(
   /export const EMAIL = "";/.test(conf) && /TODO\(dueño\): poner el email/.test(conf),
   "el email quedó vacío, esperando que lo pase, con el apartado al lado",
 );
+/* ---------- 38. los gastos: el alquiler se puede cargar ---------- */
+console.log("\n--- 38. los gastos: el alquiler ---");
+
+/* El bloque de gastos estaba escrito y NO se dibujaba. La acción gAdd guardaba
+   bien contra Firestore, pero no había forma de llegar a ella: la pantalla de
+   Finanzas no tenía ni el formulario, ni la lista, ni los números de Gastos y
+   Neto. Eran cuatro variables definidas y sin usar, y el alquiler —la razón de
+   existir de esta pantalla para un dueño que alquila el local— no se podía
+   cargar. */
+const cuerpoFin = trozo(sinComentarios, "function finH()", "function cfgH()");
+
+ok(/const gastosH =/.test(cuerpoFin), "el bloque de gastos está escrito");
+ok(
+  /\$\{gastosH\}/.test(cuerpoFin),
+  "y SE DIBUJA: aparece en el HTML que se pinta",
+  cuerpoFin.slice(-200),
+);
+
+/* Dibujarse tiene que ser dentro de la rama del dueño: los gastos son del
+   negocio y las reglas no dejan escribir a un barbero.
+
+   Se compara con la rama del cliente en vez de con una cantidad de espacios: la
+   primera versión buscaba la cadena exacta "own\n      ?" y devolvió -1 porque
+   la sangría es de diez. Un patrón que depende del formato falla sin que cambie
+   nada de lo que se quiere medir. */
+const iOwner38 = cuerpoFin.indexOf("(own");
+const iGast38 = cuerpoFin.indexOf("gastosH}");
+const iCliente38 = cuerpoFin.indexOf('own ? "Ganancia por barbero" : "Detalle"');
+ok(
+  iOwner38 >= 0 && iGast38 > iOwner38 && iGast38 < iCliente38,
+  "y sólo para el dueño: los gastos están en su rama y no en la del barbero",
+  "dueño=" + iOwner38 + "  gastos=" + iGast38 + "  cliente=" + iCliente38,
+);
+
+/* Los tres nombres viejos. Que no quede ninguno es lo que de verdad importa: si
+   queda uno definido y sin usar, el próximo lote vuelve a pintar el equivocado.
+   Ya pasó dos veces en este archivo. */
+["gastoBlock", "gastosLista", "gastoForm"].forEach((v) => {
+  ok(
+    !new RegExp("const " + v + " =").test(sinComentarios),
+    "no queda la copia muerta " + v,
+    "definida y nunca usada: el error que ya pasó dos veces acá",
+  );
+});
+
+/* El formulario tiene las dos cosas que hacen falta: qué se gastó y cuánto. */
+ok(
+  /id="gc"[^>]*Concepto \(alquiler/.test(cuerpoFin),
+  "el campo del concepto menciona el alquiler",
+);
+ok(/id="gm"/.test(cuerpoFin), "y está el campo del monto");
+ok(/data-act="gAdd"/.test(cuerpoFin), "con su botón");
+
+/* Con la lista vacía, después del botón no decía nada: no se distinguía "falta
+   cargar uno" de "no se está mostrando nada". */
+ok(
+  /Todavía no hay gastos cargados/.test(cuerpoFin),
+  "y si no hay gastos, lo dice en vez de dejar un hueco en blanco",
+);
+ok(/data-act="askGDel"/.test(cuerpoFin), "cada gasto se puede borrar desde la lista");
+
+/* Las tarjetas de arriba estaban fijas en tres (Facturado / Caja de hoy / Cortes
+   del período) y kps —que ya tenía las de Gastos y Neto— quedaba sin usar. */
+ok(
+  /<div class="kpis">\$\{kps\}<\/div>/.test(sinComentarios),
+  "las tarjetas de arriba usan kps, que ya tenía Gastos y Neto",
+);
+ok(!/kp\("Caja de hoy"/.test(cuerpoFin), "y se fue la lista fija de tres tarjetas");
+ok(/kp\("Gastos", \$\$\(GT\)\)/.test(cuerpoFin), "con el total de gastos a la vista");
+ok(
+  /kp\("Neto tu/.test(sinComentarios) || /kp\("Neto del d/.test(cuerpoFin),
+  "y con lo que queda después de restarlos",
+);
+
+/* El signo negativo. El formateador de dinero ($$) ponía el peso antes del signo,
+   y "Neto tuyo" es facturado menos gastos: da negativo apenas el alquiler pesa
+   más que lo facturado, que al empezar es casi siempre. No se notaba antes
+   porque esa tarjeta nunca llegó a pintarse. */
+const cuerpoDinero = trozo(sinComentarios, "const $$ = (n) => {", "\n\n");
+ok(
+  /const neg = v < 0/.test(cuerpoDinero) && /\(neg \? "-" : ""\) \+ "\$"/.test(cuerpoDinero),
+  "el signo negativo va antes del peso: -$180.000 y no $-180.000",
+  cuerpoDinero.slice(0, 140),
+);
+ok(
+  /!Number\.isFinite\(v\)\) return "\$0"/.test(cuerpoDinero),
+  "y un valor que no es número sigue dando $0",
+);
+
+/* Las reglas ya lo limitaban al dueño. La guarda del cliente no es por
+   seguridad: es para que un barbero reciba una frase y no un permission-denied. */
+ok(
+  /match \/gastos\/\{id\}/.test(reglas) &&
+    /allow read, create, update, delete: if isOwner\(\)/.test(reglas),
+  "las reglas de Firestore dejan los gastos sólo al dueño",
+);
+const cuerpoGAdd = trozo(sinComentarios, "  async gAdd() {", "  askGDel(id) {");
+ok(
+  /if \(!isOwner\(\)\)/.test(cuerpoGAdd),
+  "y el cliente avisa, en vez de dejar que rebote el permiso",
+);
+ok(/Los gastos los carga el due/.test(cuerpoGAdd), "con un mensaje que dice qué hacer");
+ok(
+  /if \(!isOwner\(\)\)/.test(trozo(sinComentarios, "  askGDel(id) {", "  /* lista de espera */")),
+  "y lo mismo al borrar",
+);
+
+/* ---------- en la pantalla ---------- */
+const { ctx: c38, page: p38, jsErr: e38 } = await entrar(b, env.DUENO_EMAIL, env.DUENO_PASSWORD);
+await p38.evaluate(() => {
+  location.hash = "#/finanzas";
+});
+await p38.waitForTimeout(3000);
+
+const fx = await p38.evaluate(() => ({
+  concepto: !!document.querySelector("#gc"),
+  monto: !!document.querySelector("#gm"),
+  boton: !!document.querySelector('[data-act="gAdd"]'),
+  tarjetas: [...document.querySelectorAll(".kpi")].map((k) => k.innerText.replace(/\s+/g, " ").trim()),
+  altoBoton: (() => {
+    const b = document.querySelector('[data-act="gAdd"]');
+    return b ? Math.round(b.getBoundingClientRect().height) : 0;
+  })(),
+  desborda: document.documentElement.scrollWidth > window.innerWidth + 1,
+}));
+ok(fx.concepto && fx.monto && fx.boton, "en pantalla están los dos campos y el botón");
+ok(fx.tarjetas.some((t) => /GASTOS/i.test(t)), "y las tarjetas muestran los GASTOS", JSON.stringify(fx.tarjetas));
+ok(fx.tarjetas.some((t) => /NETO/i.test(t)), "y el neto", JSON.stringify(fx.tarjetas));
+ok(fx.altoBoton >= 44, "el botón es tocable (mínimo 44 px)", fx.altoBoton + " px");
+ok(!fx.desborda, "y la pantalla no desborda de lado");
+
+/* El signo: se carga un gasto y se mira cómo queda el neto. El dato es
+   inventado a propósito, así que se borra al final: queda comprobado que el
+   camino entero anda, no que el alquiler sea ese número. */
+await p38.fill("#gc", "Alquiler del local (prueba 38)");
+await p38.fill("#gm", "180000");
+await p38.click('[data-act="gAdd"]');
+await p38.waitForTimeout(4000);
+
+const fx2 = await p38.evaluate(() => ({
+  aparece: document.body.innerText.indexOf("prueba 38") >= 0,
+  tarjetas: [...document.querySelectorAll(".kpi")].map((k) => k.innerText.replace(/\s+/g, " ").trim()),
+  monto: /180\.000/.test(document.body.innerText),
+}));
+ok(fx2.aparece, "un gasto cargado aparece en la lista");
+ok(fx2.monto, "con su monto");
+ok(
+  fx2.tarjetas.some((t) => /-\$/.test(t)),
+  "y el neto negativo se escribe con el signo adelante del peso",
+  JSON.stringify(fx2.tarjetas),
+);
+ok(
+  !fx2.tarjetas.some((t) => /\$\s*-/.test(t)),
+  "no queda ningún $-180.000",
+  JSON.stringify(fx2.tarjetas),
+);
+
+await p38.evaluate(() => {
+  const b = [...document.querySelectorAll('[data-act="askGDel"]')];
+  if (b.length) b[b.length - 1].click();
+});
+await p38.waitForTimeout(1500);
+await p38.evaluate(() => {
+  const b = [...document.querySelectorAll("#mo button")].find((x) => /Eliminar/i.test(x.innerText));
+  if (b) b.click();
+});
+await p38.waitForTimeout(3500);
+ok(
+  !(await p38.evaluate(() => document.body.innerText.indexOf("prueba 38") >= 0)),
+  "y se puede borrar (el gasto de prueba no queda en la base)",
+);
+/* Los errores se juntan acá y no adentro de `page.evaluate`: esa función corre en
+   el navegador y `e38` vive en Node, así que la referencia lanzaba ReferenceError
+   en vez de medir lo que se le pedía. */
+const errores38 = [...new Set(e38)];
+ok(
+  errores38.length === 0,
+  "sin errores de JS en todo el camino",
+  errores38.join(" | "),
+);
+await c38.close();
+
   await ba.ctx.close();
   await b.close();
 

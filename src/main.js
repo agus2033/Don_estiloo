@@ -148,7 +148,14 @@ const A = (...a) => esc(JSON.stringify(a)); // argumentos de data-act (delegaci�
    sale algo numérico, muestra $0 en vez de inyectar nada. */
 const $$ = (n) => {
   const v = Number(n);
-  return "$" + (Number.isFinite(v) ? v.toLocaleString("es-AR") : "0");
+  if (!Number.isFinite(v)) return "$0";
+  /* El signo va ADELANTE del peso: `-$180.000` y no `$-180.000`.
+
+     Hace falta porque hay restas que pueden dar negativo —"Neto tuyo" es
+     facturado menos gastos, y el alquiler pesa más que lo facturado al
+     empezar—, y `"$" + (-180000).toLocaleString()` pone el signo después. */
+  const neg = v < 0;
+  return (neg ? "-" : "") + "$" + Math.abs(v).toLocaleString("es-AR");
 };
 
 /* Cómo se ve un cliente en las listas del panel.
@@ -3427,6 +3434,16 @@ Object.assign(W, {
     } else gx.c = el.value.slice(0, 40);
   },
   async gAdd() {
+    /* Las reglas de Firestore ya limitan esto al dueño. La guarda no es por
+       seguridad sino por el mensaje: sin ella, un barbero que llegue por un
+       enlace viejo ve un `permission-denied` técnico en vez de una frase que
+       le diga qué hacer. */
+    if (!isOwner())
+      return M({
+        k: "w",
+        h: "Los gastos los carga el dueño",
+        b: "El alquiler, los insumos y los demás gastos de la barbería los carga el dueño, desde Finanzas.",
+      });
     if (!gx.c.trim() || gx.m === "")
       return M({
         k: "w",
@@ -3447,6 +3464,12 @@ Object.assign(W, {
     }
   },
   askGDel(id) {
+    if (!isOwner())
+      return M({
+        k: "w",
+        h: "Los gastos los carga el dueño",
+        b: "Sólo el dueño puede borrar un gasto de la barbería.",
+      });
     M({
       k: "q",
       h: "¿Eliminar este gasto?",
@@ -6761,25 +6784,36 @@ function finH() {
         kp("Gastos", $$(GT)) +
         kp("Neto del dueño", $$(OO - GT))
     : kp("Facturado", $$(TT)) + kp("Mi ganancia", $$(TT - OO));
-  const gastoBlock =
-    `<h2>Gastos</h2><div class="card"><input id="gc" placeholder="Concepto (insumos, alquiler…)" maxlength="40" value="${esc(gx.c)}" data-in="gIn" data-args="${A("c", "@el")}"><input id="gm" inputmode="numeric" placeholder="Monto $" maxlength="8" value="${esc(gx.m)}" data-in="gIn" data-args="${A("m", "@el")}"><button class="main" style="margin-top:0" data-act="gAdd">+ Agregar gasto</button></div>` +
+  /* Los gastos del NEGOCIO, no de un barbero: el alquiler lo paga la
+     barbería, no el que corta. Por eso van en una colección propia y no se
+     reparten con los cobros. Y por eso sólo los carga el dueño (las reglas de
+     Firestore también lo limitan: `match /gastos/{id}` es `isOwner()`).
+
+     Este bloque estaba escrito y NO SE DIBUJABA: la acción `gAdd` guardaba
+     bien, pero no había forma de llegar a ella, así que el alquiler —ni ningún
+     otro gasto— se podía cargar. Estaba en el archivo, no en la pantalla.
+
+     Había además dos copias más del mismo formulario (`gastosLista` y
+     `gastoForm`), las dos muertas también. Se borraron: dos formularios
+     iguales que no se usan son una forma larga de que el que se arregla
+     primero no sea el que está en pantalla. */
+  const gastosH =
+    `<h2>Gastos</h2>` +
+    `<div class="card"><div class="line" style="margin-bottom:12px"><span>Del negocio</span>` +
+    `<small>El alquiler, los insumos y todo lo demás que paga la barbería. Bajan del total facturado para saber cuánto te queda.</small></div>` +
+    `<input id="gc" placeholder="Concepto (alquiler, insumos…)" maxlength="40" value="${esc(gx.c)}" data-in="gIn" data-args="${A("c", "@el")}">` +
+    `<input id="gm" inputmode="numeric" placeholder="Monto $" maxlength="8" value="${esc(gx.m)}" data-in="gIn" data-args="${A("m", "@el")}">` +
+    `<button class="main" style="margin-top:0" data-act="gAdd">+ Agregar gasto</button></div>` +
     (GL.length
-      ? '<div class="scr" style="margin-top:12px">' +
+      ? `<div class="scr" style="margin-top:12px">` +
         GL.map(
           (g) =>
             `<div class="row"><div><b>${esc(g.c)}</b><br><small>${fd(g.d)}</small></div><div class="rt"><span class="price" style="color:var(--red)">− ${$$(g.m)}</span><button class="x" aria-label="Eliminar gasto" data-act="askGDel" data-args="${A(g.id)}">✕</button></div></div>`,
         ).join("") +
-        "</div>"
-      : "");
-  const gastosLista =
-    '<h2 class="lab" style="margin-top:0">Gastos</h2>' +
-    (GL.length
-      ? GL.map(
-          (g) =>
-            `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)"><div><b>${esc(g.c)}</b><br><small>${fd(g.d)}</small></div><div class="rt"><span style="color:var(--red);font:700 20px 'Barlow Condensed'">− ${$$(g.m)}</span><button class="x" aria-label="Eliminar gasto" data-act="askGDel" data-args="${A(g.id)}">✕</button></div></div>`,
-        ).join("")
-      : "<p><small>Todavía no hay gastos en este período.</small></p>");
-  const gastoForm = `<div class="card" style="margin-top:14px"><input id="gc" placeholder="Concepto (insumos, alquiler…)" maxlength="40" value="${esc(gx.c)}" data-in="gIn" data-args="${A("c", "@el")}"><input id="gm" inputmode="numeric" placeholder="Monto $" maxlength="8" value="${esc(gx.m)}" data-in="gIn" data-args="${A("m", "@el")}"><button class="main" style="margin-top:0" data-act="gAdd">+ Agregar gasto</button></div>`;
+        `</div>`
+      /* Con la lista vacía la pantalla se quedaba en blanco después del botón,
+         sin decir si faltaba cargar uno o si no se estaba mostrando. */
+      : `<p style="margin-top:12px"><small>Todavía no hay gastos cargados en este período. El alquiler se carga acá, una vez por mes.</small></p>`);
   const tablaBarb = `<h2 class="lab" style="margin-top:0">Porcentaje por barbero</h2>` +
     (own && fe
       ? `<div class="card"><div class="bwrap"><div class="clin chead" style="grid-template-columns:44px 1.4fr .6fr 1fr .5fr 1fr"><span></span><span>Barbero</span><span>Cortes</span><span>Facturado</span><span>%</span><span style="text-align:right">Le corresponde</span></div>` +
@@ -6830,10 +6864,14 @@ function finH() {
       : `<p><small>Todavía no hay cobros en este período.</small></p>`);
   return (
     `<div class="head" style="margin-top:0"><div><h1 style="margin-bottom:4px">${own ? "Finanzas" : "Mis ganancias"}</h1><small>${new Date().toLocaleDateString("es-AR", { month: "long", year: "numeric" })}</small></div><div class="chips">${P.map((p) => `<button class="chip ${per === p[0] ? "on" : ""}" aria-pressed="${!!(per === p[0])}" data-act="setPer" data-args="${A(p[0])}">${p[1]}</button>`).join("")}<button data-act="exportar">⬇ Exportar CSV</button></div></div>` +
-    `<div class="kpis">${own ? kp("Facturado", $$(TT)) + kp("Caja de hoy", $$(hy.reduce((a, t) => a + (t.precio || 0), 0))) + kp("Cortes del período", L.length) : ""}</div>` +
+    `<div class="kpis">${kps}</div>` +
     (own
-      ? `<div class="grid b" style="grid-template-columns:minmax(300px,380px) 1fr"><div>${caja}</div><div>${tablaBarb}</div></div>`
-      : `<div class="kpis" style="display:none"></div><div class="grid b"><div><h2>${own ? "Ganancia por barbero" : "Detalle"}</h2>` +
+      ? `<div class="grid b" style="grid-template-columns:minmax(300px,380px) 1fr"><div>${caja}</div><div>${tablaBarb}</div></div>` +
+        /* Los gastos van abajo y a lo ancho, y sólo para el dueño: los gastos
+           son del negocio y las reglas no los dejan escribir a un barbero. En la
+           columna de la caja no entraban sin achicar el resto. */
+        `<div class="grid b" style="grid-template-columns:1fr"><div>${gastosH}</div></div>`
+      : `<div class="grid b"><div><h2>${own ? "Ganancia por barbero" : "Detalle"}</h2>` +
         (GR.length
           ? GR.map(
               (g) =>
@@ -7228,6 +7266,16 @@ if (["localhost", "127.0.0.1", ""].includes(location.hostname)) {
     },
     get fotos() {
       return FOTOS;
+    },
+    /* Qué rol tiene la sesión, para no suponerlo.
+
+       Antes las pruebas deducían el rol de que "entrara": si había sesión,
+       asumían barbero. Y la cuenta de prueba del barbero puede estar dada de
+       baja en Firebase o sin su documento `staff`, en cuyo caso entra igual
+       pero como CLIENTE, y la prueba que podía correr le daba a un botón que no
+       existe. El código estaba bien; la prueba suponía lo que no se comprueba. */
+    get rol() {
+      return { uid: (me && me.uid) || "", adm: isAdm(), dueno: isOwner() };
     },
     /* Las fichas de Finanzas (`config/finanzas.bs`). Se expone porque son dos
        preguntas que hay que poder responder por separado y no se ven en pantalla:

@@ -1329,3 +1329,91 @@ un archivo del repositorio.
 
 **38 pruebas · 948 comprobaciones (en esa corrida).** En rojo queda `landing.foto.viva`, que es el
 dato tuyo: la foto todavía no la subiste.
+
+## 38. El alquiler se puede cargar: los gastos existían pero no se veían
+
+Pregunta del dueño: *"¿dónde registro el gasto del alquiler del local? El dueño
+es de la barbería pero no del espacio"*. Contestando: en **Finanzas**, y ahora
+sí se puede.
+
+### Qué pasaba
+
+El sistema de gastos estaba **escrito entero y no dibujado**. La acción `gAdd`
+guardaba bien contra Firestore y las reglas dejaban pasar sólo al dueño, pero en
+la pantalla de Finanzas no había nada que la alcanzara. Cuatro variables
+definidas y nunca usadas:
+
+| bloque | qué era |
+|---|---|
+| `gastoBlock` | el formulario y la lista, enteros |
+| `gastosLista` | una segunda copia de la lista |
+| `gastoForm` | una tercera copia del formulario |
+| `kps` | las tarjetas de *Gastos* y *Neto* |
+
+Lo que se veía eran tres tarjetas fijas (*Facturado*, *Caja de hoy*, *Cortes del
+período*). **Ni los gastos ni el neto aparecían**, aunque estuvieran calculados.
+
+Es el error que ya apareció dos veces en este archivo: algo escrito que nunca se
+pinta. Por eso ahora hay una comprobación que verifica que `gastosH` esté en el
+HTML que se devuelve, y otras tres que fallan si vuelve a quedar alguna de las
+cuatro copias muertas.
+
+### Dónde quedó
+
+Abajo de todo, a lo ancho, y sólo para el dueño (los gastos son del negocio y
+las reglas no dejan escribir a un barbero). Se ve así:
+
+- **Facturado** · **Gastos** · **Neto tuyo** (o *Para el dueño / Para los
+  barberos / Neto del dueño* cuando hay más de un barbero).
+- Un campo de concepto, uno de monto y el botón **+ Agregar gasto**.
+- La lista de los gastos del período, con su fecha y su botón de borrar.
+
+El concepto del gasto **es del negocio, no del barbero**: el alquiler lo paga la
+barbería, no el que corta, así que no se reparte con los cobros y baja del total
+facturado entero. Que el dueño sea también el barbero no cambia eso.
+
+### El signo de los números negativos
+
+`$$` ponía el peso antes del signo, así que el neto se veía **`$-180.000`**. No
+se había notado porque la tarjeta del neto nunca llegó a pintarse; al
+conectarla apareció el caso negativo que el formateador nunca había tenido que
+mostrar. Y no es un caso raro: el neto es *facturado menos gastos*, así que da
+negativo cada vez que los gastos del mes superan lo facturado, que al empezar es
+casi siempre. Ahora es **`-$180.000`**.
+
+Comprobado cargando un gasto de verdad de punta a punta y después borrándolo:
+con $180.000 de gastos y $0 facturado, *Gastos $180.000* y *Neto tuyo −$180.000*.
+
+### Un barbero que llega por un enlace viejo
+
+Las reglas ya bloqueaban que un barbero cargara gastos, así que no era un
+agujero: era un `permission-denied` técnico sin decir qué hacer. Ahora `gAdd` y
+`askGDel` avisan con una frase.
+
+### La foto del barbero: ya está
+
+La tarjeta de la web **ya muestra la foto** (nombre publicado: *Juan*). Se
+verificó contra el sitio real: la imagen se descarga de verdad y se pinta con
+tamaño. Era el último rojo que quedaba.
+
+### Pruebas
+
+30 comprobaciones nuevas en `tests/lote25.js` (§38), más los arreglos de tres
+comprobaciones que estaban rotas:
+
+- **El patrón del `mailto`** buscaba `;\n` y `src/main.js` tiene finales de línea
+  CRLF, así que el recorte no quitaba nada y la comprobación se ponía roja por el
+  `mailto` que está *dentro* del helper, que es justo donde tiene que estar. Se
+  pasó a `;\r?\n`.
+- **La rama del dueño** buscaba `"own\n      ?"` con seis espacios y la sangría
+  real son diez. Ahora se compara contra la rama del cliente en vez de contra
+  una cantidad de espacios.
+- **El bloque del barbero** daba por hecho que *entró* significa *entró como
+  barbero*. La cuenta de prueba de `.env.local` entra, pero hoy **no tiene
+  documento `staff`**, así que la app la trata como cliente: cinco rojos y un
+  crash por una suposición que el código nunca hizo. Ahora se mide el rol real
+  (`window.__test.rol`) y se mide lo que ese rol hace de verdad —que también
+  vale: para un cliente, *Editar perfil* lleva a `#/mi-cuenta* y **no** muestra la
+  ficha del barbero—. Si esa cuenta vuelve a ser barbero, entra por la otra rama.
+
+**38 pruebas · 978 comprobaciones · 0 en rojo.**
