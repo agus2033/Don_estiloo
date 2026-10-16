@@ -37,7 +37,31 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function isSignedIn() { return request.auth != null; }
-    function isOwner() { return isSignedIn() && request.auth.uid == 'LQ7IkEfxEKNXajx4SEs378n390i2'; }
+    /* ===========================================================================
+  CAMBIAR QUIEN ES EL DUEÑO
+
+  El dueño se cambia acá, en ESTA línea, y en el archivo src/config.js
+  (las constantes ADMIN_UID y OWNER_UID). Son los dos únicos lugares: este
+  decide qué puede escribir y cuál es el dueño para el CLIENTE (la web), y
+  el del código decide qué se ve en el panel.
+
+  Hay que cambiar los dos JUNTOS y republicar estas reglas en la consola de
+  Firebase. Si se cambia sólo uno de los dos, pasa una de estas dos cosas:
+
+    - se cambia acá y no en el código: la persona nueva puede escribir en la
+      base desde la consola, pero la web le muestra el panel de cliente y no
+      aparece ni el nombre del barbero ni las fotos que se publican.
+    - se cambia en el código y no acá: la persona nueva ve todo el panel de
+      dueño, y cada guardar le rebota con permission-denied sin explicación.
+
+  tests/owner.js compara los dos UID y falla si se separan, así que el error
+  se ve antes de publicar.
+
+  OJO: el barbero puede ser el dueño. Eso NO se decide acá ni en el config:
+  se marca desde el panel, con "Yo también soy el barbero" en el menú de la
+  foto. Es una bandera en la lista de barberos, no un permiso.
+  =========================================================================== */
+function isOwner() { return isSignedIn() && request.auth.uid == 'LQ7IkEfxEKNXajx4SEs378n390i2'; }
     function isStaff() { return isSignedIn() && exists(/databases/$(database)/documents/staff/$(request.auth.uid)); }
     function isBarberoOrOwner() { return isOwner() || isStaff(); }
 

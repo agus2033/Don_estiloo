@@ -560,11 +560,31 @@ let UA = [],
      se lo buscó, y sin él la lista pierde el vínculo con su documento. */
   conFotos = (l) =>
     (Array.isArray(l) ? l : []).map((b) => {
-      const pub = (b && b.id && FOTOS[b.id]) || {};
+      /* Busca la foto por `id`, después por `uid`, y si la ficha es del
+         dueño, bajo el uid DEL DUEÑO.
+
+         Sólo por `id` era un problema real: la ficha del dueño en la lista puede
+         tener un id que no es su uid (si se agregó a mano o quedó de una versión
+         anterior), y entonces su foto —que vive en `fotoBarbero/{uid}`— no se
+         encontraba nunca y la tarjeta salía con el cartel "[Foto]". Con el `uid`
+         de la ficha hay una segunda puerta.
+
+         La tercera es la que hace que funcione en el caso real. La ficha del
+         barbero la crea la CUENTA de ese barbero (su id y su uid son el mismo
+         valor), y después el dueño la marca con "Yo también soy el barbero": ahí
+         la ficha ya tiene `uid` de otro, la búsqueda por uid no da nada, y la foto
+         que él subió —que vive bajo SU uid— nunca se encontraría. Con la tercera
+         puerta se encuentra sin tocar la base. */
+      const pub =
+        (b && b.id && FOTOS[b.id]) ||
+        (b && b.uid && FOTOS[b.uid]) ||
+        (esElDueño(b) && FOTOS[OWNER_UID]) ||
+        {};
       return {
         ...b,
         ...pub,
         id: b && b.id,
+        ...(b && b.uid ? { uid: b.uid } : {}),
         foto: pub.foto || (b && b.foto) || "",
       };
     }),
@@ -3203,7 +3223,7 @@ Object.assign(W, {
     });
   },
   async mkBar(uid) {
-    /* El dueño no se agrega por acá: es barbero por otra vía (`yoBarbero`), que
+    /* El dueño no se agrega por acá: es barbero por otra vía (`soyBarbero`), que
        no le crea ficha de barbero. Sin este guarda, "Hacer barbero" sobre su
        propia cuenta lo metía en la lista DOS veces: una como dueño y otra como
        barbero, y la web mostraba dos fichas suyas. */
@@ -3314,15 +3334,23 @@ Object.assign(W, {
     if (!isOwner()) return;
     const bs = FN.bs.map((b) => {
       if (b.id !== id) return b;
-      if (yo) return { ...b, yo: 1 };
-      /* Se saca la bandera en vez de dejar `yo: 0`: sólo vale 1, y mandar
-         `yo: undefined` en un `set` la borra en Firestore. */
-      const { yo: _fuera, ...resto } = b;
+      if (yo)
+        /* Se guarda el `uid` del dueño además de la marca. No es un detalle:
+           `conFotos` busca la foto por `id` y, si no la encuentra, por `uid`.
+           Como la ficha del dueño en la lista quedó con un id autogenerado que
+           no es su uid, sin este campo su foto nunca se encontraba y la tarjeta
+           de la web salía con el cartel "[Foto]". */
+        return { ...b, yo: 1, uid: OWNER_UID };
+      /* Se sacan la marca y el uid en vez de dejar `yo: 0`: sólo valen 1, y
+         mandar `yo: undefined` en un `set` las borra en Firestore. */
+      const { yo: _marca, uid: _uid, ...resto } = b;
       return resto;
     });
     try {
       await setDoc(doc(db, "config", "finanzas"), { pd: FN.pd, bs });
-      msg = yo ? "Listo. Esa ficha ahora sos vos: tus cortes no se reparten." : "Listo. Vuelve el reparto.";
+      msg = yo
+        ? "Listo. Esa ficha ahora sos vos: tu foto y tu perfil salen en la web, y tus cortes no se reparten."
+        : "Listo. Vuelve el reparto.";
       R();
     } catch (e) {
       err(e);
@@ -3345,30 +3373,46 @@ Object.assign(W, {
      se calcula en `bsnap()` y se clava acá al guardar. Así, si mañana entra
      otro barbero, el reparto entre los dos sigue funcionando con el campo
      normal. */
-  yoBarbero() {
+  soyBarbero() {
     if (!isOwner()) return;
-    if (FN.bs.some((b) => esElDueño(b)))
+    const ya = FN.bs.find((b) => esElDueño(b));
+    if (ya)
       return M({
         k: "w",
-        h: "Ya estás en el equipo",
-        b: "Tu ficha ya figura entre los barberos. Para cambiar tu foto o tu oficio, usá “Mi perfil en la web”.",
+        h: "Ya sos el barbero",
+        b:
+          "Tu ficha ya figura en el equipo y los clientes te pueden reservar. Para cambiar la foto, el oficio o la descripción, usá “Editar perfil”.",
       });
-    /* El nombre sale de SU perfil, no se inventa. Si no lo tiene cargado, se le
-       dice dónde cargarlo en vez de guardar un nombre inventado que después hay
-       que corregir a mano. */
     const n = String((U && U.nm) || "").trim();
     if (!n)
       return M({
         k: "w",
         h: "Falta tu nombre",
-        b: "Cargá tu nombre en tu perfil (el ícono de tu foto, arriba a la derecha) y volvé a tocar este botón.",
+        b:
+          "Cargá tu nombre en tu perfil (el ícono de tu foto, arriba a la derecha) y volvé a tocar este botón.",
       });
-    const bs = [...FN.bs, { id: OWNER_UID, n, pd: 100 }];
+    /* Si ya hay fichas en el equipo se MARCA la primera que no esté marcada,
+       en vez de agregar una nueva. Agregar una dejaría tu nombre dos veces en
+       la web: una en la ficha vieja que ya tenés cargada y otra en la que se
+       crearía ahora.
+
+       Y el nombre importa: si la lista está vacía se usa el de tu perfil. Si
+       no lo tenés cargado se avisa en vez de guardar un nombre inventado que
+       después hay que corregir a mano. */
+    const libre = FN.bs.find((b) => !esElDueño(b));
+    const bs = libre
+      ? FN.bs.map((b) => (b.id === libre.id ? { ...b, yo: 1, uid: OWNER_UID } : b))
+      : [...FN.bs, { id: OWNER_UID, uid: OWNER_UID, n, pd: 100, yo: 1 }];
     try {
       setDoc(doc(db, "config", "finanzas"), { pd: FN.pd, bs })
         .then(() => {
-          msg = "Listo. Ahora sos el barbero de la barbería y aparece en la web.";
+          /* Al terminar se abre el perfil, que es el paso que de verdad falta
+             para que la tarjeta tenga foto: sin ella la web muestra "[Foto]". */
+          msg = libre
+            ? `Listo. Marcaste “${libre.n || libre.id}” como tu ficha de barbero.`
+            : "Listo. Ahora sos el barbero de la barbería y aparecés en la web.";
           R();
+          abrirPerfil();
         })
         .catch(err);
     } catch (e) {
@@ -6057,7 +6101,7 @@ function polH() {
       <ul class="pol-datos-resp">
         <li><span>Titular</span> <span class="pol-val">${POL_PEND("RAZÓN SOCIAL / NOMBRE Y APELLIDO")}</span></li>
         <li><span>Domicilio</span> <span class="pol-val">${POL_PEND("DIRECCIÓN")}, ${esc(PAIS)}</span></li>
-        <li><span>Contacto por temas de privacidad</span> <span class="pol-val"><a href="mailto:${esc(EMAIL)}">${esc(EMAIL)}</a></span></li>
+        <li><span>Contacto por temas de privacidad</span> <span class="pol-val">${mailto()}</span></li>
       </ul>`)}
     ${num(2, "QUÉ DATOS RECOPILAMOS", `<p>Solo los datos necesarios para que reserves, sumes puntos y para que el local pueda organizarse. <b>No pedimos datos sensibles</b> (salud, origen, religión, ideas políticas ni similares).</p>
       <div class="pol-tbl-wrap"><table class="pol-tbl">
@@ -6111,7 +6155,7 @@ function polH() {
         ${der("refresco", "Actualización", "Ponemos al día los datos de tu cuenta.", "5 días hábiles")}
         ${der("tacho", "Supresión", "Pedimos que se borre tu cuenta y tus datos.", "5 días hábiles")}
       </div>
-      <p>Para ejercerlos, escribinos a <a href="mailto:${esc(EMAIL)}">${esc(EMAIL)}</a> desde el email de tu cuenta, o usá <b>Privacidad → «Borrar mis datos»</b> en la app. Si el pedido queda sin resolver, te respondemos por escrito. También podés retirar tu consentimiento en cualquier momento.</p>`)}
+      <p>Para ejercerlos, escribinos a ${mailto()} desde el email de tu cuenta, o usá <b>Privacidad → «Borrar mis datos»</b> en la app. Si el pedido queda sin resolver, te respondemos por escrito. También podés retirar tu consentimiento en cualquier momento.</p>`)}
     ${num(8, "MENORES DE EDAD", `<p>Si sos menor de 18 años, reservá con autorización de tu madre, padre o tutor, que pueden pedir el acceso o el borrado de tus datos.</p>`)}`;
 
   const condiciones = `<h3 class="pol-h3">CONDICIONES DEL SERVICIO</h3>
@@ -6257,7 +6301,34 @@ const recH = () => {
    misma que lee la landing, así que lo que se carga acá se ve allá.
    `me` puede ser null si se llega a pintar sin sesión: se devuelve vacío
    en vez de reventar, porque esta función se llama desde el render. */
-const miFicha = () => (me ? BARS.find((x) => x.id === me.uid) || {} : {});
+/* Se busca por `id`, por `uid`, y —si sos el dueño— por la ficha que tenés
+   marcada. Por lo mismo que `conFotos`: si la ficha de la lista tiene un id que no
+   es el uid de la cuenta, buscar sólo por id devolvía vacío y el formulario se
+   abría en blanco aunque la foto y la descripción estuvieran cargadas. Con la
+   tercera forma el dueño edita la ficha que él marcó, que es la que importa. */
+/* El email de contacto, o un texto visible si el dueño todavía no lo pasó.
+
+   `EMAIL` está vacío a propósito hasta que él lo complete (ver config.js). Con
+   el valor vacío, las dos apariciones del aviso de privacidad rendering
+   `<a href="mailto:">` y un enlace sin nada: un mailto vacío no abre nada y
+   parece un error. Con este helper esas dos líneas muestran "(sin definir)"
+   y no rompen nada.
+
+   Es preferible mostrar que falta a mostrar una dirección que no es de nadie:
+   el que estaba antes (hola@codigobarber1.com) además ya estaba marcado como
+   dudoso, porque el dominio de la web es codigobarber.com.ar y no
+   codigobarber1.com. */
+const mailto = () =>
+  EMAIL
+    ? `<a href="mailto:${esc(EMAIL)}">${esc(EMAIL)}</a>`
+    : `<span style="opacity:.7">(sin definir todavía)</span>`;
+
+const miFicha = () =>
+  me
+    ? BARS.find(
+        (x) => x.id === me.uid || (x.uid && x.uid === me.uid) || (isOwner() && esElDueño(x)),
+      ) || {}
+    : {};
 
 /* Guarda los datos que el barbero publica sobre sí.
 
@@ -6751,7 +6822,7 @@ function finH() {
                figura en la lista, sale el botón para agregarse: es lo único que falta
                para que su ficha aparezca en la web. */
             !fe.bs.some((b) => esElDueño(b))
-              ? `<div class="chips"><button class="main" data-act="yoBarbero">+ Agregarme a mí (yo soy el barbero)</button></div><small style="display:block;margin:8px 0">Tu ficha sale en la web con tu foto, tu oficio y tu descripción. Cargalos en “Mi perfil en la web”, desde el ícono de tu foto.</small>`
+              ? `<div class="chips"><button class="main" data-act="soyBarbero">Yo también soy el barbero</button></div><small style="display:block;margin:8px 0">Marca tu ficha para que los clientes te puedan reservar. Después te pide la foto, el oficio y la descripción, que salen en tu tarjeta de la web.</small>`
               : ""
           }<div class="chips"><button data-act="feAdd">+ Agregar barbero sin cuenta</button></div><small style="display:block;margin-top:8px">Para que otro barbero entre con su usuario: que se cree una cuenta y usá “Hacer barbero” en Clientes.</small><button class="main" data-act="feGuardar">Guardar porcentajes</button></details>`
           : "") +
@@ -6853,9 +6924,32 @@ function footer() {
    bloque try, `function` sería block-scoped (los módulos son strict mode) y
    desde el render que la llama, que está fuera del try, daría ReferenceError
    con el panel entero a medio pintar. */
+/* El dueño también es el barbero (lote 37).
+
+   Antes el dueño NO tenía "Editar perfil" en este menú: la condición era
+   `if (!isOwner())`. Es decir, el único que podía ser barbero y tener foto,
+   oficio y descripción en la web era... cualquiera menos él. Lo pidió el dueño:
+   una sola cuenta, panel de dueño, y además la ficha de barbero.
+
+   Lo que sale ahora para él:
+     - "Editar perfil": su ficha pública de barbero (foto, oficio,
+       descripción, WhatsApp, Instagram). Es el mismo modal que usa el barbero.
+     - "Yo también soy el barbero" (o "Ya soy el barbero" si ya lo está):
+       lo pone en la lista del equipo para que los clientes lo puedan reservar,
+       sin dejar de ser dueño. Y al terminar lo lleva directo al perfil, que
+       es el paso que de verdad falta para que su foto aparezca en la web.
+
+   Sigue teniendo TODO lo de dueño: dashboard, barberos, ajustes, mensajes,
+   finanzas y galería. El panel de barbero no lo reemplaza: lo tiene encima. */
 function menuPerfil() {
   const items = [];
-  if (!isOwner())
+  if (isOwner()) {
+    const soyBarbero = FN.bs.some((b) => esElDueño(b));
+    items.push(
+      `<button data-act="miPerfilWeb">Editar perfil</button>` +
+        `<button data-act="soyBarbero">${soyBarbero ? "Ya soy el barbero" : "Yo también soy el barbero"}</button>`,
+    );
+  } else
     items.push(
       isAdm()
         ? `<button data-act="miPerfilWeb">Editar perfil</button>`
@@ -7134,6 +7228,14 @@ if (["localhost", "127.0.0.1", ""].includes(location.hostname)) {
     },
     get fotos() {
       return FOTOS;
+    },
+    /* Las fichas de Finanzas (`config/finanzas.bs`). Se expone porque son dos
+       preguntas que hay que poder responder por separado y no se ven en pantalla:
+       cuál está marcada como del dueño (`yo`) y bajo qué cuenta está su foto
+       (`uid`). Con la ficha marcada pero SIN `uid`, la búsqueda de la foto por
+       uid no la encuentra: es justo el caso que había. */
+    get fn() {
+      return FN;
     },
     /* Estado del asistente de reserva. Hace falta para probar el ida y vuelta
        del resumen: el cliente elige el turno sin sesión, se registra y tiene que

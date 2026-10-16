@@ -55,6 +55,9 @@ const TODAS = [
   { n: "header", sesion: true, red: false },
   { n: "cuentas", sesion: true, red: false },
   { n: "lote25", sesion: true, red: false },
+  /* Los dos UID del dueño (config.js y las reglas de Firestore) tienen que ser
+     el mismo. No necesita sesion ni red: es comparar dos archivos. */
+  { n: "owner", sesion: false, red: false },
 
   /* necesitan el servidor con CSP */
   { n: "csp", sesion: false, red: true },

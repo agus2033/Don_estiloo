@@ -10,6 +10,24 @@
       // ADMIN_UID / OWNER_UID: el dueño es Roman (lo confirmó el 16/10/26: la cuenta
 // del dueño y la que figuraba como barbero son la misma persona). O sea que el
 // barbero de la barbería ES el dueño: no hay dos personas.
+// ==== CAMBIAR QUIEN ES EL DUEÑO ====
+//
+// El dueño se cambia en DOS lugares y hay que cambiarlo en los dos:
+//   1. acá: ADMIN_UID (y OWNER_UID, que es el mismo valor).
+//   2. en FIRESTORE_RULES.txt: la función `isOwner()`, que es la que decide
+//      qué puede escribir en la base. Esa además hay que PUBLICAR en la
+//      consola de Firebase, no alcanza con tocarla en el archivo.
+//
+// Con uno solo de los dos cambiados pasa algo raro, que es peor que un error:
+// si se cambia sólo el de acá, la persona nueva ve el panel de cliente y no
+// le salen ni el nombre ni las fotos. Si se cambia sólo el de las reglas, ve
+// todo el panel y cada guardar le rebota con permission-denied.
+//
+// tests/owner.js compara los dos y falla si se separan.
+//
+// Que el dueño sea además el barbero NO se decide acá: se marca desde el panel,
+// con "Yo también soy el barbero". Esa marca es una bandera en la lista de
+// barberos, no un permiso, así que no hay nada que cambiar en ningún lado.
 export const ADMIN_UID = "LQ7IkEfxEKNXajx4SEs378n390i2"; // Roman, dueño
       export const NOMBRE = "SSJ Barber"; // nombre de la barbería (lote 36: era "Codigo Barber")
 // TODO(dueño, 16/10/26): me dijiste "SSJ BARBER" en mayúsculas. Está guardado en
@@ -103,10 +121,20 @@ export const PROVINCIA = "Misiones";
 export const CLOUD_NAME = "lvrsdw0h"; // Cloudinary
 export const CLOUD_PRESET = "codigo_barber_1"; // Upload Preset unsigned
 export const CLOUD_FOLDER = "codigo-barber-1"; // carpeta destino en Cloudinary (NO cambiar con la marca)
-// TODO(dueño, 16/10/26): el email visible en la landing. Sigue el anterior
-// (hola@codigobarber1.com), que además ya estaba marcado antes como dudoso: el
-// dominio es codigobarber.com.ar y no codigobarber1.com. Pasame el correcto.
-export const EMAIL = "hola@codigobarber1.com";
+// ====== Email de contacto ======
+//
+// Está vacío a propósito hasta que lo pases. Con `EMAIL = ""` la web no
+// muestra ninguna dirección: es preferible no mostrar ninguna a mostrar una
+// que no existe o que no es de nadie.
+//
+// Dónde se ve: la sección de contacto de la landing y el aviso de privacy.
+// El nombre del dominio (codigobarber.com.ar) sigue igual hasta que compres
+// uno nuevo: eso NO tiene nada que ver con el nombre de la marca, que ya es
+// SSJ Barber en toda la web.
+//
+// Para ponerlo: reemplazá "" por tu dirección, sin comillas sueltas y sin
+// espacios. Ej: export const EMAIL = "tucorreo@ejemplo.com";
+export const EMAIL = ""; // TODO(dueño): poner el email de contacto
 export const RECAPTCHA_KEY = ""; // clave de sitio reCAPTCHA v3 para App Check (vacío = desactivado)
 export const CANCEL_HS = 2; // horas mínimas de anticipación para que el cliente cancele
       // Logo: el original assets/logo.png pesa 1,6 MB (1254×1254, y además es un

@@ -2608,3 +2608,64 @@ sw.js v16 -> v17.
 
 Suite: 37 pruebas · 844 comprobaciones · 2 en rojo (los dos son datos del dueño:
 la foto del barbero y las dos cuentas de prueba; ver `PRODUCT.md`).
+
+## 37. El dueño también es el barbero, y el logo
+
+**Lo que hay que hacer vos, en este orden:**
+
+1. **Entrá en "Editar perfil"** (el ícono de tu foto, arriba a la derecha) y subí
+   tu foto. Es lo único que falta para que la tarjeta de la web la muestre.
+
+   Comprobado leyendo los datos: `fotoBarbero/LQ7IkEfxEKNXajx4SEs378n390i2`
+   (tu uid) existe pero con el campo `foto` **vacío**. La foto que hay cargada está
+   bajo `fotoBarbero/omXpDusSJ6PQ9D8I9JGHgsYvpyJ2`, una cuenta vieja.
+
+   Y la ficha de la lista (`RdQMQ0wSy8SBbaONeRA0JzFLwFR2`) **no es tuya**: la creó
+   la cuenta del barbero de prueba, con su propio id y su propio uid. Vos ya la
+   marcaste con "Yo también soy el barbero" (`yo: 1`). El código la encuentra igual
+   por la tercera puerta, así que no hay que tocar la base: con que subas la foto
+   aparece.
+
+2. **El email**, en `src/config.js`:
+
+   ```js
+   export const EMAIL = ""; // TODO(dueño): poner el email de contacto
+   ```
+
+   Reemplazá `""` por tu dirección y listo. Mientras esté vacío, el aviso de
+   privacidad dice "sin definir todavía".
+
+3. **Si querés el nombre todo en mayúscula**, `NOMBRE` en `src/config.js`.
+
+**Si algún día transferís la propiedad a otra cuenta:** hay que cambiar el UID en
+**dos** lugares juntos —`ADMIN_UID`/`OWNER_UID` en `src/config.js` y el
+`isOwner()` de `FIRESTORE_RULES.txt`— y **publicar** las reglas en la consola de
+Firebase. Corré `node tests\owner.js` antes: compara los dos y falla si se separan.
+
+**Nada de esto está en vivo.** Sigue sin desplegar: en `codigobarber.com.ar` está
+`sw.js` v11 y acá va v18. Los lotes 29 a 37 son nueve sin publicar.
+
+**Antes de publicar:**
+
+- `FIRESTORE_RULES.txt` tiene que estar **publicado** en la consola de Firebase.
+- Cambiar la contraseña de las tres cuentas de prueba y **desactivar el proveedor
+  de Facebook** en la consola.
+- Crear el perfil de Google Business (sigue sin existir).
+
+**Detalles técnicos del lote:**
+
+- `conFotos` y `miFicha` buscan por `id`, después por `uid`, y —si la ficha es del
+  dueño— bajo `OWNER_UID`. Sólo por `id` era la
+  razón de que la foto del dueño no se encontrara nunca.
+- `marcarYo` guarda `uid: OWNER_UID` además de `yo: 1`, que es lo que habilita esa
+  segunda búsqueda.
+- `menuPerfil` cambió de `if (!isOwner())` a `if (isOwner()) ... else ...`.
+- `yoBarbero` pasó a llamarse `soyBarbero` y marca la ficha existente.
+- `EMAIL` vacío pasa por un helper `mailto()`: sin él, las dos apariciones del
+  aviso de privacidad generaban un `mailto:` vacío.
+- `tests/header.js` afirmaba lo contrario ("el dueño NO ve Editar perfil") y se
+  actualizó al contrato nuevo. `tests/owner.js` es nueva y ya está en `run.js`.
+
+**Flake conocido:** corriendo la suite entera, `lote25` a veces falla "entró el
+dueño": Firebase limita los intentos de ingreso seguidos y hay pruebas que
+entran varias veces. Corrida sola da verde. No es un error del código.

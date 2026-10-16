@@ -906,8 +906,8 @@ async function entrar(b, email, pass, ancho = 1400) {
     "y el bloque muerto `right` (donde había quedado la primera versión) está borrado",
   );
   ok(
-    /!fe\.bs\.some\(\(b\) => esElDueño\(b\)\)/.test(sinComentarios) && /data-act="yoBarbero"/.test(src),
-    "si no hay ninguna ficha marcada como tuya, sale «Agregarme a mí»",
+    /!fe\.bs\.some\(\(b\) => esElDueño\(b\)\)/.test(sinComentarios) && /data-act="soyBarbero"/.test(src),
+    "si no hay ninguna ficha marcada como tuya, sale «Yo también soy el barbero»",
   );
   /* `cuerpoMkBar` y no el archivo entero: `esElDueño` también menciona
      OWNER_UID, así que buscando en todo el main.js el guarda de mkBar se
@@ -953,6 +953,127 @@ async function entrar(b, email, pass, ancho = 1400) {
   );
   ok(/if \(pub\.length\)/.test(sinComentarios), "sigue sin publicar una lista vacía");
 
+/* ---------- 37. el dueño es el dueño Y el barbero ---------- */
+  /* Recorta entre dos marcas, sobre el texto que se le pase. El helper `cuerpo`
+     de arriba lee siempre de `src`, y para buscar en el código sin comentarios
+     hace falta esto. Un recorte que devuelve "" no es un bug del código: es
+     una comprobación que no encontró lo que buscaba, y hay que verlo antes de
+     cambiar el código. */
+  const trozo = (de, desde, hasta) => de.slice(de.indexOf(desde), de.indexOf(hasta, de.indexOf(desde)));
+console.log("\n--- 37. el dueño también es el barbero ---");
+
+/* El dueño NO tenía "Editar perfil" en su menú: la condición era
+   `if (!isOwner())`. Es decir, el único que podía tener foto y perfil público de
+   barbero era... cualquiera menos él. */
+const cuerpoMenu = trozo(sinComentarios, "function menuPerfil()", "function R()");
+ok(
+  /if \(isOwner\(\)\) \{[\s\S]{0,300}data-act="miPerfilWeb"/.test(cuerpoMenu),
+  "el dueño tiene \"Editar perfil\" (su ficha pública de barbero)",
+  cuerpoMenu.slice(0, 110),
+);
+ok(
+  /data-act="soyBarbero"/.test(cuerpoMenu),
+  "y el botón de colocarse como barbero",
+);
+ok(
+  /Ya soy el barbero/.test(cuerpoMenu) && /Yo también soy el barbero/.test(cuerpoMenu),
+  "el botón cambia de texto según esté o no en el equipo",
+);
+ok(
+  /\} else\s+items\.push\([\s\S]{0,160}miPerfilWeb/.test(cuerpoMenu),
+  "y el barbero que no es dueño lo sigue teniendo",
+);
+
+/* El botón tiene que hacer algo: marca la ficha existente en vez de agregar una
+   segunda, y al terminar abre el perfil, que es el paso que falta para que la
+   foto aparezca. */
+const cuerpoSoyBarbero = trozo(sinComentarios, "  soyBarbero() {", "  async gAdd(");
+ok(cuerpoSoyBarbero.length > 400, "se pudo recortar la acción soyBarbero()", cuerpoSoyBarbero.length + " caracteres");
+ok(
+  /FN\.bs\.find\(\(b\) => !esElDueño\(b\)\)/.test(cuerpoSoyBarbero) && /FN\.bs\.map\(/.test(cuerpoSoyBarbero),
+  "marca la ficha que YA está en el equipo, en vez de agregar una segunda",
+);
+ok(
+  /\[...FN\.bs, \{ id: OWNER_UID/.test(cuerpoSoyBarbero),
+  "y si la lista está vacía, crea una con el UID del dueño",
+);
+ok(
+  /abrirPerfil\(\);/.test(cuerpoSoyBarbero),
+  "y al terminar abre el perfil: sin foto, la tarjeta sale con \"[Foto]\"",
+);
+ok(
+  /\(U && U\.nm\)/.test(cuerpoSoyBarbero) && /Falta tu nombre/.test(cuerpoSoyBarbero),
+  "el nombre sale de SU perfil; si no lo tiene, avisa en vez de inventar uno",
+);
+
+/* `marcarYo` tiene que guardar el uid además de la marca: es lo que hace que la
+   foto se encuentre, porque la ficha del dueño en la lista quedó con un id
+   autogenerado que no es su uid. */
+const cuerpoMarcarYo = trozo(sinComentarios, "  async marcarYo(id, yo) {", "  soyBarbero() {");
+ok(
+  /\{ \.\.\.b, yo: 1, uid: OWNER_UID \}/.test(cuerpoMarcarYo),
+  "marcar guarda también el uid del dueño",
+  cuerpoMarcarYo.slice(0, 110),
+);
+
+/* La foto se busca por id y, si no está, por uid. Sólo por id era el motivo de
+   que la foto no apareciera nunca. */
+ok(
+  /FOTOS\[b\.id\]\) \|\|/.test(sinComentarios) && /b && b\.uid && FOTOS\[b\.uid\]/.test(sinComentarios),
+  "la foto de la tarjeta se busca por id y también por uid",
+);
+ok(
+  /esElDueño\(b\) && FOTOS\[OWNER_UID\]/.test(sinComentarios),
+  "y si la ficha es del dueño, también bajo el uid DEL DUEÑO",
+  "sin esta puerta la foto que sube el dueño no se encuentra nunca: la ficha la",
+  "crea la cuenta del barbero, así que su uid es el de ese barbero, no el del dueño",
+);
+
+/* Y el orden importa: si la ficha tiene su propia foto, esa gana. La del dueño
+   es el último recurso, no el primero. */
+ok(
+  sinComentarios.indexOf("FOTOS[b.id]") < sinComentarios.indexOf("FOTOS[b.uid]") &&
+    sinComentarios.indexOf("FOTOS[b.uid]") < sinComentarios.indexOf("FOTOS[OWNER_UID]"),
+  "el orden es: id, después uid, y el del dueño sólo si no apareceu ninguna",
+);
+ok(
+  /x\.id === me\.uid \|\| \(x\.uid && x\.uid === me\.uid\)/.test(sinComentarios),
+  "y el formulario de perfil abre con los datos cargados aunque el id sea otro",
+);
+ok(
+  /isOwner\(\) && esElDueño\(x\)/.test(sinComentarios),
+  "y el dueño edita la ficha que él marcó, que es la que importa",
+);
+
+/* Que el dueño siga teniendo TODO lo de dueño. */
+const cuerpoRtOk = trozo(sinComentarios, "const rtOk = (v) =>", "const rtView");
+const vistasDueño = (cuerpoRtOk.match(/\[\s*"bar"[^\]]*\]/) || [""])[0];
+const lista = (vistasDueño.match(/"[a-z]+"/g) || []).map((x) => x.replace(/"/g, ""));
+const listaBarbero = ((cuerpoRtOk.match(/:\s*\["bar"[^\]]*\]/) || [""])[0].match(/"[a-z]+"/g) || []).map((x) => x.replace(/"/g, ""));
+ok(
+  listaBarbero.every((v) => lista.includes(v)),
+  "el dueño tiene TODAS las vistas que tiene un barbero",
+  "dueño=" + JSON.stringify(lista) + "  barbero=" + JSON.stringify(listaBarbero),
+);
+ok(
+  ["dash", "bars", "cfg", "mens"].every((v) => lista.includes(v)),
+  "y además las suyas propias: dashboard, barberos, ajustes y mensajes",
+  JSON.stringify(lista),
+);
+
+/* El email vacío no puede romper el aviso de privacidad. */
+ok(
+  /const mailto = \(\) =>/.test(sinComentarios) && /sin definir todavía/.test(sinComentarios),
+  "el email vacío se muestra como \"(sin definir todavía)\" en vez de un mailto roto",
+);
+ok(
+  !/mailto:\$\{esc\(EMAIL\)\}/.test(sinComentarios.replace(/const mailto[\s\S]*?;\n/, "")),
+  "y no queda ningún mailto con EMAIL directo fuera del helper",
+);
+ok(
+  /export const EMAIL = "";/.test(conf) && /TODO\(dueño\): poner el email/.test(conf),
+  "el email quedó vacío, esperando que lo pase, con el apartado al lado",
+);
   await ba.ctx.close();
   await b.close();
 

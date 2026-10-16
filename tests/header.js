@@ -45,7 +45,11 @@ const ok = (c, m, d) => {
   ok(/claseNav = hayBandeja \? "nav-mas3" : "nav-todo"/.test(src), "la clase de la barra depende de si hay bandeja");
   ok(/claseNav = "nav-todo";/.test(src), "el cliente marca la barra como nav-todo (sin bandeja)");
 
-  /* El menú de la foto: tres items, y "Editar perfil" sólo si no es dueño. */
+  /* El menú de la foto. Antes "Editar perfil" salía con `if (!isOwner())`: el
+     dueño NO lo tenía, y era el único que no podía tener ficha pública de barbero
+     (foto, oficio, descripción). El dueño lo pidió —él es el barbero— así que
+     ahora lo tiene, y además un botón para colocarse como tal. El barbero que no
+     es dueño lo sigue teniendo. */
   const mp = src.match(/function menuPerfil\(\) \{([\s\S]*?)\n\}/);
   ok(!!mp, "menuPerfil existe a nivel de módulo (no dentro del try)");
   ok(
@@ -53,7 +57,18 @@ const ok = (c, m, d) => {
     "menuPerfil no quedó dentro de R(): dentro del try sería block-scoped",
   );
   if (mp) {
-    ok(/if \(!isOwner\(\)\)/.test(mp[1]), 'el dueño NO ve "Editar perfil"');
+    ok(
+      /if \(isOwner\(\)\) \{[\s\S]{0,300}data-act="miPerfilWeb"/.test(mp[1]),
+      'el dueño SÍ ve "Editar perfil" (su ficha pública de barbero)',
+    );
+    ok(
+      /\}\s*else\s+items\.push\([\s\S]{0,160}miPerfilWeb/.test(mp[1]),
+      "y el barbero que no es dueño lo tiene en la otra rama",
+    );
+    ok(
+      /data-act="soyBarbero"/.test(mp[1]),
+      "el dueño tiene además el botón de colocarse como barbero",
+    );
     ok(/data-act="fotoTomar">Cambiar foto/.test(mp[1]), 'el menú tiene "Cambiar foto"');
     ok(/data-act="salir">Cerrar sesi/.test(mp[1]), 'el menú tiene "Cerrar sesión"');
     ok(/isAdm\(\)/.test(mp[1]), "el item Editar perfil distingue barbero de cliente");
@@ -249,11 +264,15 @@ const entrar = async (page, email, pass) => {
         "tiene Cambiar foto y Cerrar sesión",
         JSON.stringify(pm),
       );
-      ok(
-        rol.etq === "dueño" ? pm.indexOf("Editar perfil") < 0 : pm.indexOf("Editar perfil") >= 0,
-        rol.etq === "dueño" ? "el dueño NO tiene Editar perfil" : "tiene Editar perfil",
-        JSON.stringify(pm),
-      );
+      /* Los tres roles lo tienen. El dueño también: es el barbero (lote 37), y
+         si no lo tuviera no podría cargar su foto, que es justo lo que pidió. */
+      ok(pm.indexOf("Editar perfil") >= 0, "tiene Editar perfil", JSON.stringify(pm));
+      if (rol.etq === "dueño")
+        ok(
+          pm.indexOf("Yo también soy el barbero") >= 0 || pm.indexOf("Ya soy el barbero") >= 0,
+          "y además el botón de colocarse como barbero",
+          JSON.stringify(pm),
+        );
 
       await page.screenshot({ path: path.join(DIR, `${rol.etq}-${p.n}-menu.png`) });
       await page.keyboard.press("Escape");

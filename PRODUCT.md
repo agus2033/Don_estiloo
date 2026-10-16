@@ -1173,6 +1173,11 @@ Ahora reparte sobre `PUB.barberos`, que es justamente "lo último que se public�
 `tests/lote25.js`: 110 → 126 comprobaciones. Las 15 nuevas se verificaron una por
 una reintroduciendo cada bug: las 15 lo detectan.
 
+> **Actualizado en el lote 37.** Los dos rojos de acá ya no son los mismos: las tres
+> cuentas de prueba **ahora entran**, y la foto se encuentra con una tercera puerta
+> en la búsqueda (ver §37). El id de la lista pública tampoco es el de acá: pasó a
+> ser el de la cuenta del barbero. Este párrafo queda como estaba en su momento.
+
 Suite: 37 pruebas, 844 comprobaciones, **2 en rojo**. Los dos rojos son datos
 tuyos, no código:
 
@@ -1186,3 +1191,141 @@ tuyos, no código:
   idéntico, así que no lo causó este lote.
 
 sw.js v16 -> v17.
+
+## 37. El dueño es el dueño Y el barbero, y el logo nuevo
+
+Cinco pedidos del dueño: que pueda tener todas las funciones de siempre, que
+pueda colocarse como barbero con un botón que funcione, que el barbero pueda ser
+el dueño, que el dominio siga siendo el de ahora, y el logo.
+
+### El botón "Yo también soy el barbero"
+
+Antes el dueño **no tenía "Editar perfil"** en su menú. La condición era
+`if (!isOwner())`, así que el único que podía tener ficha pública de barbero —
+foto, oficio, descripción— era cualquiera menos él.
+
+Ahora el menú del dueño tiene:
+
+- **Editar perfil** — su ficha pública, el mismo modal que usa el barbero.
+- **Yo también soy el barbero** (o *Ya soy el barbero* si ya lo está).
+
+El botón **marca la ficha que ya está en el equipo**, no agrega una segunda: si
+no lo hiciera, tu nombre aparecería dos veces en la web. Y al terminar abre
+directo el perfil, que es el paso que de verdad falta.
+
+> El botón ya lo apretaste: la lista quedó con tu `uid` y tu porcentaje en 100.
+> Lo que falta es la foto (abajo).
+
+### Por qué no se veía tu foto
+
+La foto de una ficha se buscaba **solo por `id`**. La foto de un barbero vive en
+`fotoBarbero/{uid}`, así que con la búsqueda por id sola **era imposible que
+apareciera**, por más que estuviera cargada.
+
+Después hay un segundo motivo, que es el que está en tus datos ahora. La ficha de
+la lista **no la creaste vos: la creó la cuenta del barbero**, que escribe su
+propio `id` y su propio `uid`:
+
+| documento | clave | contenido |
+|---|---|---|
+| `config/barberos.l[0]` | `RdQMQ0wSy8SBbaONeRA0JzFLwFR2` | Agustin — el id **y** el uid de la cuenta del barbero |
+| `config/finanzas.bs[0]` | `RdQMQ0wSy8SBbaONeRA0JzFLwFR2` | `yo: 1` (ya la marcaste como tuya), `uid` = el del barbero |
+| `fotoBarbero/LQ7Ik…` | **tu uid** | el campo `foto` está **vacío** |
+| `fotoBarbero/omXpDusSJ…` | una cuenta vieja | la foto que hay cargada |
+
+O sea: la ficha tiene `uid`, y la foto que vos subirías está bajo **otro**. Por
+eso buscar por `uid` tampoco alcanzaba.
+
+La búsqueda tiene **tres puertas**, en este orden:
+
+1. `FOTOS[b.id]`
+2. `FOTOS[b.uid]`
+3. `FOTOS[OWNER_UID]`, **sólo si la ficha es tuya** (`yo: 1`, o el id/uid es el tuyo)
+
+La tercera es la que lo arregla, y no hace falta tocar nada en la base. El
+formulario de perfil (`miFicha`) la tiene también, para que abras **la ficha que
+marcaste** y no una en blanco.
+
+Comprobado de punta a punta: con la ficha real de la base y una foto que sí existe
+en Cloudinary, la tarjeta la muestra a 800×600 y desaparece el cartel `[Foto]`.
+
+**Lo que falta es que la cargues vos.** Entrá en **Editar perfil** y subí la foto:
+se guarda bajo tu uid y la tercera puerta la encuentra.
+
+### Transferir la propiedad: el UID, en dos lugares
+
+Es exactamente lo que pediste —se cambia el UID y cambia el dueño— pero el UID
+está en **dos** archivos, y con uno solo de los dos cambiados no hay un error
+limpio:
+
+| si cambias... | qué pasa |
+|---|---|
+| sólo `config.js` | la persona ve el panel de cliente, no le salen ni el nombre ni las fotos, sin ningún mensaje que diga por qué |
+| sólo `FIRESTORE_RULES.txt` | ve todo el panel y cada guardar rebota con `permission-denied` |
+
+Los dos archivos tienen ahora arriba un bloque que lo dice, y **`tests/owner.js`**
+compara los dos UID y falla si se separan. Las reglas además hay que **publicarlas
+en la consola de Firebase**: tocar el archivo no alcanza.
+
+> Que el barbero sea el dueño **no** se decide con el UID: se marca desde el panel.
+> Es una bandera en la lista de barberos, no un permiso, así que transferir la
+> propiedad no toca quién es el barbero.
+
+### El dueño conserva todo lo demás
+
+`rtOk` ya le daba al dueño **todas** las vistas del barbero más las suyas
+(dashboard, barberos, ajustes, mensajes). Hay una comprobación que lo verifica y
+que fallaría si alguna vez el dueño pierde una que tiene el barbero.
+
+### El logo
+
+Entró el emblema que mandaste (`Emblema SSJ Barber en blanco y negro.png`,
+1254×1254, 1,68 MB, **sin canal alfa**: las esquinas son negro opaco). Se
+generaron los seis tamaños que el sitio usa:
+
+| archivo | lado | dónde se ve |
+|---|---|---|
+| `assets/logo-256.png` | 256 | header (38 px), modal (56 px), loader, `og:image` |
+| `assets/icon-192.png` | 192 | ícono de la app |
+| `assets/icon-512.png` | 512 | ícono grande |
+| `assets/icon-maskable-512.png` | 512 | ícono adaptativo de Android (con la zona segura) |
+| `assets/apple-touch-icon.png` | 180 | pantalla de inicio del iPhone |
+| `favicon.ico` | 32 | ícono del navegador |
+
+Se miró cómo queda a 38 px, que es como aparece en el header: se lee como emblema,
+que es lo que tiene que ser a ese tamaño. El texto "SSJ BARBER" de adentro no
+se lee a 38 px, y no tiene que leerse: el nombre de la marca está al lado, en
+dorado.
+
+### El email, en un apartado para completarlo después
+
+`EMAIL` quedó **vacío**, con el apartado al lado explicando dónde se ve y cómo se
+carga. Antes seguía `hola@codigobarber1.com`, que además ya estaba marcado como
+dudoso (el dominio de la web es `codigobarber.com.ar`, no `codigobarber1.com`).
+
+Con el valor vacío, las dos apariciones del aviso de privacidad habrían renderizado
+un `<a href="mailto:">` vacío, que no abre nada y parece un error. Ahora muestran
+"sin definir todavía".
+
+### El dominio y la marca
+
+El dominio sigue siendo `codigobarber.com.ar`, como pediste, hasta que compres
+otro. **No tiene nada que ver con el nombre de la marca**: la web, las etiquetas,
+el título, el manifiesto y las redes ya dicen SSJ Barber.
+
+### Pruebas
+
+`tests/owner.js` (nueva, 12 comprobaciones) + 15 en `tests/lote25.js`. Cada una se
+verificó **reintroduciendo el bug**: se rompe el código a mano y se comprueba que la
+comprobación se pone roja. Dos no mordían y se corrigieron.
+
+### Las cuentas de prueba
+
+Las tres entran ahora: dueño `LQ7Ik…`, barbero `RdQMQ0w…` y cliente `Tw6nKfw…`.
+En el lote 32 fallaban dos con `auth/invalid-credential`; ahora no.
+
+**Conviene rotar las tres contraseñas de todas formas**: están en `.env.local`, en
+un archivo del repositorio.
+
+**38 pruebas · 948 comprobaciones (en esa corrida).** En rojo queda `landing.foto.viva`, que es el
+dato tuyo: la foto todavía no la subiste.
