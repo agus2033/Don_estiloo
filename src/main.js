@@ -4620,10 +4620,14 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
     )
     .join("");
 
-  /* ---------- 11. galería: TODAS las fotos, sin tope ---------- */
+  /* ---------- 11. galería: TODAS las fotos, sin tope ----------
+     El <img> va sin width/height fijos: no se conoce la proporción de cada
+     foto antes de subirla, y obedecería el CSS (alto natural) recién al
+     cargar. La masonry de landing.css se encarga de que ninguna foto se
+     recorte nunca. */
   const gal = GAL.length
     ? GAL.map(
-        (g) => `<figure><img src="${imgCld(esc(g.url), 800)}" alt="Trabajo de ${esc(NOMBRE)}" loading="lazy" decoding="async" width="600" height="600"></figure>`,
+        (g) => `<figure><img src="${imgCld(esc(g.url), 800)}" alt="Trabajo de ${esc(NOMBRE)}" loading="lazy" decoding="async"></figure>`,
       ).join("")
     : [1, 2, 3, 4, 5]
         .map(
@@ -7360,6 +7364,17 @@ if (["localhost", "127.0.0.1", ""].includes(location.hostname)) {
       FN = { pd: pd === undefined ? FN.pd : pd, bs: (Array.isArray(l) ? l : []).map((b) => ({ ...b })) };
       R();
       return FN.bs.length;
+    },
+    /* La galería de la landing (`galeria` en Firestore), en memoria.
+
+       Para probar la galería con fotos sintéticas sin escribir Firestore ni
+       depender de Cloudinary: url locales (/assets/logo-256.png) cortan el
+       viaje y dejan probar lo que importa (masonry, alt, lazy, nada
+       recortado). Los marcadores de "FOTO 1..5" vuelven con una lista vacía. */
+    setGaleria(l) {
+      GAL = (Array.isArray(l) ? l : []).map((g) => ({ ...g }));
+      R();
+      return GAL.length;
     },
     /* Estado de la pantalla de contraseña social, para probar los caminos
        sin abrir el pop-up de Google (que abriría otra pestaña y pide una

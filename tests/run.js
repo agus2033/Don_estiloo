@@ -2,7 +2,7 @@
 
    node tests\run.js            → todas
    node tests\run.js sin-csp    → sólo las que no necesitan el servidor con CSP
-   node tests\run.js rapido     → sólo las que no都需要 iniciar sesión
+   node tests\run.js rapido     — sólo las que no requieren iniciar sesión
 
    OJO con el orden: las pruebas que inician sesión se pegan entre sí contra el
    rate limit de Firebase Auth (por IP). Entre una y otra hay una espera.
@@ -64,6 +64,7 @@ const TODAS = [
   { n: "csp.popup", sesion: false, red: true },
   { n: "xss", sesion: true, red: false },
   { n: "mapa", sesion: false, red: false },
+  { n: "galeria", sesion: false, red: false },
   { n: "perf", sesion: false, red: false },
 ];
 

@@ -2883,3 +2883,49 @@ Start-Process python -ArgumentList "-m","http.server","8765" -WindowStyle Hidden
 Verificar con `Test-NetConnection -ComputerName 127.0.0.1 -Port 8765` y recién
 ahí volver a correr. Con el servidor arriba: **38 pruebas · 1018
 comprobaciones · 0 en rojo.**
+
+## 41. Galería sin recortes (masonry) — y una foto-pista que estaba desaparecida
+
+Producto/pantalla en **PRODUCT.md §41**. Lo técnico para el que siga:
+
+- `landing.css`: el bloque GALERÍA dejó de ser grilla. Es **`columns`** (=2
+  móvil, 3 en el bloque de escritorio), `break-inside: avoid` por figura,
+  `img { width:100%; height:auto }` y **NADA más**: sin `aspect-ratio` fijo y
+  sin `object-fit: cover`. Los `figure:first-child { grid-column: span... }`
+  del hero grande se fueron (en masonry no existe el span).
+- Los marcadores `.lb-gal-ph` toman su cuadrado por su cuenta (`aspect-ratio:
+  1/1` en la clase), porque la grilla ya no lo impone.
+- `src/main.js`: el `<img>` de la galería perdió `width="600"
+  height="600"` (no se conoce la proporción de antemano). Y hay un hook
+  nuevo, `__test.setGaleria(l)` (~L7374), el mismo patrón que `setVentas`.
+- `run.js`: fila nueva `{ n: "galeria", sesion: false, red: false }`.
+
+### El hallazgo del lote
+
+`CONTINUAR.md` y el inventario decían "Galería: 0 fotos". **No mentían: se
+desactualizaron.** La colección `galeria` en Firestore tiene **3 documentos
+reales** (cortes de perfil, en Cloudinary `codigo-barber-1/galeria/…`), cargados
+desde el panel en algún momento. La landing ya mostraba esas 3 —recortadas por
+el `cover` de la grilla— y los "FOTO 1..5" son el escenario cuando aún no hay
+nada. Por eso el test quedó hecho **agnóstico**: exige coherencia (o 5
+marcadores, o N fotos reales) y el no recorte se comprueba en los dos caminos.
+**Lección: antes de programar sobre "la base está vacía", mirar la base.**
+
+### Detalles para el que escriba el próximo test de galería
+
+- `getComputedStyle(el).columnCount` devuelve **STRING** ("2"): hay que
+  `Number()` antes de `=== 2`. Me comió cuatro rojos falsos.
+- Para fotos sintéticas con proporción conocida: SVG url-encoded como
+  `data:image/svg+xml;utf8,` + `encodeURIComponent(...)`. El
+  `encodeURIComponent` es lo que hace que `esc()` del HTML no lo rompa (sin
+  `<` ni `&` crudos en el atributo).
+- La desmesura mostrada-vs-natural se mide con
+  `getBoundingClientRect().width/height` contra
+  `naturalWidth/naturalHeight` — tolerancia 4 %.
+- Contador de comprobaciones: el `run.js` cuenta stdout `OK `/`FALLA ` y el
+  color sale del exit code — el final del `finally` (con `process.exitCode`)
+  define el color, no el texto.
+
+**13 lotes sin publicar (29–41).** En `codigobarber.com.ar` está `sw.js` v11;
+acá va `barberia-v20`. Con la galería ya con contenido real, el despliegue gana
+una razón más: la galería ahora está bien, pero nadie la ve.

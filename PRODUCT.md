@@ -1534,3 +1534,54 @@ pinta debajo. **38 pruebas · 1018 comprobaciones · 0 en rojo.**
 2. Google vuelve a leer la página en una visita (reindexación): de horas a
    días. Para apurarlo, desde la Search Console del dominio:
    **URL inspection → Pedir indexación** con la raíz del sitio.
+
+## 41. La galería muestra tus fotos sin recortar nada
+
+El dueño pidió ocuparse del punto 3.1: la galería de "cortes hechos". Resultado:
+**la galería ya tiene tres fotos reales** (subidas a Cloudinary en su momento y
+guardadas en Firestore; "0 fotos" en `CONTINUAR.md` quedó viejo). Son cortes
+degradados de perfil, HTTP 200, WebP vía Cloudinary con `f_auto,q_auto,w_800`.
+
+### Lo que cambió
+
+- **El recorte se fue.** La grilla usaba `aspect-ratio` fijos (1/1 la común,
+  16/10 la primera, 2×2 en escritorio) con `object-fit: cover`: eso es una caja
+  que tira lo que sobra — en fotos de trabajo, tirar partes del corte. La
+  regla del dueño es que **las fotos no se recortan**. Ahora la galería es
+  **masonry en columnas** (2 en mobile, 3 en escritorio): cada foto entra a su
+  proporción NATURAL, sin `cover` ni alturas fijas, y `break-inside: avoid`
+  por figura. El vertical queda vertical y el apaisado apaisado.
+- El `<img>` de la galería perdió los `width="600" height="600"`: adjudicaban
+  un cuadrado que las fotos no tienen.
+- Los **marcadores "FOTO 1..5" quedan y quedan cuadrados**: la decisión del
+  principio 2 (*"si falta, se muestra un marcador, nunca un relleno
+  inventado"*) sigue en pie, y con la base vacía se ven en su caja 1/1.
+- `window.__test.setGaleria(l)`: el mismo patrón que `setVentas` — escena con
+  fotos sintéticas (data: URL de SVG con proporción conocida) sin tocar
+  Firestore ni Cloudinary. Sólo en local, como todos los hooks.
+
+### Pruebas
+
+`tests/galeria.js` (nuevo, 17 comprobaciones, en `run.js` al lado de `mapa`):
+
+- **La prueba clave:** proporción MOSTRADA contra proporción NATURAL del
+  archivo, foto por foto. Si difiere, hubo recorte o deformación. Vale para
+  las sintéticas (2:1 apaisada, 2:3 vertical, 1:1 cuadrada) **y para las de
+  verdad** del dueño: ninguna da diferencia > 4 %.
+- La base puede estar vacía (5 marcadores) o tener fotos (N figuras): el test
+  no exige alguno de los dos, exige que **no quede un estado mezclado**.
+- columnCount 2 (mobile) y 3 (escritorio), carga `lazy`, `alt` presente,
+  `object-fit` ≠ `cover`, y con la lista vacía por hook vuelven los
+  marcadores.
+
+Capturas con las fotos reales: `tmp_shots/41-gal-movil.png` y
+`41-gal-desk.png`. **39 pruebas · 1035 comprobaciones · 0 en rojo.**
+
+### Lo que queda del dueño (no del código)
+
+- Subir más fotos desde el panel (**después de desplegar**: el panel de la web
+  vieja no tiene la pantalla de Galería). La sección crece sola: entra la
+  cantidad de fotos que suba, no hay tope.
+- Las leyendas de las fotos (hoy el `alt` es genérico: "Trabajo de SSJ
+  Barber"). Si algún día quiere una nota corta por foto, el documento puede
+  crecer sin tocar código.

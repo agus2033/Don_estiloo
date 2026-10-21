@@ -943,38 +943,33 @@ body[data-theme="light"] .lb-btn--pri:hover {
 }
 
 /* ---------- 11. GALERÍA ----------
-   Sin tope de fotos: entra todas las que haya cargado el barbero.
-   Cada figura tiene aspect-ratio propio y la foto usa object-fit: cover,
-   así una foto apaisada o vertical se encuadra sin deformarse. */
+   Sin tope de fotos: entra todas las que haya cargado el dueño.
+   Masonry con columns: cada foto muestra su proporción NATURAL, sin
+   object-fit: cover. Es la regla del dueño — las fotos no se recortan — y
+   acá es más importante que en ningún otro lugar: son fotos de su trabajo, y
+   lo peor que puede pasarle a un corte son dos centímetros de borde. */
 .lb-gal {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
+  columns: 2;
+  column-gap: 10px;
 }
 .lb-gal figure {
-  margin: 0;
-  position: relative;
-  aspect-ratio: 1 / 1;
+  margin: 0 0 10px;
+  break-inside: avoid;
   border-radius: var(--lb-r-md);
   overflow: hidden;
   background: var(--lb-card);
   border: 1px solid var(--lb-line);
 }
-.lb-gal figure:first-child {
-  grid-column: span 2;
-  aspect-ratio: 16 / 10;
-}
 .lb-gal img {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center;
+  height: auto;
   display: block;
 }
-/* marcador visible mientras no haya fotos reales */
+/* marcador visible mientras no haya fotos reales: cuadrado fijo para que
+   parezcan las posibilidades donde van a ir sus fotos */
 .lb-gal-ph {
   width: 100%;
-  height: 100%;
+  aspect-ratio: 1 / 1;
   display: grid;
   place-content: center;
   gap: 8px;
@@ -3655,15 +3650,10 @@ body[data-theme="light"] .ver:hover {
     top: 128px;
   }
 
-  /* galería: 4 columnas, 1 grande 2x2 + el resto chicas.
-     Con muchas fotos la grilla sigue creciendo sola: entra todas. */
+  /* galería en escritorio: 3 columnas de masonry, mismas reglas que en
+     móvil (columnas, no grilla) — las fotos siguen sin recortarse. */
   .lb-gal {
-    grid-template-columns: repeat(4, 1fr);
-  }
-  .lb-gal figure:first-child {
-    grid-column: span 2;
-    grid-row: span 2;
-    aspect-ratio: 1 / 1;
+    columns: 3;
   }
 
   /* equipo: 2 columnas en escritorio, como el mockup */
