@@ -129,7 +129,11 @@ if (ld) {
 console.log("\nhead:");
 const title = (html.match(/<title>([^<]*)<\/title>/) || [])[1] || "";
 ok(!!title, "hay <title>");
-ok(title.length >= 30 && title.length <= 65, "el title tiene largo de SEO (30-65)", `${title.length}: "${title}"`);
+/* El title corto es la decisión del dueño (lote 40): "SSJ Barber | Puerto
+   Iguazú" son 26 caracteres. Google no trunca los cortes, los muestra
+   completos — el piso de tamaño es para no dejar palabras clave afuera, y el
+   que faltaba ("Barbería en…") se cubre con la description. */
+ok(title.length >= 25 && title.length <= 65, "el title tiene largo de SEO (25-65)", `${title.length}: "${title}"`);
 ok(/Puerto Iguazú/i.test(title), "el title nombra la ciudad", title);
 ok(title.indexOf(NOMBRE) === 0, "el title arranca con el NOMBRE de config.js", title);
 

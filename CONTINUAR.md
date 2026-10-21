@@ -2849,3 +2849,37 @@ panel y entrar a Finanzas como barbero.
    está `sw.js` v11; acá va `v20`.
 6. Cuando el dueño quiera: dominio nuevo (seis espejos — `tests/seo.js` falla
    si se desalinean) y `EMAIL` real en `src/config.js`.
+
+## 40. El título que Google enseña: "SSJ Barber | Puerto Iguazú"
+
+El dueño vio en Google *"Codigo Barber"* (la marca vieja, con la descripción
+vieja) y pidió el título literal *"SSJ Barber | Puerto Iguazu"*. Detalle del
+producto en **PRODUCT.md §40**. Resumen para el que siga:
+
+- El `<head>` ya decía SSJ Barber desde el lote 36: lo de Google era la
+  **producción vieja** (`codigobarber.com.ar` sigue mostrando una versión con
+  más de una docena de lotes retrasados). No había nada que rebrandear: había
+  que desplegar de verdad.
+- Cambios reales del lote: `<title>`, `og:title` y `twitter:title` pasan a
+  `SSJ Barber | Puerto Iguazú` (26 caracteres, sin tocar la descripción ni el
+  JSON-LD). Se baja el piso de tamaño del título en `tests/seo.js` de 30 a 25,
+  con un comentario que dice por qué.
+- **Para el dueño**: se arregla en dos pasos — desplegar y pedir la
+  indexación en Search Console (Inspección de URLs → Pedir indexación). No hay
+  forma de que Google actualice la fila desde acá.
+
+### El susto de esta corrida, para reconocerlo rápido
+
+La suite completa quedó **roja 29 pruebas con fallas=0**: el servidor python
+del 8765 se murió a mitad de la corrida y cada prueba de navegador se rompió
+con `net::ERR_CONNECTION_REFUSED` antes de siquiera contar una comprobación.
+El diagnóstico rápido: red con ceros y fallas en cero = **error del servidor,
+no error de las pruebas**. Se vuelve a levantar con:
+
+```
+Start-Process python -ArgumentList "-m","http.server","8765" -WindowStyle Hidden
+```
+
+Verificar con `Test-NetConnection -ComputerName 127.0.0.1 -Port 8765` y recién
+ahí volver a correr. Con el servidor arriba: **38 pruebas · 1018
+comprobaciones · 0 en rojo.**

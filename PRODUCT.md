@@ -1489,3 +1489,48 @@ en todos los períodos.
 sólo la de este lote) encontró un despiste —el mapa de la landing había perdido
 su carga a pedido (`data-src` había quedado `src`)— que la prueba de este lote
 sola no veía. Está reparado. **38 pruebas · 1018 comprobaciones · 0 en rojo.**
+
+## 40. El título de Google: "SSJ Barber | Puerto Iguazú"
+
+El dueño vio en Google su barbería anunciada como **"Codigo Barber"** en el
+título, con la descripción terminando en *"Reservá tu turno online en Codigo…"*
+y pidió: *"quiero que aparezca como titulo SSJ Barber | Puerto Iguazu"*.
+
+### La primera mitad ya estaba hecha
+
+El `<head>` local ya se había rebrandeado en el lote 36: título, descripción,
+og/twitter y el JSON-LD decían todo SSJ Barber, y había una comprobación de que
+**no queda la marca con tilde** en ningún archivo. Lo que Google mostraba era
+**la versión vieja desplegada**: en `codigobarber.com.ar` no llega nada nuevo
+desde hace una docena de versiones. La página real ya tiene la cabeza nueva;
+lo que Google enseña es su copia de la web como estaba publicada, con la marca
+vieja. Se corrige al desplegar.
+
+### Lo que cambió de verdad
+
+- El `<title>` pasa a ser **exactamente** lo que pidió: `SSJ Barber | Puerto
+  Iguazú` (26 caracteres). Con el acento: la ciudad se escribe *Iguazú* y así
+  la trae la descripción y el JSON-LD; sin acento se desalinea el resto del
+  texto.
+- `og:title` y `twitter:title` van detrás —eran "SSJ Barber - Barbería en Puerto
+  Iguazú"—. Google a veces toma el de Open Graph y a veces el del `<title>`:
+  si dicen cosas distintas discute quién gana. Igual entra en todas las
+  tarjetas al compartir en WhatsApp.
+- La descripción queda como estaba: menciona *Barbería* (palabra clave que ya
+  no entra al título) con "Reservá tu turno online por WhatsApp". El snippet
+  viejo de Google ("…en Codigo …") también se compone al desplegar.
+
+### El test
+
+`tests/seo.js` pedía título de 30 a 65 caracteres: el nuevo tiene 26 y quedaba
+rojo. El piso bajó a 25, con un comentario que documenta por qué (decisión del
+dueño). Google no trunca los títulos cortos: los muestra completos — la palabra
+`Barbería` que sobró del título queda en la descripción, que es la que Google
+pinta debajo. **38 pruebas · 1018 comprobaciones · 0 en rojo.**
+
+### Para que se vea en Google NO basta con cambiar el archivo
+
+1. Hay que **desplegar** (los doce lotes pendientes).
+2. Google vuelve a leer la página en una visita (reindexación): de horas a
+   días. Para apurarlo, desde la Search Console del dominio:
+   **URL inspection → Pedir indexación** con la raíz del sitio.
