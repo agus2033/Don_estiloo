@@ -262,6 +262,17 @@ let SB = null,
   ps = [],
   EW = [],
   GA = [],
+  /* De quién es el gasto que se está cargando.
+
+     El dueño lo pidió así: el alquiler es un gasto DE ÉL, porque alquila el
+     local aunque sea el dueño de la barbería. Y lo mismo para cada barbero:
+     cada uno descuenta de SU ganancia neta lo que gasta, para llevar el dinero
+     de cada uno por separado.
+
+     "dueno" es una palabra suelta y no un id de documento, así que nunca puede
+     pisar el id de una ficha. Y por defecto es el dueño: el gasto que se carga
+     casi siempre es suyo, y equivocarse de más es más fácil que de menos. */
+  gp = "dueno",
   CH = {},
   co = new Set(),
   gx = { c: "", m: "" },
@@ -959,6 +970,17 @@ function subP() {
       (l) => (H = l),
     );
     g(query(collection(db, "ventas"), where("bid", "==", me.uid)), vt);
+    /* Los gastos también, para que un barbero pueda restar los suyos de su
+       ganancia. Los puede VER pero no escribir: las reglas dejan escribir sólo
+       al dueño, así que un barbero no se inventa gastos para que le parezcan
+       menos. El dueño los carga y le etiqueta de quién es cada uno.
+
+       Con la consulta del dueño no alcanza: la de arriba va en la rama del
+       dueño y esta rama no traía ninguna. */
+    g(
+      query(collection(db, "gastos"), where("hechoEn", ">=", st)),
+      (l) => (GA = l),
+    );
   }
 }
 function setup(a) {
@@ -3433,6 +3455,12 @@ Object.assign(W, {
       el.value = gx.m;
     } else gx.c = el.value.slice(0, 40);
   },
+  /* A quién se le carga este gasto. Un botón por persona y no un select: son
+     pocas, y el nombre entero se lee mejor que una opción recortada. */
+  gsetP(k) {
+    gp = k;
+    R();
+  },
   async gAdd() {
     /* Las reglas de Firestore ya limitan esto al dueño. La guarda no es por
        seguridad sino por el mensaje: sin ella, un barbero que llegue por un
@@ -3455,9 +3483,17 @@ Object.assign(W, {
         c: gx.c.trim(),
         m: +gx.m,
         d: ymd(),
+        /* De quién es el gasto.
+
+           Sin este campo se cuenta como del dueño: es lo que pasaba antes, y los
+           gastos que ya estaban cargados son suyos, así que tienen que seguir
+           siéndolo sin tocar nada. */
+        para: gp,
         hechoEn: now(),
       });
       gx = { c: "", m: "" };
+      /* `gp` NO se reinicia a propósito: cargar el alquiler todos los meses
+         es lo normal, y obligar a tocar el botón otra vez es un paso de más. */
       R();
     } catch (e) {
       err(e);
@@ -6734,11 +6770,12 @@ function finH() {
     G = {},
     hoy = ymd(),
     cj = {};
+
   L.forEach((t) => {
     const k = t.bid || "x",
       m = t.precio || 0,
       o = Math.round((m * (t.pd ?? FN.pd)) / 100);
-    const g = (G[k] = G[k] || { n: t.bn || "Sin asignar", c: 0, t: 0, o: 0 });
+    const g = (G[k] = G[k] || { k, n: t.bn || "Sin asignar", c: 0, t: 0, o: 0 });
     g.c++;
     g.t += m;
     g.o += o;
@@ -6748,18 +6785,88 @@ function finH() {
     const m = t.medio || "Sin dato";
     cj[m] = (cj[m] || 0) + (t.precio || 0);
   });
+
+  /* ---------- de quién es cada gasto ----------
+
+     Un gasto es de una persona, y se le descuenta a ESA persona.
+
+     El dueño lo pidió así porque alquila el local aunque sea el dueño de la
+     barbería: el alquiler sale de su bolsillo, no de la caja común. Y lo mismo
+     para cada barbero: cada uno descuenta lo que gasta de su ganancia neta, para
+     llevar el dinero de cada uno por separado.
+
+     La clave de un gasto es la MISMA que usa el cobro para saber de quién es
+     (`bsnap()` devuelve `bid`), así los dos se cruzan sin traducir nombres: los
+     cobros de un barbero y sus gastos se juntan solos.
+
+     Un gasto sin `para` —los que había cargados antes de que esto existiera— es
+     del dueño. Es lo mismo que si fuera explícito, y deja los números viejos
+     como estaban. */
+  const GL = GA.filter((g) => f(g.d)).sort((a, b) => b.hechoEn - a.hechoEn),
+    esDelDueño = (g) => !g.para || g.para === "dueno",
+    gstDueño = GL.filter(esDelDueño).reduce((a, g) => a + g.m, 0),
+    gstDe = (k) => GL.filter((g) => !esDelDueño(g) && g.para === k).reduce((a, g) => a + g.m, 0),
+    GT = GL.reduce((a, g) => a + g.m, 0);
+
+  /* Las personas a las que se puede cargar un gasto: el dueño y cada barbero de
+     la lista. El dueño va con el nombre de su ficha si la tiene, que se lee
+     mejor que "Dueño" a secas. */
+  const fichaDueño = FN.bs.find((b) => esElDueño(b)),
+    nomDueño = (fichaDueño && fichaDueño.n) || "Dueño",
+    etqDueño = nomDueño === "Dueño" ? "Dueño" : nomDueño + " (dueño)",
+    personas = [{ k: "dueno", n: nomDueño === "Dueño" ? "Vos" : nomDueño + " (tú)" }].concat(
+      FN.bs.filter((b) => !esElDueño(b)).map((b) => ({ k: b.id, n: b.n || "Barbero" })),
+    ),
+    nomDe = (k) => {
+      const p = personas.find((x) => x.k === k);
+      return p ? p.n : "Barbero";
+    },
+    /* ¿Este grupo de cobros es el dueño? El dueño aparece en la lista de
+       barberos cuando marcó "Yo también soy el barbero", y en ese caso su dinero
+       YA está contado en su parte de dueño (`g.o`): si además se lo sumara como
+       una fila de barbero se le contaría dos veces. */
+    esDueElGrupo = (k) => {
+      const b = FN.bs.find((x) => x.id === k);
+      return k === OWNER_UID || (!!b && esElDueño(b));
+    };
+
+  /* ---------- las cifras de cada uno ---------- */
+
   const GR = Object.values(G).sort((a, b) => b.t - a.t),
     TT = GR.reduce((a, g) => a + g.t, 0),
-    OO = GR.reduce((a, g) => a + g.o, 0),
-    GL = GA.filter((g) => f(g.d)).sort((a, b) => b.hechoEn - a.hechoEn),
-    GT = GL.reduce((a, g) => a + g.m, 0),
-    P = [
+    OO = GR.reduce((a, g) => a + g.o, 0);
+
+  /* El dueño NO es una fila más de la tabla: su dinero es `OO`, la parte que se
+     quedó de todos los cobros, y va una sola vez. Después están los barberos que
+     no son él, cada uno con lo suyo. */
+  const filas = own
+    ? [{ n: etqDueño, c: L.length, t: OO, g: gstDueño }].concat(
+        GR.filter((x) => !esDueElGrupo(x.k)).map((x) => ({ n: x.n, c: x.c, t: x.t - x.o, g: gstDe(x.k) })),
+      )
+    : [{ n: "Vos", c: L.length, t: TT - OO, g: 0 }];
+
+  /* El gasto de un barbero es el que lleva SU clave, y puede tener más de una: su
+     uid y el id de su ficha no siempre coinciden. Se suman todas las que le
+     pertenecen y no sólo una. */
+  if (!own) {
+    const mias = [me.uid].concat(
+      FN.bs.filter((b) => b.id === me.uid || (b.uid && b.uid === me.uid)).map((b) => b.id),
+    );
+    filas[0].g = GL.filter((g) => !esDelDueño(g) && mias.indexOf(g.para) >= 0).reduce((a, g) => a + g.m, 0);
+  }
+  filas.forEach((x) => (x.neto = x.t - x.g));
+  const NETO_TOTAL = filas.reduce((a, x) => a + x.neto, 0);
+
+  const P = [
       ["hoy", "Hoy"],
       ["sem", "7 días"],
       ["mes", "Este mes"],
       ["all", "Todo"],
     ],
     kp = (l, v) => `<div class="card kpi"><small>${l}</small><b>${v}</b></div>`,
+    kpis = own
+      ? kp("Facturado", $$(TT)) + kp("Gastos", $$(GT)) + kp("Neto del negocio", $$(NETO_TOTAL))
+      : kp("Facturado", $$(TT)) + kp("Mis gastos", $$(filas[0].g)) + kp("Mi neto", $$(filas[0].neto)),
     caja = `<h2>Caja de hoy</h2><div class="card">${
       Object.keys(cj)
         .map(
@@ -6768,79 +6875,73 @@ function finH() {
         )
         .join("") || "<small>Todavía no hay cobros hoy.</small>"
     }<div class="line"><span><b>Total</b> <small>${hy.length} ${hy.length === 1 ? "cobro" : "cobros"}</small></span><span class="price">${$$(hy.reduce((a, t) => a + (t.precio || 0), 0))}</span></div></div>`;
-  /* Lote 36: la barbería tiene un solo barbero y es el dueño, así que mostrar
-     "Para el dueño" y "Para los barberos" con el 100% y el 0% al lado no dice
-     nada. Cuando TODOS los barberos de la lista son el dueño, el reparto no
-     existe y se muestran los números que de verdad importan: lo facturado, lo
-     que se gastó y el neto. En cuanto entre otro barbero, el reparto vuelve a
-     aparecer solo, sin tocar nada. */
-  const soloYo = FN.bs.length > 0 && FN.bs.every(esElDueño);
-  const kps = own
-    ? soloYo
-      ? kp("Facturado", $$(TT)) + kp("Gastos", $$(GT)) + kp("Neto tuyo", $$(TT - GT))
-      : kp("Facturado", $$(TT)) +
-        kp("Para el dueño", $$(OO)) +
-        kp("Para los barberos", $$(TT - OO)) +
-        kp("Gastos", $$(GT)) +
-        kp("Neto del dueño", $$(OO - GT))
-    : kp("Facturado", $$(TT)) + kp("Mi ganancia", $$(TT - OO));
-  /* Los gastos del NEGOCIO, no de un barbero: el alquiler lo paga la
-     barbería, no el que corta. Por eso van en una colección propia y no se
-     reparten con los cobros. Y por eso sólo los carga el dueño (las reglas de
-     Firestore también lo limitan: `match /gastos/{id}` es `isOwner()`).
 
-     Este bloque estaba escrito y NO SE DIBUJABA: la acción `gAdd` guardaba
-     bien, pero no había forma de llegar a ella, así que el alquiler —ni ningún
-     otro gasto— se podía cargar. Estaba en el archivo, no en la pantalla.
+  /* ---------- la pantalla ---------- */
 
-     Había además dos copias más del mismo formulario (`gastosLista` y
-     `gastoForm`), las dos muertas también. Se borraron: dos formularios
-     iguales que no se usan son una forma larga de que el que se arregla
-     primero no sea el que está en pantalla. */
-  const gastosH =
-    `<h2>Gastos</h2>` +
-    `<div class="card"><div class="line" style="margin-bottom:12px"><span>Del negocio</span>` +
-    `<small>El alquiler, los insumos y todo lo demás que paga la barbería. Bajan del total facturado para saber cuánto te queda.</small></div>` +
-    `<input id="gc" placeholder="Concepto (alquiler, insumos…)" maxlength="40" value="${esc(gx.c)}" data-in="gIn" data-args="${A("c", "@el")}">` +
-    `<input id="gm" inputmode="numeric" placeholder="Monto $" maxlength="8" value="${esc(gx.m)}" data-in="gIn" data-args="${A("m", "@el")}">` +
-    `<button class="main" style="margin-top:0" data-act="gAdd">+ Agregar gasto</button></div>` +
-    (GL.length
-      ? `<div class="scr" style="margin-top:12px">` +
-        GL.map(
-          (g) =>
-            `<div class="row"><div><b>${esc(g.c)}</b><br><small>${fd(g.d)}</small></div><div class="rt"><span class="price" style="color:var(--red)">− ${$$(g.m)}</span><button class="x" aria-label="Eliminar gasto" data-act="askGDel" data-args="${A(g.id)}">✕</button></div></div>`,
-        ).join("") +
-        `</div>`
-      /* Con la lista vacía la pantalla se quedaba en blanco después del botón,
-         sin decir si faltaba cargar uno o si no se estaba mostrando. */
-      : `<p style="margin-top:12px"><small>Todavía no hay gastos cargados en este período. El alquiler se carga acá, una vez por mes.</small></p>`);
-  const tablaBarb = `<h2 class="lab" style="margin-top:0">Porcentaje por barbero</h2>` +
-    (own && fe
-      ? `<div class="card"><div class="bwrap"><div class="clin chead" style="grid-template-columns:44px 1.4fr .6fr 1fr .5fr 1fr"><span></span><span>Barbero</span><span>Cortes</span><span>Facturado</span><span>%</span><span style="text-align:right">Le corresponde</span></div>` +
-        (GR.length
-          ? GR.map((g) => {
-              /* El reparto sale de los PROPIOS cobros, no de la lista de
-                 porcentajes.
+  /* Los carga el dueño —las reglas no dejan escribir a un barbero— pero un
+     barbero SÍ los ve: son los suyos, y le bajan de su ganancia. Por eso el
+     formulario y el botón de borrar van sólo para el dueño, y la lista para los
+     dos. */
+  const selectorPersona =
+    `<h3 style="margin-top:0">¿De quién es el gasto?</h3><div class="chips">${personas
+      .map(
+        (p) =>
+          `<button class="chip ${gp === p.k ? "on" : ""}" aria-pressed="${gp === p.k}" data-act="gsetP" data-args="${A(p.k)}">${esc(p.n)}</button>`,
+      )
+      .join("")}</div><small>El alquiler es tuyo si vos pagás el local. Si el gasto es de un barbero, se le descuenta a él de su ganancia.</small>`;
 
-                   Antes se buscaba al barbero por NOMBRE (`fe.bs.find(b => b.n
-                   === g.n)`) y de ahí salía `100 - pdB`. Tres cosas malas: si dos
-                   barberos tienen el mismo nombre tomaba el primero; ese
-                   porcentaje se imponía sobre TODO el facturado del barbero
-                   aunque cada cobro traiga el suyo; y con el dueño como único
-                   barbero daba 0% y $0, al revés de lo que pasa.
+  const listaGastos =
+    GL.length
+      ? `<div class="scr" style="margin-top:12px">${GL.map((g) => {
+          const deQuien = esDelDueño(g) ? etqDueño : nomDe(g.para);
+          return (
+            `<div class="row"><div><b>${esc(g.c)}</b><br><small>${fd(g.d)} · ${esc(deQuien)}</small></div>` +
+            `<div class="rt"><span class="price" style="color:var(--red)">− ${$$(g.m)}</span>` +
+            (own ? `<button class="x" aria-label="Eliminar gasto" data-act="askGDel" data-args="${A(g.id)}">✕</button>` : "") +
+            `</div></div>`
+          );
+        }).join("")}</div>`
+      : /* Con la lista vacía la pantalla se quedaba en blanco después del
+           botón, sin decir si faltaba cargar uno o si no se estaba mostrando. */
+        `<p style="margin-top:12px"><small>Todavía no hay gastos en este período. El alquiler se carga acá, una vez por mes.</small></p>`;
 
-                   `g.o` ya acumula la parte del dueño de cada cobro, usando el
-                   `pd` que ese cobro guardó. La del barbero es la resta, y el
-                   porcentaje sale de ahí. Así los cobros viejos conservan su
-                   reparto, los nuevos usan el de ahora, y el dueño-barbero
-                   muestra 100% sin ningún caso especial. */
-                parteBarbero = g.t - g.o,
-                borPct = g.t ? Math.round((parteBarbero / g.t) * 100) : 0;
-              return `<div class="clin" style="grid-template-columns:44px 1.4fr .6fr 1fr .5fr 1fr"><span class="aval" style="width:36px;height:36px;font-size:16px">${esc((g.n || "?")[0].toUpperCase())}</span><b>${esc(g.n)}</b><span>${g.c}</span><span>${$$(g.t)}</span><span>${borPct} %</span><b style="color:var(--brass);text-align:right">${$$(parteBarbero)}</b></div>`;
-            }).join("")
-          : `<p style="padding:14px"><small>Todavía no hay cobros en este período.</small></p>`) +
-        `</div>` +
-        `<p style="padding:14px 14px 4px;margin:0;border-top:1px solid var(--line)"><small>El porcentaje de cada barbero se cambia desde la pantalla Barberos.</small></p>` +
+  const formGastos = own
+    ? `<div class="card">${selectorPersona}<input id="gc" placeholder="Concepto (alquiler, insumos…)" maxlength="40" value="${esc(gx.c)}" data-in="gIn" data-args="${A("c", "@el")}"><input id="gm" inputmode="numeric" placeholder="Monto $" maxlength="8" value="${esc(gx.m)}" data-in="gIn" data-args="${A("m", "@el")}"><button class="main" style="margin-top:0" data-act="gAdd">+ Agregar gasto</button></div>` +
+      listaGastos
+    : listaGastos;
+
+  /* La tabla de cada uno. Reemplaza a la de "porcentaje por barbero", que con el
+     dueño como único barbero mostraba "0 %" y "$0" al lado de sus propios cortes.
+     El dinero no era cero: estaba en la parte del dueño, que es el mismo. La
+     pantalla parecía decir que no había ganado nada, y no era así.
+
+     Acá cada fila es una persona y los números suman: la suma de los netos es el
+     neto del negocio. Se perdió la columna de cortes porque estaba atada al
+     reparto, que ya no se muestra; si hace falta vuelve, como un número más. */
+  const filaG = (n, t, g) =>
+    `<div class="clin" style="grid-template-columns:1.6fr .8fr 1fr 1fr"><b>${esc(n)}</b>` +
+    `<span>${$$(t)}</span><span style="color:var(--red)">${g ? "− " + $$(g) : "—"}</span>` +
+    `<b style="text-align:right;color:${t - g < 0 ? "var(--red)" : "var(--brass)"}">${$$(t - g)}</b></div>`;
+
+  const tablaGanancias =
+    `<h2 class="lab" style="margin-top:0">${own ? "Ganancia de cada uno" : "Tu ganancia"}</h2>` +
+    `<div class="card"><div class="bwrap"><div class="clin chead" style="grid-template-columns:1.6fr .8fr 1fr 1fr"><span>${own ? "Persona" : ""}</span><span>Facturado</span><span>Gastos</span><span style="text-align:right">Neto</span></div>` +
+    filas.map((x) => filaG(x.n, x.t, x.g)).join("") +
+    (own
+      ? `<div class="clin" style="grid-template-columns:1.6fr .8fr 1fr 1fr;border-top:1px solid var(--line)"><b>Total del negocio</b><span>${$$(TT)}</span><span style="color:var(--red)">${GT ? "− " + $$(GT) : "—"}</span><b style="text-align:right;color:${NETO_TOTAL < 0 ? "var(--red)" : "var(--brass)"}">${$$(NETO_TOTAL)}</b></div>` +
+        `<p style="padding:14px 14px 4px;margin:0"><small>Lo que se le descuenta a cada uno son los gastos que están a su nombre. El total es lo que queda de lo facturado.</small></p>`
+      : `<p style="padding:14px 14px 4px;margin:0"><small>Lo que se te descuenta son los gastos que están a tu nombre.</small></p>`) +
+    `</div>` +
+    /* El editor de porcentajes es un control que ya funcionaba y se copia tal cual:
+       al reescribir la pantalla, "Guardar porcentajes" y "+ Agregar barbero" me
+       quedaron fuera de la tarjeta por un `</div>` de más, y las etiquetas
+       cambiaron. Es largo, y por eso conviene copiarlo entero en vez de
+       reescribirlo de memoria. Sólo lo ve el dueño. */
+    /* El editor de porcentajes se copia entero de la versión que funcionaba.
+       Al reescribir la pantalla, "Guardar porcentajes" y "+ Agregar
+       barbero" me quedaron fuera de la tarjeta por un `</div>` de más. Es
+       largo, y por eso conviene copiar la expresión completa en vez de
+       reescribirla de memoria. */
         (fe
           ? `<details style="padding:0 14px 14px"><summary style="cursor:pointer;color:var(--brass)">Editar porcentajes</summary><small>Porcentaje que se queda el dueño. Se aplica a los cobros nuevos; los anteriores conservan el suyo.</small><h3>% del dueño por defecto</h3><input id="fpd" inputmode="numeric" maxlength="3" value="${esc(fe.pd)}" data-in="feDef" data-args="${A("@el")}">${fe.bs.map((b, i) => {
             /* La fila del dueño se ve distinta y su porcentaje no se edita: es siempre
@@ -6861,24 +6962,16 @@ function finH() {
           }<div class="chips"><button data-act="feAdd">+ Agregar barbero sin cuenta</button></div><small style="display:block;margin-top:8px">Para que otro barbero entre con su usuario: que se cree una cuenta y usá “Hacer barbero” en Clientes.</small><button class="main" data-act="feGuardar">Guardar porcentajes</button></details>`
           : "") +
         `</div>`
-      : `<p><small>Todavía no hay cobros en este período.</small></p>`);
   return (
     `<div class="head" style="margin-top:0"><div><h1 style="margin-bottom:4px">${own ? "Finanzas" : "Mis ganancias"}</h1><small>${new Date().toLocaleDateString("es-AR", { month: "long", year: "numeric" })}</small></div><div class="chips">${P.map((p) => `<button class="chip ${per === p[0] ? "on" : ""}" aria-pressed="${!!(per === p[0])}" data-act="setPer" data-args="${A(p[0])}">${p[1]}</button>`).join("")}<button data-act="exportar">⬇ Exportar CSV</button></div></div>` +
-    `<div class="kpis">${kps}</div>` +
-    (own
-      ? `<div class="grid b" style="grid-template-columns:minmax(300px,380px) 1fr"><div>${caja}</div><div>${tablaBarb}</div></div>` +
-        /* Los gastos van abajo y a lo ancho, y sólo para el dueño: los gastos
-           son del negocio y las reglas no los dejan escribir a un barbero. En la
-           columna de la caja no entraban sin achicar el resto. */
-        `<div class="grid b" style="grid-template-columns:1fr"><div>${gastosH}</div></div>`
-      : `<div class="grid b"><div><h2>${own ? "Ganancia por barbero" : "Detalle"}</h2>` +
-        (GR.length
-          ? GR.map(
-              (g) =>
-                `<div class="card bc"><div class="line"><b>${esc(g.n)}</b><small>${g.c} ${g.c === 1 ? "corte" : "cortes"}</small></div><div class="line"><span>Facturado</span><b>${$$(g.t)}</b></div>${own ? `<div class="line"><span>Para el dueño</span><b>${$$(g.o)}</b></div>` : ""}<div class="line"><span>Ganancia del barbero</span><span class="price">${$$(g.t - g.o)}</span></div></div>`,
-            ).join("")
-          : "<p><small>Todavía no hay cobros en este período.</small></p>") +
-        `</div><div>${caja}</div></div>`)
+    `<div class="kpis">${kpis}</div>` +
+    `<div class="grid b" style="grid-template-columns:minmax(300px,380px) 1fr"><div>${caja}</div><div>${tablaGanancias}</div></div>` +
+    `<div class="grid b" style="grid-template-columns:1fr"><div><h2>Gastos</h2>${formGastos}</div></div>` +
+    `<div class="grid b" style="grid-template-columns:1fr"><div><h2>Cobros del período</h2>` +
+    (L.length
+      ? `<div class="card">${L.map((t) => `<div class="line"><span><b>${esc(t.serv || sv(t).n)}</b> · ${esc(bn(t) || "—")}<br><small>${esc(fd(t.d))}</small></span><span style="text-align:right"><b>${$$(t.precio || 0)}</b></span></div>`).join("")}</div>`
+      : `<p><small>Todavía no hay cobros en este período.</small></p>`) +
+    `</div></div>`
   );
 }
 function cfgH() {
@@ -7236,6 +7329,37 @@ if (["localhost", "127.0.0.1", ""].includes(location.hostname)) {
     setBars(l) {
       BARS = Array.isArray(l) ? l : [];
       R();
+    },
+    /* Cobros de mentira, para probar la aritmética de Finanzas sin escribir en
+       la base.
+
+       Hace falta porque los números de la tabla (facturado, gastos, neto de cada
+       uno) sólo se pueden comprobar con cobros, y no hay forma de meter un cobro
+       de prueba y borrarlo después: las reglas no dejan borrar uno ya cobrado, y
+       un cobro inventado que queda en la base del dueño es peor que una prueba
+       que no se hace. Con esto se mete lo que haga falta en memoria y no se toca
+       Firestore.
+
+       `pd` es el porcentaje que se queda el dueño en ese cobro, y `bid` de qué
+       barbero es: los dos los usa `bsnap()` al guardar. */
+    setVentas(l) {
+      VT = (Array.isArray(l) ? l : []).map((x) => ({ ...x, man: 1 }));
+      R();
+      return VT.length;
+    },
+    /* La lista de fichas de Finanzas (`config/finanzas.bs`), en memoria.
+
+       Va con `setVentas` por lo mismo: el reparto entre el dueño y un segundo
+       barbero es lo que hay que comprobar, y en la base hay una sola ficha (la
+       del dueño). Agregar un barbero de verdad y después borrarlo deja rastro en
+       la base del dueño, así que para probar el reparto en dos se pone la lista
+       entera en memoria y no se toca Firestore.
+
+       Recibe la lista y el `%` por defecto del dueño. */
+    setFn(l, pd) {
+      FN = { pd: pd === undefined ? FN.pd : pd, bs: (Array.isArray(l) ? l : []).map((b) => ({ ...b })) };
+      R();
+      return FN.bs.length;
     },
     /* Estado de la pantalla de contraseña social, para probar los caminos
        sin abrir el pop-up de Google (que abriría otra pestaña y pide una

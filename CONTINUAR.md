@@ -1501,7 +1501,7 @@ Con `prefers-reduced-motion: reduce` **no gira**: se oculta el frente y el dorso
 
 10. **Ojo con el uso de la palabra "wizard" y el acento de `main.js`** si editás templates anidados: los backticks anidados rompen los scripts de reemplazo. Para cambios grandes en templates, escribí el script con la herramienta de escritura, no con heredoc de PowerShell.
 
-10b. **Nunca uses un heredoc de PowerShell para escribir un archivo con acentos.** `Reseña` sale `Rese�a` y el script falla en runtime con un error de locator que no dice nada del mojibake. Es la trampa #1 pero aplicada a los **tests**: para cualquier `.js` con texto español, usar la herramienta de escritura, no `Set-Content`.
+10b. **Nunca uses un heredoc de PowerShell para escribir un archivo con acentos.** `Reseña` sale `Reseña` y el script falla en runtime con un error de locator que no dice nada del mojibake. Es la trampa #1 pero aplicada a los **tests**: para cualquier `.js` con texto español, usar la herramienta de escritura, no `Set-Content`.
 
 10c. **Un test que verifica una UI que "no hace nada" puede estar mintiendo.** Las sondas de la reseña siguieron dando "sin diálogo" durante varias vueltas porque el asistente tiene 3 pasos y sólo se recorrían 2. **Antes de diagnosticar la app, comprobá que el test llega hasta el final del flujo** — y verificá contra la BASE (red, base de datos), no contra un elemento de UI que el código nunca muestra.
 
@@ -2741,3 +2741,111 @@ dueño. Es fácil confundirlos al escribir una prueba.
 
 **Nada de esto está en vivo.** Sigue sin desplegar: en `codigobarber.com.ar`
 está `sw.js` v11 y acá va v19. Los lotes 29 a 38 son **diez** sin publicar.
+
+## 39. La plata de cada individuo: ganancia neta por persona
+
+**Cada gasto es de UNA persona —el dueño o un barbero— y le baja de SU ganancia
+neta, no del negocio entero.** El dueño lo pidió así, con tres respuestas:
+
+> *"yo solo quiero que haya en dueño un gasto que seria el alquiler o cualquier
+> servicio y se descuente de su ganancia neta. lo mismo sucede si los barberos
+> quieren sacar su ganancia neta restando el alquiler u otra cosa, es mas para
+> tener un manejo de plata para cada individuo de manera personal"*
+
+- Sobre cómo se reparte con un segundo barbero futuro: *"mantenga la misma
+  respuesta queq la anterior"* — el diseño ya nace por persona, no cambia nada.
+- Sobre un hipotético porcentaje sobre la neta: *"no lo coloques. me
+  arrepiento"* — porcentaje muerto antes de nacer. Tampoco costo por servicio.
+
+Toda la pantalla de Finanzas se reescribió para esto. Detalle del producto (lo
+que se ve y por qué) en **PRODUCT.md §39**.
+
+### Cómo quedó, para el que siga
+
+- `gp` / `gsetP`: de quién es el gasto que se está cargando. Arranca en
+  `"dueno"` y **no se vuelve a arrancar al guardar** — el alquiler se carga
+  cada mes, no hay que reelegir cada vez.
+- `gAdd` guarda `para: gp` en el documento. Los gastos viejos del §38, que no
+  traen `para`, cuentan como del dueño: los números de antes no se mueven.
+- La clave del gasto es la misma clave `bid` que usa `bsnap()` para los cobros:
+  cobros y gastos se cruzan sin traducciones de por medio.
+- `finH()` reescrita completa (~192 líneas):
+  - Dueño: **Facturado · Gastos · Neto del negocio**; barbero: **Facturado ·
+    Mis gastos · Mi neto**. Las tres tarjetas salen de la MISMA tabla
+    "Ganancia de cada uno" (Persona · Facturado · Gastos · Neto + fila **Total
+    del negocio**).
+  - El dueño no se cuenta dos veces: su fila toma `t: OO` (su parte de todos
+    los cobros) y `esDueElGrupo(k)` (`k === OWNER_UID || (b && esElDueño(b))`)
+    tira su grupo del detalle de barberos.
+  - Etiqueta del dueño: `etqDueño` sale una sola vez —`"Dueño"` si el nombre es
+    literal, si no `nombre + " (dueño)"`— y se usa en tres lugares.
+- La base real se quedó como estaba: **cero ventas, cero gastos** (el barrido
+  post-pruebas lo confirmó en Todo/Este mes/7 días/Hoy). Las escenas de prueba
+  se arman con `window.__test.setVentas(l)` y `window.__test.setFn(l, pd)`,
+  que no escriben Firestore.
+- `sw.js` → `barberia-v20`.
+
+### Las reglas hay que publicarlas (pendiente del dueño)
+
+`FIRESTORE_RULES.txt` cambió: los gastos ahora los puede **leer** cualquiera
+firmado (`allow read: if isSignedIn();`) y **escribir** sólo el dueño. La razón:
+el barbero tiene que poder ver los gastos que están a su nombre, pero si
+pudiera cargarlos, se inventaría gastos propios para que su ganancia parezca
+más chica de lo que es.
+
+**No está publicado en la consola todavía.** Hasta que el dueño pegue las
+reglas nuevas en Firebase console, un barbero real recibiría `permission-denied`
+en su primera consulta de gastos. La app lo aguanta con un aviso, pero esa rama
+**no se verificó en vivo**: la cuenta de prueba de `BARBERO_EMAIL` sigue sin
+documento `staff` (la app la trata como cliente; ya lo registró el §38), así
+que no hay barbero real con quien mirarla. Cuando se publiquen las reglas: promover esa cuenta desde el
+panel y entrar a Finanzas como barbero.
+
+### Las pruebas
+
+- §39 de `tests/lote25.js`: ~35 comprobaciones, incluida una de punta a punta
+  contra Firestore (gasto marcado con `para`: carga → verifica → borra).
+- §36 y §38 se ajustaron a la pantalla nueva — con sus especificaciones
+  renovadas, no debilitadas.
+- El incidente de los importes duplicados: corridas de prueba interrumpidas a
+  la mitad dejaban gastos de prueba en la base y la pantalla los mostraba
+  repetidos. §38 quedó envuelto en `try/finally` con `borrarPruebas()` para que
+  la limpieza corra también si algo explota, más un guarda `sucios38` que grita
+  si queda basura. `tests/_limpiar.js` es la escoba manual (no corre en
+  `run.js`, se invoca a mano cuando hace falta).
+- **Suite completa: 38 pruebas · 1018 comprobaciones · 0 en rojo.** Capturas en
+  `tmp_shots/39-reparto.png`, `39-final.png`, `39-neto.png`.
+
+### Lo que se rompió esta vez, para reconocerlo rápido
+
+1. `CH is not defined` y `etqDueño is not defined`: dos empalmes de código
+   escritos a mano que dejaron una variable sin su declaración y una etiqueta
+   sin definir. Después de cada empalme: `node --check` y releer el tramo
+   entero.
+2. Un `<div>` desbalanceado empujó los botones fuera de su tarjeta. Se arregló
+   copiando el bloque entero de `HEAD`, no a mano.
+3. El ñ volvió a manglar dos veces — sigue en pie la regla: nada de heredocs de
+   PowerShell con acentos; `write`/`edit` y revisar `[\uFFFD\u4e00-\u9fff]`
+   después.
+4. El parser de importes de las pruebas leía `$180.000` como decimal. Ahora es
+   dígitos + `parseInt` + `Math.abs` (el `.` es separador de miles).
+5. **La sorpresa grande**: `src/main.js` de la copia de trabajo tenía el mapa
+   de la landing con `src=` (carga a pedido perdida — HEAD tenía `data-src=`,
+   el empalme de este lote lo pisó sin darse cuenta). El test completo `mapa`
+   lo encontró; la suite sola de lote25 no lo miraría nunca. Volver a poner
+   `data-src="${esc(MAP_IFRAME)}"` y todo verde. **Lección: antes de commitear,
+   SIEMPRE `node tests\run.js` entero (38 pruebas), no sólo `lote25.js`.**
+
+### Qué queda en la fila (en orden)
+
+1. **Publicar las reglas nuevas** de `FIRESTORE_RULES.txt` en la consola de
+   Firebase (detalladas arriba) y comprobar Finanzas con un barbero real.
+2. Rotar las tres contraseñas de las cuentas de prueba (pendiente del §38,
+   sigue igual).
+3. Desactivar el proveedor de Facebook en la consola; mirar la restricción de
+   dominio del `apiKey`.
+4. Google Business Profile.
+5. **Desplegar: doce lotes sin publicar (29–39).** En `codigobarber.com.ar`
+   está `sw.js` v11; acá va `v20`.
+6. Cuando el dueño quiera: dominio nuevo (seis espejos — `tests/seo.js` falla
+   si se desalinean) y `EMAIL` real en `src/config.js`.

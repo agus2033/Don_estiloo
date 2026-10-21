@@ -1,4 +1,4 @@
-const V = "barberia-v19",
+const V = "barberia-v20",
   SHELL = [
     "./",
     "index.html",

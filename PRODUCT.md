@@ -1417,3 +1417,75 @@ comprobaciones que estaban rotas:
   ficha del barbero—. Si esa cuenta vuelve a ser barbero, entra por la otra rama.
 
 **38 pruebas · 978 comprobaciones · 0 en rojo.**
+
+## 39. La plata de cada uno: cada gasto es de UNA persona
+
+El §38 dijo que los gastos eran *"del negocio, no del barbero"*. El dueño lo
+pensó mejor y lo corrigió:
+
+> *"yo solo quiero que haya en dueño un gasto que seria el alquiler o cualquier
+> servicio y se descuente de su ganancia neta. lo mismo sucede si los barberos
+> quieren sacar su ganancia neta restando el alquiler u otra cosa, es mas para
+> tener un manejo de plata para cada individuo de manera personal"*
+
+Los gastos los carga el dueño igual que antes (desde Finanzas, con las mismas
+reglas de escritura), pero **cada gasto lleva a quién le corresponde** —el dueño
+o un barbero— y **le baja de SU ganancia neta**, no del total del negocio. Para
+el alquiler del local con un barbero futuro sigue valiendo lo mismo: se pregunta
+de nuevo con la misma respuesta, y respondió *"mantenga la misma respuesta queq
+la anterior"*, así que nada cambia cuando entren más barberos.
+
+### Qué cambió
+
+- En el formulario de gastos aparece **de quién es el gasto** (dueño o barbero).
+  Arranca marcando al dueño —el gasto casi siempre es suyo y equivocarse de
+  más es más fácil que de menos— y **no se vuelve a arrancar** al guardar: el
+  alquiler se vuelve a cargar cada mes y no hay motivo para reelegirlo cada vez.
+- La tabla "Porcentaje por barbero" (que mezclaba `0 %` y `$0` con los
+  recortes del propio dueño, claridad cero) se reemplazó por **"Ganancia de
+  cada uno"**: una fila por persona con **Persona · Facturado · Gastos · Neto**,
+  y abajo la fila **Total del negocio**. El dueño sale etiquetado como *dueño*
+  para distinguirse de la lista de barberos cuando el nombre es igual.
+- Al dueño **no se lo cuenta dos veces**: su fila lleva su parte de todos los
+  cobros, y los barberos no repiten los cobros que son suyos como si fueran
+  del grupo.
+- Las tarjetas cambian según quién mira. El dueño: **Facturado · Gastos · Neto
+  del negocio**. Un barbero: **Facturado · Mis gastos · Mi neto**. El form de
+  gastos es sólo del dueño; la lista de gastos del período la ven los dos.
+- Si un gasto no trae a quién le corresponde (los viejos del §38), cuenta como
+  del dueño: los números de antes no se mueven.
+
+### Lo que NO se calcula
+
+Pregunté si había que computar un porcentaje sobre la ganancia neta: *"no lo
+coloques. me arrepiento"*. No hay porcentaje y no hay costo por servicio: cobra
+lo facturado, la plata que se gasta se marca a nombre de alguien, y a cada uno
+se le muestra su neto.
+
+### Comprobado en vivo (con datos de prueba, sin tocar lo real)
+
+En la sesión del dueño, con cobros y gastos armados para el ensayo (que no
+dejan nada en Firestore, hay hooks para eso):
+
+| | Facturado | Gastos | Neto |
+|---|---|---|---|
+| Dueño | $25.000 | $180.000 | **−$155.000** |
+| Barbero (prueba) | $10.000 | $25.000 | **−$15.000** |
+| Total del negocio | $35.000 | $205.000 | **−$170.000** |
+
+Las tres sumas dan. Etiquetas *Juan (tú)* / *Juan (dueño)* correctas, lista de
+gastos con nombre, botones **Guardar porcentajes** y **+ Agregar barbero**
+verificados adentro de su tarjeta. Capturas en `tmp_shots/39-reparto.png`,
+`39-final.png` y `39-neto.png`.
+
+El gasto de verdad cargado y luego borrado también se comprobó contra
+Firestore (§39 de `tests/lote25.js`), y la base quedó con cero gastos de prueba
+en todos los períodos.
+
+### Pruebas
+
+35 comprobaciones nuevas en `tests/lote25.js` (§39), más los reajustes de §36 y
+§38 para la pantalla nueva. Y una cosa más: la suite completa (38 pruebas, no
+sólo la de este lote) encontró un despiste —el mapa de la landing había perdido
+su carga a pedido (`data-src` había quedado `src`)— que la prueba de este lote
+sola no veía. Está reparado. **38 pruebas · 1018 comprobaciones · 0 en rojo.**

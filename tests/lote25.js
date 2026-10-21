@@ -151,7 +151,20 @@ async function entrar(b, email, pass, ancho = 1400) {
     "ventas: un barbero sólo toca las suyas, no las del dueño",
     bVentas,
   );
-  ok(bGastos !== null && /allow read, create, update, delete: if isOwner\(\);/.test(bGastos), "gastos: los carga sólo el dueño");
+  /* Escritura sólo del dueño. La LECTURA se abrió en el lote 39, para que cada
+   barbero pueda ver los gastos que están a su nombre y restárselos de su
+   ganancia: son los mismos números que el dueño ve, así que no hay nada que un
+   barbero pueda ver de más. */
+ok(
+  bGastos !== null && /allow create, update, delete: if isOwner\(\);/.test(bGastos),
+  "gastos: sólo el dueño los carga",
+  bGastos,
+);
+ok(
+  bGastos !== null && /allow read: if isSignedIn\(\);/.test(bGastos),
+  "pero cualquier barbero con sesión puede verlos",
+  bGastos,
+);
 
   /* ---------- fotoBarbero: el perfil público del barbero ----------
      Esta regla tenía el bug que hacía que la foto nunca llegara a la web. Vale
@@ -987,12 +1000,22 @@ async function entrar(b, email, pass, ancho = 1400) {
     /if \(uid === OWNER_UID\)/.test(cuerpoMkBar) && /ya sos el /.test(cuerpoMkBar),
     "y «Hacer barbero» rechaza tu propia cuenta, para no duplicarte en la lista",
   );
-  /* La tabla de "Porcentaje por barbero" no puede buscar al barbero por
-     nombre: con el dueño como único barbero daba 0% y $0. */
+  /* El reparto tiene que salir de los PROPIOS cobros, no de buscar al barbero por
+     nombre. Antes la tabla sacaba un porcentaje (`borPct`) y con el dueño como único
+     barbero mostraba 0 % y $0 al lado de sus propios cortes, porque su dinero estaba
+     en la parte del dueño.
+
+     Ahora (lote 39) la tabla muestra el neto de cada persona y no lleva porcentaje:
+     el del dueño es `OO`, la parte que se quedó de todos los cobros, y el de cada
+     barbero es `t - o`. Lo que no puede volver es el emparejamiento por nombre. */
   ok(
-    !/fe\.bs\.find\(\(b\) => b\.n ===/.test(sinComentarios) && /borPct = g\.t \?/.test(sinComentarios),
+    !/fe\.bs\.find\(\(b\) => b\.n ===/.test(sinComentarios) && /t: x\.t - x\.o/.test(sinComentarios),
     "el reparto de la tabla sale de los cobros, no de buscar al barbero por nombre",
   );
+  ok(
+    !/borPct/.test(sinComentarios),
+  "y ya no hay porcentaje por barbero en la tabla, que con el dueño solo daba 0 %",
+);
 
   /* ---------- 36. la publicación de la lista no puede perder la ficha ----------
      La foto del barbero, el oficio, la descripción y sus redes viven en la lista
@@ -1156,11 +1179,15 @@ console.log("\n--- 38. los gastos: el alquiler ---");
    Neto. Eran cuatro variables definidas y sin usar, y el alquiler —la razón de
    existir de esta pantalla para un dueño que alquila el local— no se podía
    cargar. */
-const cuerpoFin = trozo(sinComentarios, "function finH()", "function cfgH()");
+/* `cuerpoFin39` es el recorte de `finH` que usan las secciones 38 y 39. Se define
+   acá, en la 38, porque va antes: usarlo sin declarar daba "Cannot access before
+   initialization" y la prueba se caía entera ahí. */
+const cuerpoFin39 = trozo(sinComentarios, "function finH()", "function cfgH()");
+const cuerpoFin = cuerpoFin39;
 
-ok(/const gastosH =/.test(cuerpoFin), "el bloque de gastos está escrito");
+ok(/const formGastos =/.test(cuerpoFin), "el bloque de gastos está escrito");
 ok(
-  /\$\{gastosH\}/.test(cuerpoFin),
+  /\$\{formGastos\}/.test(cuerpoFin),
   "y SE DIBUJA: aparece en el HTML que se pinta",
   cuerpoFin.slice(-200),
 );
@@ -1172,13 +1199,12 @@ ok(
    primera versión buscaba la cadena exacta "own\n      ?" y devolvió -1 porque
    la sangría es de diez. Un patrón que depende del formato falla sin que cambie
    nada de lo que se quiere medir. */
-const iOwner38 = cuerpoFin.indexOf("(own");
-const iGast38 = cuerpoFin.indexOf("gastosH}");
-const iCliente38 = cuerpoFin.indexOf('own ? "Ganancia por barbero" : "Detalle"');
+const iOwner38 = cuerpoFin.indexOf("formGastos = own");
+const iGast38 = cuerpoFin.indexOf("Gastos</h2>");
 ok(
-  iOwner38 >= 0 && iGast38 > iOwner38 && iGast38 < iCliente38,
-  "y sólo para el dueño: los gastos están en su rama y no en la del barbero",
-  "dueño=" + iOwner38 + "  gastos=" + iGast38 + "  cliente=" + iCliente38,
+  iOwner38 >= 0 && iGast38 > iOwner38,
+  "y el formulario es sólo del dueño: la lista de gastos es para los dos",
+  "formGastos=" + iOwner38 + "  pintado=" + iGast38,
 );
 
 /* Los tres nombres viejos. Que no quede ninguno es lo que de verdad importa: si
@@ -1203,28 +1229,33 @@ ok(/data-act="gAdd"/.test(cuerpoFin), "con su botón");
 /* Con la lista vacía, después del botón no decía nada: no se distinguía "falta
    cargar uno" de "no se está mostrando nada". */
 ok(
-  /Todavía no hay gastos cargados/.test(cuerpoFin),
+  /Todavía no hay gastos en este período/.test(cuerpoFin),
   "y si no hay gastos, lo dice en vez de dejar un hueco en blanco",
 );
 ok(/data-act="askGDel"/.test(cuerpoFin), "cada gasto se puede borrar desde la lista");
 
 /* Las tarjetas de arriba estaban fijas en tres (Facturado / Caja de hoy / Cortes
-   del período) y kps —que ya tenía las de Gastos y Neto— quedaba sin usar. */
+   del período) y kpis quedaba sin usar. Ahora salen de kpis, que además del
+   dueño tiene su rama para el barbero. */
 ok(
-  /<div class="kpis">\$\{kps\}<\/div>/.test(sinComentarios),
-  "las tarjetas de arriba usan kps, que ya tenía Gastos y Neto",
+  /<div class="kpis">\$\{kpis\}<\/div>/.test(sinComentarios),
+  "las tarjetas de arriba usan kpis",
 );
 ok(!/kp\("Caja de hoy"/.test(cuerpoFin), "y se fue la lista fija de tres tarjetas");
 ok(/kp\("Gastos", \$\$\(GT\)\)/.test(cuerpoFin), "con el total de gastos a la vista");
 ok(
-  /kp\("Neto tu/.test(sinComentarios) || /kp\("Neto del d/.test(cuerpoFin),
+  /kp\("Neto del negocio", \$\$\(NETO_TOTAL\)\)/.test(cuerpoFin),
   "y con lo que queda después de restarlos",
+);
+ok(
+  /kp\("Mi neto", \$\$\(filas\[0\]\.neto\)\)/.test(cuerpoFin),
+  "y el barbero ve el suyo, no el del negocio",
 );
 
 /* El signo negativo. El formateador de dinero ($$) ponía el peso antes del signo,
-   y "Neto tuyo" es facturado menos gastos: da negativo apenas el alquiler pesa
-   más que lo facturado, que al empezar es casi siempre. No se notaba antes
-   porque esa tarjeta nunca llegó a pintarse. */
+   y el neto es facturado menos gastos: da negativo apenas el alquiler pesa más que
+   lo facturado, que al empezar es casi siempre. No se notaba antes porque esa
+   tarjeta nunca llegó a pintarse. */
 const cuerpoDinero = trozo(sinComentarios, "const $$ = (n) => {", "\n\n");
 ok(
   /const neg = v < 0/.test(cuerpoDinero) && /\(neg \? "-" : ""\) \+ "\$"/.test(cuerpoDinero),
@@ -1236,12 +1267,17 @@ ok(
   "y un valor que no es número sigue dando $0",
 );
 
-/* Las reglas ya lo limitaban al dueño. La guarda del cliente no es por
-   seguridad: es para que un barbero reciba una frase y no un permission-denied. */
+/* Escritura sólo del dueño; la lectura se abrió en el lote 39 para que cada
+   barbero vea los gastos que están a su nombre y se los reste de su ganancia.
+   La guarda del cliente no es por seguridad: es para que un barbero reciba una
+   frase y no un permission-denied. */
 ok(
-  /match \/gastos\/\{id\}/.test(reglas) &&
-    /allow read, create, update, delete: if isOwner\(\)/.test(reglas),
-  "las reglas de Firestore dejan los gastos sólo al dueño",
+  /match \/gastos\/\{id\}/.test(reglas) && /allow create, update, delete: if isOwner\(\)/.test(reglas),
+  "las reglas dejan ESCRIBIR los gastos sólo al dueño",
+);
+ok(
+  /allow read: if isSignedIn\(\)/.test(reglas),
+  "pero leerlos puede cualquier barbero, para ver los suyos",
 );
 const cuerpoGAdd = trozo(sinComentarios, "  async gAdd() {", "  askGDel(id) {");
 ok(
@@ -1254,12 +1290,38 @@ ok(
   "y lo mismo al borrar",
 );
 
+/* Borra los gastos de prueba de esta pantalla, y los cuenta. Va en el `finally`
+   de las comprobaciones: si una falla o la prueba se cae, el borrado tiene que
+   pasar igual. */
+const borrarPruebas = async () => {
+  for (let n = await p38.evaluate(() => document.querySelectorAll('[data-act="askGDel"]').length); n > 0; n--) {
+    await p38.evaluate(() => {
+      const x = [...document.querySelectorAll('[data-act="askGDel"]')];
+      if (x.length) x[0].click();
+    });
+    await p38.waitForTimeout(1300);
+    await p38.evaluate(() => {
+      const x = [...document.querySelectorAll('#mo button')].find((y) => /Eliminar/i.test(y.innerText));
+      if (x) x.click();
+    });
+    await p38.waitForTimeout(3000);
+  }
+  return p38.evaluate(() => document.querySelectorAll('.scr .row').length);
+};
+
 /* ---------- en la pantalla ---------- */
 const { ctx: c38, page: p38, jsErr: e38 } = await entrar(b, env.DUENO_EMAIL, env.DUENO_PASSWORD);
 await p38.evaluate(() => {
   location.hash = "#/finanzas";
 });
 await p38.waitForTimeout(3000);
+
+/* Si quedara un gasto de una corrida anterior, todo lo de abajo mediría el doble
+   y daría rojo por un gasto bien cargado. Mejor verlo claro que acordar. */
+const sucios38 = await p38.evaluate(() => [...document.querySelectorAll(".scr .row")].length);
+ok(sucios38 === 0, "no quedó ningún gasto de una corrida anterior", sucios38 + " gastos; si hay, es que una prueba se cayó antes de borrar");
+if (sucios38) await borrarPruebas();
+try {
 
 const fx = await p38.evaluate(() => ({
   concepto: !!document.querySelector("#gc"),
@@ -1304,20 +1366,8 @@ ok(
   JSON.stringify(fx2.tarjetas),
 );
 
-await p38.evaluate(() => {
-  const b = [...document.querySelectorAll('[data-act="askGDel"]')];
-  if (b.length) b[b.length - 1].click();
-});
-await p38.waitForTimeout(1500);
-await p38.evaluate(() => {
-  const b = [...document.querySelectorAll("#mo button")].find((x) => /Eliminar/i.test(x.innerText));
-  if (b) b.click();
-});
-await p38.waitForTimeout(3500);
-ok(
-  !(await p38.evaluate(() => document.body.innerText.indexOf("prueba 38") >= 0)),
-  "y se puede borrar (el gasto de prueba no queda en la base)",
-);
+/* El borrado lo hace borrarPruebas() en el finally de más abajo, y se comprueba
+   ahí. Quedaba después de las comprobaciones y no pasaba si una fallaba. */
 /* Los errores se juntan acá y no adentro de `page.evaluate`: esa función corre en
    el navegador y `e38` vive en Node, así que la referencia lanzaba ReferenceError
    en vez de medir lo que se le pedía. */
@@ -1327,7 +1377,293 @@ ok(
   "sin errores de JS en todo el camino",
   errores38.join(" | "),
 );
-await c38.close();
+/* El contexto se cierra en el `finally`, después de borrar. */
+
+} finally {
+  /* Va en el finally y no al final: si una comprobación falla o la prueba se cae,
+     los gastos de prueba tienen que borrarse igual. Ya se llegaron a ver $180.000
+     y $25.000 duplicados en la base del dueño por una corrida cortada, y las
+     comprobaciones de arriba leían el doble y daban rojo por un gasto bien
+     cargado. */
+  const quedan38 = await borrarPruebas();
+  ok(quedan38 === 0, "los gastos de prueba se borran y no quedan en la base", quedan38 + " gastos");
+  await c38.close();
+}
+
+/* ---------- 39. cada gasto es de alguien, y se descuenta de SU neto ---------- */
+console.log("\n--- 39. el gasto es de una persona ---");
+
+/* El dueño lo pidió así: el alquiler es un gasto DE ÉL, porque alquila el local
+   aunque sea el dueño de la barbería. Y lo mismo para cada barbero: cada uno
+   descuenta lo que gasta de SU ganancia, para llevar el dinero de cada uno por
+   separado. El porcentaje de la ganancia neta no lo pidió y se dejó de lado. */
+/* `cuerpoFin39` ya está declarado arriba, en la sección 38, que va antes. */
+
+ok(/para: gp,/.test(sinComentarios), "el gasto se guarda con de quién es");
+ok(/gp = "dueno"/.test(sinComentarios), "y por defecto es del dueño");
+ok(/^ {2}gsetP\(k\) \{$/m.test(sinComentarios), "hay una acción para cambiarlo");
+ok(/data-act="gsetP"/.test(cuerpoFin39), "y un botón por persona en la pantalla");
+ok(/¿De quién es el gasto\?/.test(cuerpoFin39), "que pregunta de quién es");
+
+/* El gasto sin `para` —los que había cargados antes— es del dueño. Es lo mismo
+   que si fuera explícito, y deja los números viejos como estaban. */
+ok(
+  /esDelDueño = \(g\) => !g\.para \|\| g\.para === "dueno"/.test(cuerpoFin39),
+  "un gasto sin etiqueta cuenta como del dueño (los viejos siguen siendo suyos)",
+);
+
+/* La clave es la misma que usa el cobro, así los dos se cruzan sin traducir
+   nombres. */
+ok(
+  /gstDe = \(k\) => GL\.filter\(\(g\) => !esDelDueño\(g\) && g\.para === k\)/.test(cuerpoFin39),
+  "los gastos de un barbero se buscan por su misma clave que usa el cobro",
+);
+
+/* El dueño NO es una fila más de la tabla: su dinero es `OO`, la parte que se
+   quedó de todos los cobros. Si además aparece como barbero y se lo sumara otra
+   vez, se le contaría dos veces. */
+ok(
+  /\[{ n: etqDueño, c: L\.length, t: OO, g: gstDueño \}\]\.concat\(/m.test(cuerpoFin39),
+  "el dueño es una fila sola, con su parte de todos los cobros",
+);
+ok(
+  /esDueElGrupo = \(k\) => \{[\s\S]{0,120}k === OWNER_UID \|\|/.test(cuerpoFin39),
+  "y si aparece como barbero no se lo vuelve a sumar",
+);
+ok(
+  /GR\.filter\(\(x\) => !esDueElGrupo\(x\.k\)\)\.map/.test(cuerpoFin39),
+  "los barberos que NO son él van aparte",
+);
+
+/* La tabla: cada persona con facturado, gastos y neto, y una fila de total. */
+ok(/Ganancia de cada uno/.test(cuerpoFin39), "la tabla se llama 'Ganancia de cada uno'");
+ok(/Total del negocio/.test(cuerpoFin39), "con una fila de total");
+ok(
+  !/Porcentaje por barbero/.test(sinComentarios),
+  "y se fue la tabla de porcentajes, que con el dueño como único barbero decía '0 %' y '$0' al lado de sus propios cortes",
+);
+
+/* Los números tienen que sumar: la suma de los netos es el neto del negocio. */
+ok(
+  /NETO_TOTAL = filas\.reduce\(\(a, x\) => a \+ x\.neto, 0\)/.test(cuerpoFin39),
+  "el total se calcula sumando los netos de cada uno, no por otra cuenta",
+);
+ok(/filas\.forEach\(\(x\) => \(x\.neto = x\.t - x\.g\)\)/.test(cuerpoFin39), "y el neto de cada uno es su facturado menos lo suyo");
+
+/* El editor de porcentajes es un control que ya funcionaba. Al reescribir la
+   pantalla quedó con un `</div>` de más y "Guardar porcentajes" se fue fuera de
+   la tarjeta: hay que comprobar que sigue adentro. */
+ok(
+  /Guardar porcentajes<\/button><\/details>`\s*\r?\n\s*: ""\) \+\s*\r?\n\s*`<\/div>`/.test(cuerpoFin39),
+  "el editor de porcentajes sigue dentro de la tarjeta",
+);
+ok(
+  !/Marcarme como el dueño/.test(sinComentarios),
+  "y con las etiquetas que tenía (no las que se me inventaron)",
+);
+
+/* Un barbero puede VER sus gastos (para restárselos) pero no escribirlos. */
+const iRamaB = cuerpoFin39.indexOf("const mias");
+ok(iRamaB > 0, "la vista del barbero busca los gastos que son suyos");
+ok(
+  /FN\.bs\.filter\(\(b\) => b\.id === me\.uid \|\| \(b\.uid && b\.uid === me\.uid\)\)/.test(cuerpoFin39),
+  "sumando todas sus claves, no sólo una",
+);
+ok(
+  /formGastos = own[\s\S]{0,80}selectorPersona/.test(cuerpoFin39),
+  "y el formulario para cargar es sólo del dueño",
+);
+
+/* Las reglas: leer sí, escribir no. */
+ok(
+  /match \/gastos\/\{id\} \{\s*\r?\n\s*allow read: if isSignedIn\(\);\s*\r?\n\s*allow create, update, delete: if isOwner\(\);/.test(reglas),
+  "las reglas dejan LEER los gastos a cualquier barbero y escribirlos sólo al dueño",
+);
+
+/* Y que el barbero traiga la consulta: si no, no ve nada aunque las reglas lo dejen. */
+const cuerpoCarga = trozo(sinComentarios, "if (ad) {", "} else if (SB) {");
+const hayQueryBarbero =
+  /query\(collection\(db, "gastos"\), where\("hechoEn", ">=", st\)\),\s*\r?\n\s*\(l\) => \(GA = l\),\s*\r?\n\s*\);/.test(
+    sinComentarios.slice(sinComentarios.indexOf("} else if (SB) {"), sinComentarios.indexOf("function setup(")),
+  );
+ok(hayQueryBarbero, "y el barbero consulta los gastos en su rama, no sólo el dueño");
+
+/* ---------- la aritmética, con dos personas ---------- */
+const DUE39 = "LQ7IkEfxEKNXajx4SEs378n390i2";
+const OTRO39 = "BdXQ0wSy8SBbaONeRA0JzFLwFR2";
+const HOY39 = new Date().toLocaleDateString("sv-SE");
+const { ctx: c39, page: p39, jsErr: e39 } = await entrar(b, env.DUENO_EMAIL, env.DUENO_PASSWORD);
+await p39.evaluate(() => {
+  location.hash = "#/finanzas";
+});
+await p39.waitForTimeout(2500);
+
+/* La lista y los cobros van por memoria: en la base hay una sola ficha (la del
+   dueño), y agregar un barbero de verdad dejaría rastro. Lo que se prueba es la
+   aritmética, no la base. */
+await p39.evaluate(
+  ({ DUE39, OTRO39 }) =>
+    window.__test.setFn(
+      [{ id: DUE39, n: "Juan", pd: 100, yo: 1 }, { id: OTRO39, n: "Barbero", pd: 50 }],
+      50,
+    ),
+  { DUE39, OTRO39 },
+);
+await p39.waitForTimeout(1400);
+await p39.evaluate(
+  ({ OTRO39, DUE39, HOY39 }) =>
+    window.__test.setVentas([
+      { bid: OTRO39, bn: "Barbero", pd: 50, precio: 10000, serv: "Corte", lista: 10000, medio: "Efectivo", d: HOY39, t: "10:00", hechoEn: 1 },
+      { bid: OTRO39, bn: "Barbero", pd: 50, precio: 10000, serv: "Corte", lista: 10000, medio: "Efectivo", d: HOY39, t: "11:00", hechoEn: 2 },
+      { bid: DUE39, bn: "Juan", pd: 100, precio: 15000, serv: "Corte", lista: 15000, medio: "Efectivo", d: HOY39, t: "12:00", hechoEn: 3 },
+    ]),
+  { OTRO39, DUE39, HOY39 },
+);
+await p39.waitForTimeout(1800);
+
+const antes39 = await p39.evaluate(() => ({
+  tarjetas: [...document.querySelectorAll(".kpi")].map((k) => k.innerText.replace(/\s+/g, " ").trim()),
+  filas: [...document.querySelectorAll(".clin:not(.chead)")].map((x) => x.innerText.replace(/\s+/g, " ").trim()),
+}));
+ok(
+  antes39.tarjetas.some((x) => /35\.000/.test(x)),
+  "con los cobros de prueba, lo facturado es $35.000",
+  JSON.stringify(antes39.tarjetas),
+);
+ok(
+  antes39.filas.some((x) => /^Juan/.test(x) && /25\.000/.test(x)),
+  "el dueño facturó $25.000: lo suyo ($15.000) más la mitad de lo del barbero ($10.000)",
+  JSON.stringify(antes39.filas),
+);
+ok(
+  antes39.filas.some((x) => /^Barbero/.test(x) && /10\.000/.test(x)),
+  "y el barbero facturó $10.000: la mitad de sus $20.000",
+  JSON.stringify(antes39.filas),
+);
+
+/* Un gasto de cada uno, que es lo que hace falta para que el reparto se vea. */
+await p39.fill("#gc", "Alquiler (prueba 39)");
+await p39.fill("#gm", "180000");
+await p39.click('[data-act="gAdd"]');
+await p39.waitForTimeout(4000);
+await p39.evaluate((k) => {
+  const x = [...document.querySelectorAll('[data-act="gsetP"]')].find((y) => y.dataset.args.indexOf(k) >= 0);
+  if (x) x.click();
+}, OTRO39);
+await p39.waitForTimeout(1500);
+await p39.fill("#gc", "Insumos (prueba 39)");
+await p39.fill("#gm", "25000");
+await p39.click('[data-act="gAdd"]');
+await p39.waitForTimeout(4000);
+
+const conGastos = await p39.evaluate(() => {
+  /* La columna de gastos se muestra con "− $X": es una cantidad, no un número
+     con signo. Por eso se lee el valor absoluto, y no como lo pinta el texto. */
+  /* Los puntos son de MILES, no decimales: $180.000 son ciento ochenta mil, no
+     ciento ochenta. La primera versión usaba parseFloat y leía 180, así que
+     comparaba 180 contra 180.000 y daba rojo por un gasto bien cargado. */
+  const entero = (s) => {
+    const t = String(s).replace(/\u2212/g, "-").replace(/[^0-9-]/g, "");
+    return t === "" || t === "-" ? 0 : parseInt(t, 10) || 0;
+  };
+  const filas = [...document.querySelectorAll(".clin:not(.chead)")].map((f) => {
+    const c = f.children;
+    return {
+      n: (c[0] ? c[0].innerText : "").trim(),
+      t: entero(c[1] ? c[1].innerText : ""),
+      g: Math.abs(entero(c[2] ? c[2].innerText : "")),
+      neto: entero(c[3] ? c[3].innerText : ""),
+    };
+  });
+  const total = filas.find((x) => /Total/.test(x.n)) || null;
+  const p = filas.filter((x) => x !== total);
+  return {
+    filas, total,
+    cadaUna: p.every((x) => x.t - x.g === x.neto),
+    falla: p.filter((x) => x.t - x.g !== x.neto).map((x) => x.n + ": " + x.t + " - " + x.g + " = " + (x.t - x.g) + ", dice " + x.neto),
+    sumaNeto: p.reduce((a, x) => a + x.neto, 0),
+    totalNeto: total && total.neto,
+    sumaGast: p.reduce((a, x) => a + x.g, 0),
+    totalGast: total && total.g,
+    sumaFact: p.reduce((a, x) => a + x.t, 0),
+    totalFact: total && total.t,
+  };
+});
+conGastos.filas.forEach((x) => console.log("        " + JSON.stringify(x)));
+ok(conGastos.cadaUna, "cada fila: facturado menos SUS gastos da su neto", conGastos.falla.join("; "));
+ok(
+  conGastos.sumaNeto === conGastos.totalNeto && conGastos.totalNeto !== null,
+  "y la suma de los netos es el total del negocio",
+  conGastos.sumaNeto + " vs " + conGastos.totalNeto,
+);
+ok(
+  conGastos.sumaGast === conGastos.totalGast,
+  "los gastos también suman",
+  conGastos.sumaGast + " vs " + conGastos.totalGast,
+);
+ok(
+  conGastos.sumaFact === conGastos.totalFact,
+  "y lo facturado también",
+  conGastos.sumaFact + " vs " + conGastos.totalFact,
+);
+
+/* El alquiler le sale al dueño y los insumos al barbero: el gasto se descuenta
+   de la persona que lo tiene a su nombre, no del negocio entero. */
+const duenho = conGastos.filas.find((x) => /due/iu.test(x.n)),
+  bar39 = conGastos.filas.find((x) => /^Barbero/i.test(x.n));
+ok(
+  duenho && duenho.g === 180000,
+  "el alquiler se le descuenta al dueño",
+  JSON.stringify(conGastos.filas),
+);
+ok(
+  bar39 && bar39.g === 25000,
+  "y los insumos se le descuentan al barbero",
+  JSON.stringify(conGastos.filas),
+);
+/* El editor de porcentajes es un control que ya funcionaba y que al reescribir la
+   pantalla quedó con un `</div>` de más: "Guardar porcentajes" y "+ Agregar
+   barbero" se fueron fuera de la tarjeta. El HTML compila igual, así que sólo se
+   ve mirando dónde está el botón. */
+const editor = await p39.evaluate(() => {
+  const dentro = (el) => {
+    let n = el;
+    while (n && n !== document.body) {
+      if (n.classList && n.classList.contains("card")) return true;
+      n = n.parentElement;
+    }
+    return false;
+  };
+  const g = [...document.querySelectorAll('[data-act="feGuardar"]')][0];
+  const a = [...document.querySelectorAll('[data-act="feAdd"]')][0];
+  return { guardar: g ? dentro(g) : null, agregar: a ? dentro(a) : null };
+});
+ok(editor.guardar === true, "'Guardar porcentajes' quedó dentro de la tarjeta", JSON.stringify(editor));
+ok(editor.agregar === true, "y '+ Agregar barbero' también");
+
+/* ---------- limpiar ----------
+   Esto va PRIMERO entre lo que falta: borra los gastos de prueba. Si el bloque no
+   está, la prueba deja $180.000 + $25.000 inventados en la base del dueño, que es
+   justo lo que no hay que hacer. Por eso va antes de cualquier otra cosa. */
+for (let n = await p39.evaluate(() => document.querySelectorAll('[data-act="askGDel"]').length); n > 0; n--) {
+  await p39.evaluate(() => {
+    const x = [...document.querySelectorAll('[data-act="askGDel"]')];
+    if (x.length) x[0].click();
+  });
+  await p39.waitForTimeout(1300);
+  await p39.evaluate(() => {
+    const x = [...document.querySelectorAll("#mo button")].find((y) => /Eliminar/i.test(y.innerText));
+    if (x) x.click();
+  });
+  await p39.waitForTimeout(3000);
+}
+ok(
+  !(await p39.evaluate(() => document.querySelectorAll(".scr .row").length)),
+  "los gastos de prueba se borran y no quedan en la base",
+);
+const errores39 = [...new Set(e39)];
+ok(errores39.length === 0, "sin errores de JS en todo el camino", errores39.join(" | "));
+await c39.close();
 
   await ba.ctx.close();
   await b.close();

@@ -359,9 +359,19 @@ function isOwner() { return isSignedIn() && request.auth.uid == 'LQ7IkEfxEKNXajx
       allow update, delete: if isOwner() || (isStaff() && resource.data.bid == request.auth.uid);
     }
 
-    // Los gastos los carga el dueño desde el negocio. No hay rama de barbero.
+    // Los gastos los CARGA el dueño desde el negocio. No hay rama de barbero.
+    //
+    // Leer sí puede cualquier barbero, y hace falta: la app le muestra los gastos
+    // que están a su nombre para restárselos de su ganancia. Son los MISMOS
+    // números que el dueño ve, así que no hay nada que un barbero pueda ver de
+    // más ni tapar.
+    //
+    // Escribir sigue siendo sólo del dueño: si un barbero pudiera cargar gastos,
+    // podría inflar los suyos y hacer parecer su ganancia más chica. El dueño ve
+    // las cifras igual, pero mejor que no haya ni la posibilidad.
     match /gastos/{id} {
-      allow read, create, update, delete: if isOwner();
+      allow read: if isSignedIn();
+      allow create, update, delete: if isOwner();
     }
   }
 }
