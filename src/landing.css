@@ -754,6 +754,30 @@ body[data-theme="light"] .lb-btn--pri:hover {
   object-fit: cover;
   object-position: center;
 }
+/* Lote 47: hueco de PARIDAD para los servicios sin foto. El dueño pidió
+   "alinear los textos y que se vean igual": sin este bloque, las tarjetas
+   sin foto arrancaban el título a la altura del título de las OTRAS, y en
+   una fila quedaban pies a alturas distintas. El hueco es honesto: dice
+   "Sin foto" y no finge haber imagen. */
+.lb-sv-falta {
+  display: grid;
+  place-content: center;
+  place-items: center;
+  gap: 6px;
+  background: var(--lb-ivory);
+  border-bottom: 1px solid var(--lb-ivory-line);
+  color: var(--lb-on-ivory-mut);
+}
+.lb-sv-falta svg {
+  width: 24px;
+  height: 24px;
+  opacity: 0.55;
+}
+.lb-sv-falta small {
+  font-size: 0.8rem; /* 12.8px: pasa el piso de 12px de politicas.js */
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
 /* En la lista angosta (celular) la foto va al costado, chica. */
 .lb-sv-mini {
   width: 48px;

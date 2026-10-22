@@ -1782,3 +1782,47 @@ celular → EXIT 0 (la captura `tmp_shots/WZ-6-resumen.png` muestra los cinco
 checks + el 6 activo), `landing.audit` EXIT 0. La fila nueva entra a `run.js`
 después de `lote45`. `sw.js` sigue v22 (los lotes 44-46 comparten
 despliegue).
+
+## 47. Tarjetas de servicios alineadas: hueco honesto para las sin foto
+
+Punto literal de la tanda: **"alinear los textos y que se vean igual"** sobre
+las tarjetas de servicios de la landing. El descuadre no era de estilos: era
+**estructural**. Los servicios de la base pueden tener foto o no (el campo
+`img` es opcional), y las tarjetas sin foto sencillamente **no tenían el
+bloque de la imagen**: los títulos arrancaban a alturas distintas y en una
+fila quedaban pies (duración/precio) a alturas distintas.
+
+### Cómo quedó
+
+- Las tarjetas sin foto muestran un **hueco del mismo bloque 4/5** que la
+  foto (mismo alto en cualquier ancho de tarjeta), en marfil, con una
+  mini-tijera y el rótulo **"Sin foto"**. Es un placeholder honesto:
+  declara que no hay imagen en vez de fingir una.
+- Con el bloque igualado, lo que ya existía hace el resto: el cuerpo de la
+  tarjeta es `flex: 1` y clava el pie (duración a la izquierda, precio a la
+  derecha) al fondo → **títulos y pies de la fila quedan a la misma altura**,
+  tenga o no foto el servicio y tenga o no descripción.
+- La lista apilada de celular no cambia (filas de a una por servicio).
+
+### Pruebas
+
+`tests/lote47.js` (**7 checks**, archivo → sin navegador). Prueba visual con
+fixture (`tmp/sv-probe.html` + landing.css real): `tests/sv-paridad.js`
+(medidas de tops/pies iguales — **4/4**, captura `tmp_shots/47-paridad.png`).
+Con la base real: `tests/servicios-foto.js` mide GRID en 1440 (3 servicios,
+todos con foto: tops/pies iguales) y filas en 390; capturas
+`tmp_shots/47-servicios-*.png`. `sw.js` sigue v22.
+
+### Y un seguro extra para un flake de la suite
+
+Dos corridas de la suite marcaron ROJO en `politicas` —
+"dark/390 · el foco vuelve al link que abrió" — mientras la prueba sola
+pasaba siempre 4/4. El mecanismo: si mientras el modal de políticas está
+abierto la pantalla de ingreso se repinta (la verificación de sesión lo
+hace), el **link que lo abrió queda reemplazado en el DOM**, y `focus()` a
+un nodo desconectado no hace nada: el foco caía al BODY como si nadie
+hubiera guardado el retorno. El código era correcto en el caso feliz y
+frágil en el de la carrera. Ahora `cerrarPol` mira si el nodo guardado
+**sigue vivo** (`isConnected`) antes de darle el foco y, si no lo está,
+re-busca el link de `openPol` que siga **visible** como plan B. Los dos
+checks nuevos de `lote47.js` sostienen ese seguro.

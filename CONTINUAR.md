@@ -3118,3 +3118,54 @@ Producto en **PRODUCT.md §46**. Lo técnico para el que siga:
 - `tests/lote46.js` (8 checks fs) + fila en run.js después de `lote45`.
   El recorrido visual del wizard es de `tests/landing.wizard.js`: corre los
   6 pasos con Playwright y saca capturas (WZ-3..WZ-6).
+
+---
+
+## 47. Paridad de tarjetas de servicios: el hueco "Sin foto"
+
+Producto en **PRODUCT.md §47**. Lo técnico para el que siga:
+
+- El cambio es solo el template de servicios en main.js (`svcGrid`,
+  ~L4692): la rama sin `x.img` ahora pinta
+  `<span class="lb-sv-img lb-sv-falta">` en vez de nada. La clase COMPARTE
+  el classlist de imagen (`lb-sv-img`) y por eso hereda el bloque
+  `aspect-ratio: 4 / 5` — el hueco mide lo mismo que la foto en cualquier
+  ancho de columna.
+- **No poner width/height attrs al `<img>`** de esta tarjeta: los attrs
+  ganan sobre el `aspect-ratio` de CSS (height literal del attr) y la caja
+  se vuelve 500px en una columna de 313 — este lote lo mordió y lo
+  corrigió. Si se quiere evitar CLS, el aspect-ratio de CSS ya lo hace
+  (la caja reserva su alto antes de cargar).
+- `.lb-sv-falta` (landing.css, junto a `.lb-sv-img`): grilla centrada,
+  background `var(--lb-ivory)`, mini-tijera svg (la misma del placeholder de
+  foto de barbero) y `<small>` de 0.8rem uppercase — pasa el piso de 12px.
+- La alineación fila-a-fila la sostiene lo de siempre: `.lb-sv-bd { flex: 1
+  }` (pie clavado al fondo de la tarjeta) y las columnas de grilla
+  estirando. El fixture `tmp/sv-probe.html` (con landing.css real) + 
+  `tests/sv-paridad.js` miden tops/pies; `tests/servicios-foto.js` mide la
+  base real en 1440 y 390. Los dos son MANUALES (necesitan el 8765; run.js
+  no lo enciende).
+- `tests/lote47.js` (7 fs) + fila en run.js después de `lote46`.
+
+### El flake de politicas y el endurecimiento de cerrarPol (mismo lote)
+
+- Síntoma: en suite, `politicas` daba ROJO en "dark/390 · el foco vuelve al
+  link que abrió" (`document.activeElement` era BODY); la prueba sola pasaba
+  4/4 siempre. Pasó dos veces, siempre a mitad de suite, nunca al aire.
+- Causa: `openPol` guarda en `polRetorno` el NODO que abrió el modal. Si
+  mientras el modal está abierto la pantalla de ingreso se repinta (la
+  autenticación en background re-renderiza), ese nodo queda desconectado:
+  el cierre hace `focus()` a un nodo suelto, no pasa nada, y el foco se
+  queda en BODY. En suite el repintado es más lento y la ventana de la
+  carrera se abre; al aire ni se nota.
+- Arreglo real (`cerrarPol`, ~L1924): considera el nodo guardado "expira",
+  pone `polRetorno = null` ANTES de tocar nada (evita reuso), le hace
+  focus SOLO si `expira.isConnected`, y si al cerrar el foco sigue en BODY
+  re-busca `[data-act="openPol"]` **visible** (offsetWidth/Height o
+  clientRects) y le da el foco con `preventScroll`. El caso feliz (nodo
+  vivo) no cambia en nada; los checks de `politicas.js` (que usan el link
+  visible en sus cuatro anchos) siguen pasando idénticos.
+- Señal para el que siga: si un test de foco/retorno falla SOLO en suite y
+  pasa solo, buscar repintados en background de la verificación de auth
+  antes de culpar al modal: este mismo patrón puede existir en otros
+  modales que guarden nodos (hoy `polRetorno` es el único caso).

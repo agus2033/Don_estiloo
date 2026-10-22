@@ -1927,15 +1927,34 @@ const W = {
     x.innerHTML = "";
     document.body.classList.remove("no-scroll");
     /* Devolver el foco al link que abrió el diálogo, con preventScroll para
-       no saltar de nuevo al principio de la página. */
-    if (polRetorno && polRetorno.focus) {
+       no saltar de nuevo al principio de la página.
+       TRAMPA (nació del flake de politicas en suite): si mientras el modal
+       estuvo abierto la pantalla se repintó, el nodo guardado queda FUERA
+       del DOM y focus() a un nodo desconectado no hace NADA — el foco cae
+       al BODY. Por eso, si el nodo ya no está vivo o no recibió el foco, se
+       busca el mismo link (data-act openPol) que siga visible y se le da el
+       foco a él. */
+    const guardado = polRetorno;
+    polRetorno = null;
+    if (guardado && guardado.isConnected && guardado.focus) {
       try {
-        polRetorno.focus({ preventScroll: true });
+        guardado.focus({ preventScroll: true });
       } catch (e) {
-        polRetorno.focus();
+        guardado.focus();
       }
     }
-    polRetorno = null;
+    if (document.activeElement === document.body || (guardado && !guardado.isConnected)) {
+      const alt = [...document.querySelectorAll('[data-act="openPol"]')].find(
+        (n) => !!(n.offsetWidth || n.offsetHeight || n.getClientRects().length),
+      );
+      if (alt) {
+        try {
+          alt.focus({ preventScroll: true });
+        } catch (e2) {
+          alt.focus();
+        }
+      }
+    }
   },
   pickFoto(cb) {
     const i = document.createElement("input");
@@ -4690,9 +4709,14 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
   const svcGrid = S.length
     ? S.map(
         (x) => `<article class="lb-sv">
-        ${/* La foto de preview la carga el dueño desde Servicios y premios y
-             veníaguardada en el dato (`img`), pero la tarjeta no la
-             pintaba: por eso "las cargo y no se muestran". */ x.img ? `<img class="lb-sv-img" src="${imgCld(esc(x.img), 800)}" alt="" loading="lazy" decoding="async">` : ""}
+        ${/* La foto de preview la carga el dueño desde Servicios y premios:
+             el dato viaja en `img`, pero la tarjeta no la pintaba — por eso
+             "las cargo y no se muestran". Sin foto hay hueco paridad: la
+             tarjeta igual reserva su bloque 4/5 (lote 47), para que títulos
+             y precios de la fila queden alineados entre tarjetas. */
+          x.img
+            ? `<img class="lb-sv-img" src="${imgCld(esc(x.img), 800)}" alt="" loading="lazy" decoding="async">`
+            : `<span class="lb-sv-img lb-sv-falta" role="img" aria-label="Servicio sin foto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M20 4 8.5 15.5M14.5 14.5 20 20M8.5 15.5 4 20"/></svg><small>Sin foto</small></span>`}
         <div class="lb-sv-bd">
         <h3>${esc(x.n)}</h3>
         ${x.tag ? `<p class="lb-sv-desc">${esc(x.tag)}</p>` : ""}
