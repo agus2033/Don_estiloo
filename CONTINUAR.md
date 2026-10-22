@@ -3007,3 +3007,42 @@ nombres).
   la fila: clase nueva `.chips.tres` o `repeat(auto-fit, minmax(...))`.
 - El `shaEm()` requiere `crypto.subtle` (HTTPS + localhost). En `file://`
   no existe: todos los test y producción van por HTTP(S) con dominio.
+
+---
+
+## 44. El filtro de Mis Turnos: radiogroup, no tabs; thumb con translateX
+
+Producto en **PRODUCT.md §44**. Lo técnico para el que siga:
+
+- **Estado:** `tfil = "prox"` vive junto al resto de los flags de pantalla
+  (~L654, junto a `bf`). La acción es `W.tFil(k)`: valida
+  `["prox","pas","can"].includes(k)`, limpia `cx` (el formulario de
+  cancelación) y `R()`. Si algún día se llama tFil con otro valor, se
+  ignora en silencio — mejor que pintar una lista vacía sin explicación.
+- **turH() setData:** tres listas de memoria sobre el mismo `T`
+  (`prox` pend asc / `hech` desc / `canc` desc). NADA de consultas nuevas a
+  Firestore: el filtro no debe costar lecturas nuevas, la suscripción de
+  turnos no cambia.
+- **Markup del control:** `role="radiogroup"` + `role="radio"` +
+  `aria-checked` dinámico, `data-act="tFil"` con `data-args="A(k)"`. El
+  thumb es un `<span class="seg-th">` ANTES de los botones en el DOM y su
+  `transform: translateX(i*100%)` lo pone en la columna `i`. **Trampa que
+  ya mordió: `100%` en transform es el ancho del PROPIO elemento**, no del
+  track — por eso el thumb tiene `width: calc((100% - 8px) / 3)` (un
+  tercio del track sin el padding) y así el translateX vale exactamente
+  `i` columnas. Si la cantidad de opciones cambia, el `/3` del CSS se toca.
+- **CSS** (en `styles.css`, no en `landing.css`: es pantalla del PANEL):
+  `.seg` pisa con `isolation: isolate` y `z-index: -1` en el thumb para que
+  pinte detrás de los labels sin tocar cada nombre. Curva
+  `cubic-bezier(0.23,1,0.32,1)` (easeOutQuint, el "resorte" del rubber
+  original se simplificó a uno — quedó bien y no necesita spring JS).
+  `prefers-reduced-motion: reduce` → `transition: none`.
+- **Teclado:** listener nuevo en `document` (~L3960, junto al de Enter para
+  `role="button"`): flechas → `.focus()` + `.click()` al radio siguiente.
+  El click pasa por la delegación normal (`dRun`), así que el test de
+  markup no necesita hacer nada raro para cubrirlo.
+- **Ojo con los tests de panel:** `panel.turnos.js` (manual, no está en
+  run.js) busca `[data-act="reprogramar"]` en `#/turnos`: sigue pasando por
+  que el default es `prox` y esa lista tiene los botones. Si algún día el
+  default cambia a "pas" o "todos", ese test se rompe — aviso escrito acá
+  para que no haya sorpresa.

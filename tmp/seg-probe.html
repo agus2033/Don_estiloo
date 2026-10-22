@@ -1,0 +1,18 @@
+<!-- Verificación visual del .seg (lote 44) sin login ni base: esqueleto con
+     index/clases reales + styles.css real. Se compara la caja del thumb
+     contra la caja del botón clickeado. -->
+<!doctype html>
+<html lang="es"><head><meta charset="utf8">
+<link rel="stylesheet" href="../src/styles.css">
+<style>body{margin:40px;max-width:420px}</style>
+</head><body>
+<div class="seg" role="radiogroup">
+  <span class="seg-th" style="transform:translateX(0%)"></span>
+  <button class="seg-b" role="radio" aria-checked="true">Próximos</button>
+  <button class="seg-b" role="radio" aria-checked="false">Pasados</button>
+  <button class="seg-b" role="radio" aria-checked="false">Cancelados</button>
+</div>
+<script>
+window.mover = (i) => { document.querySelector(".seg-th").style.transform = "translateX(" + i * 100 + "%)"; };
+</script>
+</body></html>

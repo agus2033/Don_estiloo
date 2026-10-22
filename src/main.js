@@ -652,6 +652,7 @@ let CA = [],
   cliN = 40, // clientes visibles (se amplía con "Ver más")
   cliSel = null, // cliente seleccionado en Clientes
   bf = "", // filtro de barbero en Agenda
+  tfil = "prox", // filtro de Mis Turnos: prox | pas | can (lote 44)
   EV = null, // edición de carga manual (dashboard)
   GAL = [], // galería pública de trabajos
   TESTS = [], // reseñas públicas
@@ -3496,6 +3497,19 @@ Object.assign(W, {
     gp = k;
     R();
   },
+  /* Lote 44: filtro de Mis Turnos. k es "prox" | "pas" | "can". También es
+     el destino de las flechas del teclado (el radiogroup en HTML no queda
+     nativo con botones): keySeg() mueve y llama acá. Si el turno en edición
+     de cancelación estaba abierto en el filtro viejo, no pasa nada: cx se
+     limpia al cambiar de filtro para que no quede un formulario flotando
+     en una lista que ya no lo muestra. */
+  tFil(k) {
+    if (tfil === k) return;
+    if (!["prox", "pas", "can"].includes(k)) return;
+    cx = null;
+    tfil = k;
+    R();
+  },
   async gAdd() {
     /* Las reglas de Firestore ya limitan esto al dueño. La guarda no es por
        seguridad sino por el mensaje: sin ella, un barbero que llegue por un
@@ -3938,6 +3952,23 @@ document.addEventListener("keydown", (e) => {
   if (!el) return;
   e.preventDefault();
   dRun(el, "act");
+});
+/* Lote 44: flechas del radiogroup de segmentos (Mis Turnos). Un radiogroup
+   real mueve la selección con ←→ sin tabular; con <button> hay que
+   traducirlas a mano. Se hace .click() al botón destino: pasa por el mismo
+   camino de siempre (data-act="tFil") y el foco lo sigue, como pide
+   ARIA. */
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+  const b = e.target.closest(".seg-b");
+  if (!b) return;
+  const fila = [...b.parentElement.querySelectorAll(".seg-b")],
+    i = fila.indexOf(b),
+    n = i + (e.key === "ArrowRight" ? 1 : -1);
+  if (n < 0 || n >= fila.length) return;
+  e.preventDefault();
+  fila[n].focus();
+  fila[n].click();
 });
 /* Escape cierra la ficha del barbero abierta. Va aparte del listener de
    Enter/Espacio porque la tecla es distinta y el resto del teclado
@@ -6377,18 +6408,43 @@ function turH() {
       .sort((a, b) => (a.d + a.t).localeCompare(b.d + b.t)),
     hist = [...T]
       .filter((t) => t.st !== "pend")
-      .sort((a, b) => (b.d + b.t).localeCompare(a.d + a.t));
+      .sort((a, b) => (b.d + b.t).localeCompare(a.d + a.t)),
+    canc = hist.filter((t) => t.st === "cancel"),
+    hech = hist.filter((t) => t.st === "hecho");
+  /* Lote 44: filtros de Mis Turnos (pedido del dueño: "próximos, pasados,
+     cancelado" en vez de las dos listas fijas). El control de segmentos va
+     con role="radiogroup": las flechas mueven la selección (W.tFil también
+     lo hace con teclado) y cada opción es su botón de 44px. */
+  const OS = [
+    ["prox", "Próximos"],
+    ["pas", "Pasados"],
+    ["can", "Cancelados"],
+  ];
+  const lista =
+    tfil === "prox" ? prox : tfil === "pas" ? hech : canc;
+  const vacio =
+    tfil === "prox"
+      ? "Todavía no reservaste. Tocá “Reservar” para elegir un horario."
+      : tfil === "pas"
+        ? "No hay turnos completados en tu cuenta."
+        : "No hay turnos cancelados. Que se quede así.";
   const card = (t) => {
     const x = cx === t.id,
       pr = t.st === "hecho" && t.precio != null ? t.precio : sv(t).p;
     return `<div class="card" style="margin-bottom:12px"><div class="appt" style="border:0;background:none;padding:0;margin:0"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font:700 34px 'Barlow Condensed'">${esc(t.t)}</b><span class="pill ${t.st === "hecho" ? "st-hecho" : t.st === "cancel" ? "st-cancel" : "st-pend"}">${ST[t.st]}</span></div><small style="color:var(--mut)">${esc(fd(t.d))}</small><br><b>${esc(sv(t).n)}</b><br><small>con ${esc(bn(t) || "—")} · ${esc(sv(t).tx)} · ${$$(pr)}</small></div>${t.st === "pend" && !x ? `<div class="chips dos" style="margin-top:12px"><button class="pillb" data-act="reprogramar" data-args="${A(t.id)}">Reprogramar</button><button class="pillb" data-act="askCancel" data-args="${A(t.id)}">Cancelar</button></div>` : ""}${x ? cxForm(t) : ""}</div>`;
   };
+  const i = Math.max(0, OS.findIndex((o) => o[0] === tfil));
   return (
     `<h1>MIS TURNOS</h1>` +
-    `<h2 class="lab">Próximos</h2>` +
-    (prox.length ? prox.map(card).join("") : "<p><small>Todavía no reservaste. Tocá “Reservar” para elegir un horario.</small></p>") +
-    `<h2 class="lab">Historial</h2>` +
-    (hist.length ? hist.map(card).join("") : "<p><small>No hay turnos pasados.</small></p>")
+    `<div class="seg" role="radiogroup" aria-label="Filtrar mis turnos"><span class="seg-th" style="transform:translateX(${i * 100}%)"></span>` +
+    OS.map(
+      (o) =>
+        `<button class="seg-b" role="radio" aria-checked="${tfil === o[0]}" data-act="tFil" data-args="${A(o[0])}">${o[1]}</button>`,
+    ).join("") +
+    `</div>` +
+    (lista.length
+      ? `<div style="margin-top:12px">` + lista.map(card).join("") + `</div>`
+      : `<p style="margin-top:16px"><small>${vacio}</small></p>`)
   );
 }
 const wal = (p, txt) =>

@@ -1664,7 +1664,48 @@ cobertura reducida: la reseña no se puede probar con la cuenta como barbero.
 
 `tests/lote42.js` (nuevo, **23 comprobaciones**, archivo → sin navegador):
 valida todo lo de arriba leyendo los fuentes y las reglas. `run.js` lo lista
-junto a `galeria`. Suite completa: **40 pruebas · 1051 comprobaciones ·
-0 en rojo** (`landing.reglas` con ATENCIÓN y salto por la deriva de la
-cuenta CLIENTE, ver arriba). `sw.js` sube a `barberia-v21` para el
+junto a `galeria`. Cuando se commiteó el 42/43 la suite quedó en **40 pruebas ·
+1051 comprobaciones · 0 en rojo** (`landing.reglas` con ATENCIÓN y salto por la
+deriva de la cuenta CLIENTE, ver arriba). `sw.js` sube a `barberia-v21` para el
 despliegue.
+
+## 44. Mis Turnos con filtros: Próximos, Pasados y Cancelados
+
+El dueño pidió (punto 5 de la tanda): **"aplicar filtros (proximos, pasados,
+cancelado)"** en Mis Turnos. Hasta hoy la pantalla mostraba dos listas fijas
+una debajo de la otra ("Próximos" y "Historial" mezclados los cobros con los
+cancelados). Ahora la pantalla abre con **Próximos** y arriba hay un control de
+tres filas de una sola: **Próximos · Pasados · Cancelados**, estilo *rubber
+segment* (el que mandó el dueño adaptado a CSS/JS vanilla — mismo idioma
+visual que pidió para los menús).
+
+### Cómo queda
+
+- **Próximos** = pendientes, ordenados de la fecha más cercana a la más lejana
+  (igual que antes). Acá están los botones Reprogramar / Cancelar.
+- **Pasados** = cobrados (`st: "hecho"`), el más nuevo arriba.
+- **Cancelados** = sus propios turnos cancelados (el más nuevo arriba).
+- Si la lista queda vacía, cada filtro tiene **su mensaje propio** ("Que se
+  quede así" para cancelados) en vez del en blanco de antes.
+- El filtro **no toca la base ni suma lecturas**: mismo `T` de siempre,
+  filtrado en memoria. Y al cambiar de filtro se cierra el formulario de
+  cancelación si quedó abierto, para que un formulario no quede flotando en
+  una lista que ya no lo muestra.
+
+### El control (y lo a11y)
+
+Grilla de 3 columnas iguales con una ficha (thumb) que se desliza con
+`translateX` y curva tipo resorte; `prefers-reduced-motion` la apaga. En
+HTML es **`role="radiogroup"` con `role="radio"` + `aria-checked`**, y las
+**flechas ←→ mueven y siguen el foco** (un radiogroup de verdad, no tres
+pestañas). Botones de 44px: vale la regla táctil del proyecto.
+
+### Pruebas
+
+Los checks del filtro entraron en `tests/lote42.js` (**34 en total**, archivo →
+sin navegador). Al commitear el lote: **40 pruebas · 1068 comprobaciones ·
+0 en rojo** (una corrida previa de la suite marcó un ROJO en `accesibilidad`
+que no era un check fallado sino un crasheo del proceso; la prueba suelta y la
+corrida final pasan 0 violaciones). Pendiente lotes siguientes de la misma
+tanda: el toggle-*squish* del tema, las fichas *flip* de barberos y el
+*stepper* del asistente.

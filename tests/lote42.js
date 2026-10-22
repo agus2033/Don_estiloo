@@ -1,4 +1,4 @@
-/* Lote 42 y 43: los cuatro arreglos de la tanda del 21/10/26.
+/* Lote 42, 43 y 44: los arreglos y las novedades de la tandas del 21/10/26.
    Son comprobaciones de CÓDIGO (no de pantalla), porque todas las piezas son
    de server state o de reglas, no de CSS visual:
 
@@ -136,6 +136,51 @@ ok(
 ok(
   /no dejaron leer o guardar/.test(mj),
   "aviso: motivoFirestore cubre el caso de lectura",
+);
+
+/* ---------- 9. lote 44: filtros de Mis Turnos (radiogroup + flechas) ---------- */
+ok(/tfil = "prox"/.test(mj), "estado tfil inicial en 'prox' (default: próximos)");
+ok(
+  /\["prox", "pas", "can"\]\.includes\(k\)/.test(mj),
+  "acción tFil valida las tres opciones (no acepta cualquier string)",
+);
+ok(
+  /tFil\(k\) \{[\s\S]{0,400}cx = null;/.test(mj),
+  "tFil limpia el formulario de cancelación al cambiar de filtro",
+  "si no, el formulario de cancelar queda flotando en otra lista",
+);
+ok(
+  /class="seg" role="radiogroup"/.test(mj),
+  "markup: el filtro es role=radiogroup (teclado + lectores de pantalla)",
+);
+ok(
+  /role="radio" aria-checked="\$\{tfil === o\[0\]\}"/.test(mj),
+  "markup: cada opción es radio con aria-checked dinámico",
+);
+ok(
+  /seg-th" style="transform:translateX\(\$\{i \* 100\}%\)"/.test(mj),
+  "markup: el thumb viaja con translateX (nada de recalcular px por página)",
+);
+ok(
+  /ArrowRight[\s\S]{0,300}seg-b/.test(mj),
+  "teclado: las flechas mueven el filtro (.click() al botón destino)",
+);
+const st44 = lee("src/styles.css");
+ok(
+  /\.seg-th\s*\{[\s\S]{0,800}cubic-bezier/.test(st44),
+  "css: el thumb va con bezier tipo resorte (rubber)",
+);
+ok(
+  /@media \(prefers-reduced-motion: reduce\)[\s\S]{0,300}\.seg-th\s*\{\s*transition: none;/.test(st44),
+  "css: reduced-motion apaga la animación del thumb",
+);
+ok(
+  /\.seg-b\s*\{[\s\S]{0,300}height: 44px;/.test(st44),
+  "css: opciones de filtro de 44px (regla táctil del proyecto)",
+);
+ok(
+  /data-act="tFil"/.test(mj),
+  "markup: los botones del filtro disparan data-act=tFil",
 );
 
 console.log("  ---");
