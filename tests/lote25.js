@@ -445,12 +445,19 @@ ok(
   /* Ojo: que `lbPrimerPaso` esté fuera del `Object.assign(ACT, …)` ya lo
    garantiza el parser — si estuviera dentro del objeto, `node --check`
    fallaría y el archivo ni siquiera cargaría. Lo que sí importa acá es que
-   devuelva el paso 6 cuando ya está todo elegido, y no un número fijo. */
-  const cuerpoPrimerPaso = (src.match(/const lbPrimerPaso = \(\) => \{[\s\S]*?\n\};/) || [""])[0];
+   devuelva el paso 6 cuando ya está todo elegido, y no un número fijo.
+
+   Lote 48: la fuente de verdad se mudó a `wzFaltante(desde)` — es lo que
+   permite saltar pasos completos con la pre-carga del Inicio. `lbPrimerPaso`
+   sigue siendo LA consulta "desde el principio", ahora via delegado. */
+  const cuerpoPrimerPaso = (src.match(/const lbPrimerPaso = \(\) => wzFaltante\(0\);/) || [""])[0];
+  const cuerpoFaltante = (src.match(/const wzFaltante = \(desde\) => \{[\s\S]*?\n\};/) || [""])[0];
   ok(
-    /if \(!S\.length \|\| sel\.s < 0\) return 1;/.test(cuerpoPrimerPaso) && /return 6;/.test(cuerpoPrimerPaso),
-    "y lbPrimerPaso devuelve el 6 con todo elegido y el 1 sin servicio",
-    cuerpoPrimerPaso.slice(0, 90),
+    !!cuerpoPrimerPaso &&
+      /S\.length > 0 && sel\.s >= 0, \/\/ 1 servicio/.test(cuerpoFaltante) &&
+      /return 6;/.test(cuerpoFaltante),
+    "y lbPrimerPaso (via wzFaltante) devuelve el 6 con todo elegido y el 1 sin servicio",
+    (cuerpoPrimerPaso || cuerpoFaltante).slice(0, 90),
   );
   ok(
     /function lbCerrarMenu\(\)/.test(src) && /e\.target\.closest\("#lbPanel"\)\)\s*lbCerrarMenu\(\)/.test(src),

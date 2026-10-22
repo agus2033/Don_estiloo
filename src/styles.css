@@ -289,6 +289,70 @@ body:not(.adm) #lo {
   gap: 16px;
   flex-wrap: wrap;
 }
+/* ---------- horarios libres de hoy (lote 48) ----------
+   Fila por barbero: identidad a la izquierda, chips de hora a la derecha.
+   Los chips son de 44px de alto (el piso de toque) y la fila deja que
+   envuelvan: un barbero con 12 huecos no desarma la tarjeta. */
+.ini-lib-f {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.ini-lib-f:first-of-type {
+  border-top: 0;
+}
+.ini-lib-q {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 128px;
+  flex: 0 0 auto;
+}
+.ini-lib-q img {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--line);
+}
+.ini-lib-hs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ini-lib-h {
+  min-height: 44px;
+  min-width: 64px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--brass) 45%, var(--line));
+  background: color-mix(in srgb, var(--brass) 12%, transparent);
+  color: var(--brass);
+  font: 700 14px "Barlow Condensed", sans-serif;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+}
+.ini-lib-h:hover {
+  background: color-mix(in srgb, var(--brass) 24%, transparent);
+}
+.ini-lib-h--mas {
+  background: transparent;
+  color: var(--mut);
+  border-color: var(--line);
+}
+.ini-lib-v {
+  color: var(--mut);
+  margin: 2px 0 12px;
+}
+.ini-lib-nota {
+  color: var(--mut);
+  font-size: 12px;
+  margin: 4px 0 0;
+}
 .ini-franja b {
   display: block;
   font-size: 20px;

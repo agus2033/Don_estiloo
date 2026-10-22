@@ -1826,3 +1826,53 @@ frágil en el de la carrera. Ahora `cerrarPol` mira si el nodo guardado
 **sigue vivo** (`isConnected`) antes de darle el foco y, si no lo está,
 re-busca el link de `openPol` que siga **visible** como plan B. Los dos
 checks nuevos de `lote47.js` sostienen ese seguro.
+
+## 48. Horarios libres de hoy en el Inicio: tocá una hora y la reserva viene servida
+
+Lo pedido: "en el inicio del cliente, horarios libres del día; al tocar un
+horario, que abra la reserva con día y hora ya elegidos, saltando los pasos
+3 y 4, pero que pueda volver".
+
+- El Inicio del cliente gana una ficha **"Hoy · horarios libres"**, después
+  del próximo turno: una fila por barbero (foto o inicial + nombre) y al
+  lado los **chips de horas libres de HOY** — hasta 6 por barbero y un
+  chip `+N` con el resto.
+- Los horarios se calculan con el **servicio más corto** cargado (la nota
+  al pie lo dice sin rodeos: "si elegís uno más largo, el asistente
+  re-revisa la hora"). Honestidad por escrito: la ficha muestra dónde
+  entra ALGO; la grilla del asistente es la que confirma el exacto.
+- Tocar un chip abre la reserva con **barbero, día (hoy), hora y turno ya
+  cargados** — el único paso que falta es el 1 (servicio). Al elegirlo, el
+  asistente salta directo al **resumen** si la hora sigue entrando, o a la
+  grilla real si no. Los saltos son adelante; **"Atrás" sigue pasando por
+  cada paso de a uno**, con todo lo pre-cargado visible y marcado.
+- La hora pre-cargada **no sobrevive a ciegas**: si el servicio elegido es
+  más largo y la hora ya no entra, se cae sola y el asistente aterriza en
+  el paso donde corresponda (turno u horario). El muro final sigue siendo
+  la verificación al confirmar ("Horario ocupado —elegí otro"), que ya
+  existía y se eleva igual.
+- `+N` pre-carga barbero y día pero SIN hora: directo a la grilla real.
+- Si hoy no queda ningún hueco (cerrado, completo o pasó la hora), la
+  ficha lo dice y propone "Reservar otro día". Sin servicios o barberos
+  cargados, no pinta nada: nada inventado.
+- Chips de **44px de alto** (piso de toque del proyecto). El resto del
+  asistente no cambia: en el flujo normal el "primer paso faltante" ES el
+  siguiente (+1 de siempre); los saltos sólo aparecen cuando hay pre-carga.
+
+### Pruebas
+
+`tests/lote48.js` (**24 checks**, sin navegador): el helper del primer
+faltante, el delegado `lbPrimerPaso`, `wzNext`/auto-avance aterrizando en
+él, la hora pre-cargada que sobrevive o se cae según la grilla real, el
+chip `libreRes`, `prep` honrando la pre-carga sin resumen vacío,
+`lbAbreReserva` sin pisar el turno, el widget y sus 44px, y "Atrás"
+lineal. Sonda manual con base real: `tests/libres-probe.js` (**9/9**,
+captura `tmp_shots/48-libres-probe.png`) — con `09:00` libre de hoy: al
+resumen directo, "Cambiar" a la grilla con la hora marcada; con `07:37`
+fuera de grilla: aterriza en el 4 y Atrás muestra el calendario con HOY.
+
+**Falta ver la ficha en pantalla**: el camino anónimo (modal) usa
+exactamente el mismo código, ya probado; el camino del panel necesita una
+cuenta de cliente desbloqueada (el doc de rol sigue en `staff/` hasta que
+lo arregles — ver Pendientes). Cuando esté, miralo en el celu: es la
+pieza más nueva del Inicio.

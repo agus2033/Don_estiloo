@@ -1465,15 +1465,21 @@ function prep(v) {
        vuelve al resumen con todo lo que había seleccionado. Si no, el
        asistente arranca limpio en el paso 1. */
     const seguir = WZ.resumir && !!sel.t;
+    /* Lote 48: la pre-carga del Inicio también deja el día y la hora puestos,
+       pero el servicio falta (sel.s = -1). No puede ir al paso 6 como el
+       caso "seguir" del modal — el resumen saldría con "Servicio: —". Va al
+       primer paso que falta (el 1) conservando lo ya elegido. */
+    const precarga = WZ.precarga && !!sel.t;
     WZ.resumir = false;
+    WZ.precarga = false;
     /* La bandera se apaga en el mismo lugar, o el próximo ingreso (o el de otro
        cliente en el mismo navegador) creería que hay un turno a medio confirmar
        y conservaría una selección que no es suya. */
     turnoEnVuelo = 0;
-    WZ.paso = seguir ? 6 : 1;
-    WZ.turno = seguir ? WZ.turno : "";
+    WZ.paso = seguir ? 6 : precarga ? wzFaltante(0) : 1;
+    WZ.turno = seguir || precarga ? WZ.turno : "";
     WZ.mes = ymd().slice(0, 7);
-    if (!seguir) sel.t = "";
+    if (!seguir && !precarga) sel.t = "";
     wzOcc.unsubscribe();
     WZ.unsub = null;
   }
@@ -5185,6 +5191,29 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
 </div>`;
 }
 
+/* Lote 48 (horarios libres del Inicio): primer paso incompleto DESPUÉS del
+   que se acaba de elegir. En el flujo normal es desde+1; con la pre-carga
+   (barbero, día y hora ya cargados al entrar desde el Inicio) se salta los
+   pasos completos y cae en el primero que falta — el 5, la grilla de
+   horarios, con la hora pre-elegida marcada. Volver atrás sigue pasando
+   por todos los pasos: los chips están puestos, sólo no se los vuelve a
+   preguntar (lo pidió el dueño: saltar 3-4, pero poder volver). */
+const wzFaltante = (desde) => {
+  const d = desde == null ? 0 : +desde;
+  const hecho = [
+    S.length > 0 && sel.s >= 0, // 1 servicio
+    !!sel.b, // 2 barbero
+    !!sel.d, // 3 día
+    !!WZ.turno, // 4 turno (mañana/tarde)
+    !!sel.t, // 5 horario
+  ];
+  for (let p = 1; p <= 5; p++) {
+    if (p <= d) continue;
+    if (!hecho[p - 1]) return p;
+  }
+  return 6;
+};
+
 /* El primer paso del asistente que todavía falta completar.
 
    Se usa cuando se abre la ventana desde un botón que ya dejó algo elegido (por
@@ -5197,14 +5226,7 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
 
    Va FUERA del `Object.assign(ACT, …)` de más abajo a propósito: una `const`
    declarada dentro de un objeto literal es un error de sintaxis. */
-const lbPrimerPaso = () => {
-  if (!S.length || sel.s < 0) return 1;
-  if (!sel.b) return 2;
-  if (!sel.d) return 3;
-  if (!WZ.turno) return 4;
-  if (!sel.t) return 5;
-  return 6;
-};
+const lbPrimerPaso = () => wzFaltante(0);
 
 /* Cierra la bandeja del menú móvil sin alternar.
 
@@ -5250,7 +5272,10 @@ function lbCerrarMenu() {
    de hacerlo empezar de cero. */
 function lbAbreReserva() {
   WZ.paso = lbPrimerPaso();
-  WZ.turno = "";
+  /* Con pre-carga del Inicio (lote 48) el turno ya vine elegido desde la
+     ficha de horarios: borrarlo acá (esto era un `= ""` incondicional)
+     haría que el asistente re-pregunte el paso 4 que el cliente no tocó. */
+  if (!(WZ.precarga && sel.t)) WZ.turno = "";
   WZ.mes = ymd().slice(0, 7);
   if (me && rd) {
     rtPush("res");
@@ -5499,6 +5524,38 @@ const vn = () =>
   me.emailVerified
     ? ""
     : `<div class="msg"><b>Verificá tu email</b> para poder reservar turnos. Te enviamos un link a ${esc(me.email)}.<div class="chips" style="margin-top:10px"><button data-act="reenviar">Reenviar email</button><button data-act="recheck">Ya verifiqué</button></div></div>`;
+/* ---------- horarios libres de HOY en el Inicio (lote 48) ----------
+   Fila por barbero con los huecos que entran del servicio MÁS corto
+   cargado. La nota lo dice sin rodeos: si el cliente elige un servicio
+   más largo, el asistente re-revisa la hora en el paso 5. La suscripción
+   de "ocupados" es LA MISMA del asistente (wzOcc), no un listener extra. */
+function homeLibresH() {
+  if (!S.length || !BARS.length) return "";
+  if (!WZ.unsub) wzOcc();
+  const durMin = Math.min(...S.map((x) => x.m || 30));
+  const hoy = ymd();
+  const conHueco = BARS.map((b) => ({ b, libres: wzLibres(b.id, hoy, durMin) })).filter(
+    (r) => r.libres.length,
+  );
+  if (!conHueco.length)
+    return `<div class="card ini-lib"><div class="ini-etq">Hoy · horarios libres</div><p class="ini-lib-v">Hoy no quedan horarios, o ya pasó la hora.</p><div style="margin-top:12px"><button class="pillb" data-act="go" data-args="${A("res")}">Reservar otro día</button></div></div>`;
+  const fila = (b, libres) => {
+    const muestra = libres.slice(0, 6);
+    const resto = libres.length - muestra.length;
+    const chip = (t) =>
+      `<button type="button" class="ini-lib-h" data-act="libreRes" data-args="${A(b.id, t)}" aria-label="Reservar hoy a las ${esc(t)} con ${esc(b.n)}">${esc(t)}</button>`;
+    return `<div class="ini-lib-f">
+      <span class="ini-lib-q">${b.foto ? `<img src="${esc(b.foto)}" alt="" width="36" height="36" loading="lazy" decoding="async">` : esc((b.n || "?").trim()[0].toUpperCase())}<b>${esc(b.n)}</b></span>
+      <div class="ini-lib-hs">${muestra.map(chip).join("")}${resto ? `<button type="button" class="ini-lib-h ini-lib-h--mas" data-act="libreRes" data-args="${A(b.id, "")}" aria-label="Ver los demás horarios de ${esc(b.n)}">+${resto}</button>` : ""}</div>
+    </div>`;
+  };
+  return `<div class="card ini-lib">
+    <div class="ini-etq">Hoy · horarios libres</div>
+    ${conHueco.map((r) => fila(r.b, r.libres)).join("")}
+    <p class="ini-lib-nota">Horarios del servicio más corto (${durMin} min). Si elegís uno más largo, el asistente re-revisa la hora.</p>
+  </div>`;
+}
+
 function homeH() {
   const nx = PRv.find((p) => p.p > U.pt),
     pct = nx ? Math.min(100, (U.pt / nx.p) * 100) : 100,
@@ -5553,6 +5610,8 @@ function homeH() {
       </div>
       ${tarjetaProx}
     </div>` +
+    /* ---------- horarios libres de hoy (lote 48) ---------- */
+    homeLibresH() +
     /* ---------- tres accesos ---------- */
     `<div class="ini-tri">
       <button class="card ini-acc ini-acc--pri" data-act="go" data-args="${A("res")}">
@@ -5608,7 +5667,7 @@ function homeH() {
    4 Turno (mañana/tarde) · 5 Horario · 6 Resumen
    ===================================================================== */
 
-const WZ = { paso: 1, mes: "", turno: "", occ: new Map(), unsub: null };
+const WZ = { paso: 1, mes: "", turno: "", precarga: 0, occ: new Map(), unsub: null };
 
 /* --- occupied blocks of the visible month, all barbers.
    `ocupados` is publicly readable, so this works with no session too. --- */
@@ -5716,14 +5775,22 @@ const wzCabeza = () => `<div class="wz-head">
    rápido. */
 const wzEsCelular = () => matchMedia("(max-width: 859px)").matches;
 let wzAuto = 0;
+/* Lote 48: aterrizar en un paso concreto (clamp 1..6) y asegurar la
+   suscripción de "ocupados" cuando el destino ya mira el calendario (>=3).
+   Unifica lo que antes repetían wzNext, wzIr y el auto-avance. */
+const wzVa = (destino) => {
+  WZ.paso = Math.max(1, Math.min(6, +destino || 1));
+  if (WZ.paso >= 3 && !WZ.unsub) wzOcc();
+  WZ.pintar();
+};
 const wzAvanzaSolo = (desde) => {
   if (!wzEsCelular()) return;
   clearTimeout(wzAuto);
   wzAuto = setTimeout(() => {
     if (WZ.paso !== desde) return; // el usuario ya se movió: no se pisa
-    WZ.paso = Math.min(6, desde + 1);
-    if (WZ.paso === 3 && !WZ.unsub) wzOcc();
-    WZ.pintar();
+    /* ya no es desde+1 a ciegas: con pre-carga del Inicio, el primero que
+       falta puede estar a varios pasos de distancia (1 -> 5). */
+    wzVa(wzFaltante(desde));
   }, 280);
 };
 
@@ -7667,6 +7734,7 @@ Object.assign(ACT, {
     clearTimeout(wzAuto);
     WZ.paso = 1;
     WZ.turno = "";
+    WZ.precarga = 0;
     sel.t = "";
     WZ.mes = ymd().slice(0, 7);
     const p = document.getElementById("wzm");
@@ -7681,15 +7749,42 @@ Object.assign(ACT, {
   wzCerrar() {
     wzCerrarModal();
   },
+  /* Lote 48: la ficha "Horarios libres de hoy" del Inicio. El cliente toca
+     una hora y la reserva arranca con barbero + día (hoy) + hora ya
+     cargados: el paso 1 (servicio) queda como lo único pendiente y los
+     pasos 3-4 no se preguntan — están resueltos. "Atrás" los muestra
+     completos (lo pidió el dueño: saltarlos, pero poder volver).
+     Con t vacío es el chip "+N más": pre-carga barbero y día, sin hora,
+     y la grilla real del paso 5 queda a un salto. */
+  libreRes(bid, t) {
+    clearTimeout(wzAuto);
+    sel.s = -1;
+    sel.b = String(bid || "");
+    sel.d = ymd();
+    sel.t = String(t || "");
+    WZ.turno = sel.t ? (wzMitad(sel.t) === "mañana" ? "man" : "tar") : "";
+    WZ.mes = ymd().slice(0, 7);
+    WZ.resumir = 0;
+    WZ.precarga = 1;
+    /* Un reprogramar a medio terminar no puede sobrevivir a un chip nuevo:
+       es una RESERVA distinta. Sin esto, el resumen confirmaría pisando el
+       turno viejo con día y hora del chip, en silencio. */
+    rep = 0;
+    /* Ocupados desde YA: si esperara al paso 3, entre el toque del chip y la
+       elección del servicio la foto del mes puede no haber llegado y el
+       chequeo de wzS ("¿la hora sigue entrando?") miraría una occ vacía. */
+    if (!WZ.unsub) wzOcc();
+    lbAbreReserva();
+  },
   wzNext() {
     const listo = [
       S.length > 0, !!sel.b, !!sel.d, !!WZ.turno, !!sel.t, true,
     ][WZ.paso - 1];
     if (!listo) return;
-    /* al cambiar de barbero o de servicio se cae la disponibilidad elegida */
-    WZ.paso = Math.min(6, WZ.paso + 1);
-    if (WZ.paso === 3 && !WZ.unsub) wzOcc();
-    WZ.pintar();
+    /* Lote 48: ya no es +1 a ciegas. Con la pre-carga del Inicio el paso
+       siguiente completo se salta: elegir el servicio cae directo en la
+       grilla de horarios, con la hora ya marcada. */
+    wzVa(wzFaltante(WZ.paso));
   },
   wzBack() {
     /* Si había un salto automático pendiente, se cancela: si no, el timer
@@ -7718,8 +7813,20 @@ Object.assign(ACT, {
   },
   wzS(i) {
     sel.s = +i;
-    sel.t = "";
-    WZ.turno = "";
+    /* Lote 48: en el flujo normal se borra la hora (el CORTO lo pedía:
+       cambiar el servicio cambia la duración y la hora puede dejar de
+       entrar). Con la pre-carga del Inicio, la hora sobrevive SI sigue
+       entrando con el servicio recién elegido: fue elegida 20 segundos
+       atrás, no es restos de una sesión vieja. Si no entra, se cae y el
+       paso 5 muestra la grilla real de ese servicio, sin predicciones. */
+    const dur = (S[sel.s] || {}).m || 30;
+    const horaOk = sel.t && sel.b && sel.d && wzLibres(sel.b, sel.d, dur).includes(sel.t);
+    if (!horaOk) {
+      sel.t = "";
+      WZ.turno = "";
+    } else {
+      WZ.turno = wzMitad(sel.t) === "mañana" ? "man" : "tar";
+    }
     WZ.pintar();
     wzAvanzaSolo(1);
   },

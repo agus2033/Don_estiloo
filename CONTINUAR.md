@@ -3169,3 +3169,65 @@ Producto en **PRODUCT.md §47**. Lo técnico para el que siga:
   pasa solo, buscar repintados en background de la verificación de auth
   antes de culpar al modal: este mismo patrón puede existir en otros
   modales que guarden nodos (hoy `polRetorno` es el único caso).
+
+## 48. Horarios libres del día en el Inicio + reserva pre-cargada
+
+Producto en **PRODUCT.md §48**. Lo técnico para el que siga:
+
+- **Estado nuevo**: `WZ.precarga` (0/1) vive en el objeto `WZ`. Es la
+  etiqueta del "medio turno elegido": barbero + día + hora + turno puestos,
+  servicio pendiente (`sel.s = -1`). `WZ.resumir` (el previo) significa
+  TODO completo → resumen; `precarga` significa medio elegido → primer
+  paso que falta. Ambos se consumen en `prep("res")` al entrar al panel.
+- **Un solo orden de verdad**: `wzFaltante(desde)` evalúa los pasos 1..5
+  (servicio: `S.length && sel.s >= 0`; barbero; día; turno; hora) y
+  devuelve el primero incompleto después de `desde` (o 6). `lbPrimerPaso`
+  ES `wzFaltante(0)`. El avance (`wzAvanzaSolo`, `wzNext`, ahora via
+  helper `wzVa`) aterriza en `wzFaltante(pasoActual)`, no en `paso + 1`.
+  En flujo normal faltante === siguiente exacto; los saltos sólo con
+  pre-carga. `wzBack` quedó LINEAL a propósito (poder volver de a uno).
+- **La suite lo cobró de una**: el check de `lote25` que leía el CUERPO
+  de `lbPrimerPaso` via regex ("6 con todo elegido y 1 sin servicio") se
+  quedó vacío con la delegación y fue el único ROJO de la primera corrida.
+  Actualizado para sostener el contrato en su nuevo domicilio: delegado
+  presente + `wzFaltante` con su condición de paso 1 + el `return 6`. El
+  check dice "(via wzFaltante)" — si algún día la lógica del primer paso
+  cambia de lugar de nuevo, el nombre del check lo señala.
+- **La hora pre-cargada se valida en `wzS`**: `wzLibres(sel.b, sel.d,
+  durDelServicioElegido).includes(sel.t)` decide si sobrevive. Pequeño
+  detalle que importa: `wzLibres` con `occ` vacía devuelve TODO el
+  horario — por eso `libreRes` abona `wzOcc()` EN EL ACTO (no espera al
+  paso 3) y la ventana entre chip y servicio suele bastar. La validación
+  inviolable es la de `W.book()` al confirmar (`blocks(sel.t, dur)` vs
+  `OC` → "Horario ocupado").
+- **`libreRes(bid, t)`** (ACT): setea `sel.s = -1`, `sel.b`, `sel.d =
+  ymd()`, `sel.t`, turno deducido con `wzMitad`, `WZ.mes`, mata `rep`
+  (un reprogramar a medio terminar NUNCA debe atravesar un chip nuevo) y
+  llama `lbAbreReserva()`. Con `t = ""` es el chip `+N`.
+- **`lbAbreReserva` ya no pisa `WZ.turno`**: sólo lo limpia si NO hay
+  pre-carga vigente (`if (!(WZ.precarga && sel.t)) WZ.turno = "";`). Antes
+  era un `= ""` incondicional — la primera prueba visual lo pescó.
+- **`prep("res")` con tres destinos**: `seguir ? 6` (modal reuse) ·
+  `precarga ? wzFaltante(0)` (→ 1, el servicio; conservando día/hora/
+  turno) · `: 1` limpio. `sel.t` se apaga sólo si no es ninguno.
+- **`homeLibresH()`** (en main.js, sobre `homeH`): sin `S` o sin `BARS`
+  devuelve `""`. `durMin = Math.min(...S.map(x => x.m || 30))`; por barbero
+  `wzLibres(b.id, hoy, durMin)`, muestra 6 chips + `+N`; vacío = mensaje
+  honesto + botón a Reservar. Reusa LA MISMA suscripción de occ del
+  asistente (`if (!WZ.unsub) wzOcc();` — cero listeners extra) y el
+  snapshot repinta (`wzPaint` → `R()`) cuando la base contesta.
+- **Chips**: `data-act="libreRes" data-args="${A(b.id, t)}"` (el dispatcher
+  parsea JSON array → dos args). CSS en styles.css junto a los `.ini-*`:
+  `.ini-lib-h` min-height 44px, `.ini-lib--mas` atenuado, `.ini-lib-nota`
+  12px (piso).
+- **Pruebas**: `tests/lote48.js` (24 fs checks) + fila en run.js después
+  de `lote47`. `tests/libres-probe.js` (manual, 9/9 con base real):
+  inyecta chips en el body (createElement sin append NO burbujea al
+  delegador — primera trampa documentada), id de barbero tomado de
+  `[data-act="lbFlip"]` (los flaps traen el id en data-args), día marcado
+  en el calendario = `.wz-cal .wz-cel[aria-pressed="true"]`, salto del
+  resumen a la grilla = `wzIr` con args `[5]`.
+- **Aguante**: el widget del panel se ve con sesión de cliente y hoy no
+  hay cuenta de cliente desbloqueada (doc de rol en `staff/` — pendiente
+  del dueño). El camino del panel y el anónimo comparten todo el código
+  (libreRes → lbAbreReserva), probado por la sonda en el modal.
