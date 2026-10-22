@@ -3402,7 +3402,9 @@ body[data-theme="light"] #nmenu button.on {
   color: #141c26;
 }
 /* El boton de tema venia con fondo blanco fijo y en claro quedaba un
-   cuadrado blanco sobre la barra. */
+   cuadrado blanco sobre la barra. Con el SquishSwitch: track MARFIL sobre
+   la barra marfil (--bg), nunca blanco puro --card (landing.tema.js
+   lo mide). El knob va oscuro en claro para contraste. */
 body[data-theme="light"] #thm {
   background: var(--bg);
   color: var(--ink);

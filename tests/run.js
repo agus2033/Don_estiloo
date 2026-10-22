@@ -66,6 +66,7 @@ const TODAS = [
   { n: "mapa", sesion: false, red: false },
   { n: "galeria", sesion: false, red: false },
   { n: "lote42", sesion: false, red: false },
+  { n: "lote45", sesion: false, red: false },
   { n: "perf", sesion: false, red: false },
 ];
 

@@ -1709,3 +1709,47 @@ que no era un check fallado sino un crasheo del proceso; la prueba suelta y la
 corrida final pasan 0 violaciones). Pendiente lotes siguientes de la misma
 tanda: el toggle-*squish* del tema, las fichas *flip* de barberos y el
 *stepper* del asistente.
+
+## 45. El toggle de tema es un SquishSwitch (y de paso, funciona con el dedo)
+
+Punto de la tanda: adaptar el **SquishSwitch** que mandó el dueño (React +
+motion) a vanilla. Hasta hoy el toggle del header era un botón cuadrado de
+42px con un ☀︎/☾ de texto. Ahora es una **píldora de 64×34 con un knob dorado
+de 26px** que:
+
+- **cambia con un toque** (igual que siempre),
+- **se puede arrastrar**: el knob sigue al dedo de punta a punta; si el
+  arrastre no supera la mitad del recorrido, **vuelve sin cambiar** (el toque
+  en falso no altera el tema), y si un **flick rápido** pasa por ahí, la
+  velocidad decide la dirección,
+- se **aplasta al apretar** y **rebota al soltar** — el efecto chicle del
+  componente original, hecho con clases CSS + una transición con overshoot
+  (nada de física en JS).
+
+### Los detalles que importan
+
+- **Sigue siendo el botón `#thm` de siempre**: mismo id, mismo aria-label
+  "Cambiar tema claro oscuro", mismo lugar en el orden **casita - toggle -
+  foto**. Nada de los tests ni nada del dueño se rompe por el cambio de
+  forma.
+- **a11y honesto**: `role="switch"` + `aria-checked` que pinta el módulo.
+  Teclado: Enter y Espacio cambian (es un `<button>`). Foco visible.
+- **El estado sigue viviendo donde siempre**: `body[data-theme]` +
+  `localStorage "theme"`, aplicado **antes del primer pintado** (sin
+  parpadeo al refrescar). El módulo de la mecánica no toca storage ni base —
+  solo la física.
+- En tema claro el track queda **marfil (no blanco puro)** y el knob va
+  oscuro, para contraste; en oscuro knob dorado con luna.
+- `prefers-reduced-motion` apaga el squash y el spring: el estado cambia,
+  sin animación.
+
+### Pruebas
+
+`tests/lote45.js` (**24 checks**, archivo → sin navegador). Además:
+`tests/ssw-visual.js` (manual, con `tmp/ssw-probe.html`) prueba la mecánica
+REAL contra el módulo importado en un navegador: knob arranca izq., click
+corto = flip, drag completo = flip, drag corto con vuelta atrás = sin cambio,
+flick rápido = cambia, Enter y Espacio flipean — **10/10**, capturas
+`tmp_shots/45-ssw-*.png`. La mecánica viaja en `src/ssw.js` para que la
+landing pueda montar el mismo componente más adelante sin duplicar nada.
+`sw.js` v22 (cambió main/index).

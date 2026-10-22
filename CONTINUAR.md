@@ -3046,3 +3046,50 @@ Producto en **PRODUCT.md §44**. Lo técnico para el que siga:
   que el default es `prox` y esa lista tiene los botones. Si algún día el
   default cambia a "pas" o "todos", ese test se rompe — aviso escrito acá
   para que no haya sorpresa.
+
+---
+
+## 45. SquishSwitch: la mecánica vive en `src/ssw.js`, aislada del tema
+
+Producto en **PRODUCT.md §45**. Lo técnico para el que siga:
+
+- **Por qué un archivo aparte:** la mecánica (pointer events, clamp, flick)
+  es genérica; el ESTADO es de la app. `sswMontar(btn, { max, inicial,
+  onChange })` devuelve `{ estado, max, pinta, set }` y no toca ni
+  localStorage ni `body.dataset`: los tests de la mecánica (`tests/
+  ssw-visual.js` + `tmp/ssw-probe.html`) importan el módulo REAL en un
+  navegador sin bootear Firebase. Si algún día la landing se quiere el
+  mismo switch, es `sswMontar` con otro caller.
+- **Recorrido en runtime, no a mano:** el máximo del drag sale de medir el
+  botón (`clientWidth` − paddings − ancho del knob). El CSS es la verdad de
+  los px; cambiar el tamaño del track no desincroniza la física. El
+  salvavidas es 30 si medir da 0 (botón oculto al montar).
+- **Trampa del flick:** la velocidad se lee en `pointermove` con memoria del
+  último punto (`vx = dx/dt`, px/ms). Al soltar: `|vx| > 0.55` → la
+  dirección decide; si no, decide la mitad del recorrido. Rebote con
+  `ssw-kn--voz` / `--voz-fuerte` (se quitan via setTimeout 180ms).
+- **Trampa del teclado (ya mordida):** Enter/Espacio de un `<button>`
+  dispara `click` con `detail === 0` y SIN pointer events; el mouse tras el
+  drag dispara `click` con `detail >= 1` DESPUÉS de que `pointerup` ya
+  decidió. Por eso el flip por click entra sólo con `detail === 0` — de lo
+  contrario un toque flippea dos veces.
+- **`scale` CSS property, no `transform: scale()`:** el knob usa la property
+  CSS moderna `scale: 1.16 0.94` para el squish porque el transform lo lleva
+  el translateX a la vez. Navegadores viejos la ignoran y el switch sigue
+  funcionando (solo pierde el aplastado).
+- **Los tres cambios que prohibieron romper cosas:** (1) header.js exige el
+  orden `web-thm-mebadge` por id → el markup conserva ids; (2)
+  landing.tema.js mide el `backgroundColor` de `#thm` en claro y NO permite
+  blanco puro → el override va con `var(--bg)` marfil; (3) politicas.js
+  escanea style/main — quedó verde. Los tres volvieron a correr en la
+  suite de este lote.
+- El bloque duplicado `#thm{...}` de styles.css (estaba POR DUPLICADO, uno
+  en cada sección) se borró: duplicado = un día cambia uno y no el otro.
+- **botones.contraste bajó de 24 a 22 checks** en la suite: el toggle viejo
+  tenía ☀︎/☾ como TEXTO medible; ahora los íconos son svg aria-hidden, así
+  que el auditor no los mide. La suite pasó de 1068 a 1090
+  comprobaciones (−2+24 del archivo nuevo), 0 en rojo. Si algún día vuelven
+  a ser medibles (texto plano), pensalo dos veces: un texto corrido en el
+  knob es otra fuente de contraste que mantener.
+- `sw.js` v22. El deploy NO se hizo todavía: cuando el dueño despliegue,
+  v21 y v22 van juntos (los lotes 42-45 caben en un solo despliegue).

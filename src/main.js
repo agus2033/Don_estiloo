@@ -68,6 +68,7 @@ import {
   GRID,
   MP_LINK,
 } from "./config.js";
+import { sswMontar } from "./ssw.js";
 
 const app = initializeApp(firebaseConfig),
   auth = getAuth(app),
@@ -171,18 +172,27 @@ const etqUsuario = (u) => {
   if (ph) return ph;
   return "Cliente sin nombre ni teléfono";
 };
-// Tema claro/oscuro
+/* Tema claro/oscuro — lote 45: el toggle ahora es un SquishSwitch
+   (src/ssw.js). El módulo lleva solo la mecánica (drag/squish/flick); el
+   ESTADO sigue siendo el de siempre: body[data-theme] + localStorage
+   "theme". data-on="1" = claro (knob a la derecha, sol). */
 (function () {
-  const cur = localStorage.getItem("theme");
-  if (cur) document.body.dataset.theme = cur;
   const btn = document.getElementById("thm");
   if (!btn) return;
-  btn.textContent = cur === "light" ? "☾" : "☀︎";
-  btn.addEventListener("click", () => {
-    const next = document.body.dataset.theme === "light" ? "" : "light";
-    document.body.dataset.theme = next;
-    localStorage.setItem("theme", next);
-    btn.textContent = next === "light" ? "☾" : "☀︎";
+  /* el tema cacheado se aplica ANTES de montar, para que el primer pintado
+     ya salga claro/oscuro sin parpadeo (así era antes del switch) */
+  const cur = localStorage.getItem("theme");
+  if (cur) document.body.dataset.theme = cur;
+  sswMontar(btn, {
+    inicial: cur === "light",
+    onChange: (claro) => {
+      document.body.dataset.theme = claro ? "light" : "";
+      try {
+        localStorage.setItem("theme", claro ? "light" : "");
+      } catch (e) {
+        /* modo privado: el toggle igual cambia en esta sesión */
+      }
+    },
   });
 })();
 /* Fechas y horas siempre en hora de Argentina y con el reloj del servidor (no el del celular) */
