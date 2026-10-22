@@ -1575,7 +1575,9 @@ degradados de perfil, HTTP 200, WebP vía Cloudinary con `f_auto,q_auto,w_800`.
   marcadores.
 
 Capturas con las fotos reales: `tmp_shots/41-gal-movil.png` y
-`41-gal-desk.png`. **39 pruebas · 1035 comprobaciones · 0 en rojo.**
+`41-gal-desk.png`. **39 pruebas · 1035 comprobaciones · 0 en rojo.** El lote
+quedó en el repo pero **no llegó a production** (se despliega con el 42/43,
+abajo).
 
 ### Lo que queda del dueño (no del código)
 
@@ -1585,3 +1587,84 @@ Capturas con las fotos reales: `tmp_shots/41-gal-movil.png` y
 - Las leyendas de las fotos (hoy el `alt` es genérico: "Trabajo de SSJ
   Barber"). Si algún día quiere una nota corta por foto, el documento puede
   crecer sin tocar código.
+
+## 42. "No se pudo guardar" en reprogramar y en la agenda del barbero
+
+El dueño probó en el sitio publicado y mandó pantalla: **"no me deja
+reprogramar el turno" y "cada vez que ingresa el barbero le salta eso"**
+(misma fila de reglas, dos síntomas). Se diagnosticaron las tres causas raíz
+y queda un solo punto en la lista del dueño: **publicar las reglas**.
+
+### Causa 1: las reglas no permitían cambiar el servicio al reprogramar
+
+`Reprogramar` reusa el asistente y al confirmar hace **un solo update** del
+turno con día, hora, barbero **y el servicio por si lo cambió**
+(`s, sid, sn, sp, sm`). La regla de `turnos` para un update del cliente
+sólo aceptaba `['d','t','bid','bl','st','mot','por','canEn']`: las claves del
+servicio nunca entraban, y el write **denegaba siempre** con
+permission-denied. No dependía de quién lo tocara: era del update en sí.
+La lista pasó a incluir las cinco claves (y entró la misma validación de
+formato de fecha/hora que tiene el create, así el update tampoco recibe
+HTML). El riesgo de abrir `sp` queda comentado en las reglas: es cosmético,
+porque el cobro lo carga el barbero con su propio precio.
+
+### Causa 2: el barbero con reglas viejas falla en LECTURA, pero el aviso decía "guardar"
+
+Con las reglas viejas publicadas, apenas entra el barbero la app tiene un
+snapshot de `gastos`/`ventas` que la base le niega, y `err()` abría un cartel
+que decía **"no dejaron guardar"**: una mentira, porque era la *lectura* la
+que fallaba. El aviso de `permission-denied` ahora dice **"leer o guardar"**
+en los dos textos (`ERR` y `motivoFirestore()`): el dueño entiende que la
+salida es publicar reglas, no reintentar.
+
+### Causa 3: el barbero veía el editor de porcentajes que le estaba vedado
+
+En Finanzas, la tarjeta "Ganancia" le agregaba el `<details>` de
+"Editar porcentajes" a **todos los que abren la pantalla**, aunque el
+comentario de la línea decía *"Sólo lo ve el dueño"*. El barbero veía
+"% del dueño por defecto", la marca SOS VOS y "+ Agregar barbero sin
+cuenta" que no puede tocar (y que las reglas le niegan en cualquier
+guardar). Ahora el gate del código (`own && fe`) cumple lo que el comentario
+decía.
+
+### Lo demás que va en el mismo lote
+
+- **Avatar del header sin foto:** mostraba la inicial de la cuenta ("el
+  signo" que señalaba el dueño). Ahora cae el **logo de la barbería**
+  (`LOGO` de config.js, el mismo de la landing). Con foto sigue la foto.
+- **Botones de las tarjetas de turno alineados y iguales** (Inicio y Mis
+  Turnos): fila nueva `.chips.dos` en `styles.css` — dos columnas iguales,
+  mismo estilo y mínimo táctil de 44 px, en vez de un botón con
+  `flex:1;padding:11px` inline y otro suelto.
+- **Alineado de textos del paso 1:** revisado en código: `.wz-item` es flex
+  con `justify-content: space-between` y `text-align: left`, y las tres
+  tarjetas comparten la misma clase. La pantalla desalineada que mandó el
+  dueño es la **producción vieja (sw v11)**; si después de desplegar v21
+  sigue viéndose raro, es un defecto nuevo y se labura por separado.
+
+### Reglas y estado de la base al 21/10/26 (importante)
+
+`FIRESTORE_RULES.txt` ahora incluye también la colección **`borrados/`** (va
+con el lote 43) y las claves de reprogramar — **el archivo sigue SIN
+publicarse**; publicarlo resuelve las pantallas del dueño a la vez:
+
+- reprogramar vuelve a funcionar,
+- el barbero deja de recibir permission-denied al leer gastos,
+- y las cuentas del equipo quedan coherentes (ver ATENCIÓN abajo).
+
+DERIVA detectada por el propio suite: **la cuenta CLIENTE de las pruebas
+tiene documento `staff/`** (alguien la promovió a barbero desde el panel; el
+suite no escribe `staff/`). `tests/landing.reglas.js` lo detecta y **salta
+con ATENCIÓN** en vez de marcar rojo, imprimiendo la instrucción para
+devolverla: panel > Clientes > "Hacer cliente", o borrar `staff/{uid}` en
+Firebase Console. Mientras siga así, esa pantalla del suite corre con
+cobertura reducida: la reseña no se puede probar con la cuenta como barbero.
+
+### Pruebas
+
+`tests/lote42.js` (nuevo, **23 comprobaciones**, archivo → sin navegador):
+valida todo lo de arriba leyendo los fuentes y las reglas. `run.js` lo lista
+junto a `galeria`. Suite completa: **40 pruebas · 1051 comprobaciones ·
+0 en rojo** (`landing.reglas` con ATENCIÓN y salto por la deriva de la
+cuenta CLIENTE, ver arriba). `sw.js` sube a `barberia-v21` para el
+despliegue.

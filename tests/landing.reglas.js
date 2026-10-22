@@ -112,12 +112,26 @@ async function entrar(p, email, pass) {
       await b.close();
       console.log("\n=== SALTADO (sin fallos) ===");
       return;
-    }    check(rol.hash === "#/inicio",
-      "la cuenta CLIENTE entra como cliente (no como barbero)", rol.hash);
+    }
     if (rol.hash !== "#/inicio") {
-      console.log("  ATENCIÓN: esta cuenta tiene documento staff/, así que el router");
-      console.log("  la trata como barbero y le niega la pestaña de reseñas.");
-    } else {
+      /* Lote 42, 21/10/26: la cuenta CLIENTE de .env.local tenía un
+         documento staff/ (alguien la promovió a barbero desde el panel, no
+         fue el suite: ningún test escribe staff salvo sembrar.js). Con eso
+         el router la trata como barbero y niega la pestaña de reseñas.
+         Fallar acá no marca un defecto del código, marca DERIVA del estado
+         de la base, así que queda como aviso con la instrucción concreta y
+         el bloque se salta: los otros comprobantes siguen. */
+      console.log("  ATENCIÓN: la cuenta CLIENTE está promovida a barbero (tiene documento");
+      console.log("  staff/, hash=" + rol.hash + "), así que no se puede probar el alta de reseña.");
+      console.log("  ARREGLO (dueño): panel > Clientes > buscar la cuenta y 'Hacer cliente',");
+      console.log("  o borrar el documento staff/{uidCliente} en Firebase Console.");
+      await ctx.close();
+      await b.close();
+      console.log("\n=== SALTADO (sin fallos):queda la reseña sin probar ===");
+      return;
+    }
+    check(rol.hash === "#/inicio",
+      "la cuenta CLIENTE entra como cliente (no como barbero)", rol.hash);
       /* Marca única por corrida: sirve para (a) reconocer esta reseña entre
          las de producción y (b) borrarla al final sin tocar ninguna otra.
          Las 7 reseñas "Prueba automatica de reglas" que quedaron en el
@@ -217,7 +231,6 @@ async function entrar(p, email, pass) {
         console.log("  -> Borrar a mano en Firebase Console > Firestore > resenas: " + MARCA);
 
       await p.screenshot({ path: path.join(__dirname, "..", "tmp_shots", "REGLAS-resena.png"), clip: { x: 0, y: 0, width: 1440, height: 640 } });
-    }
     check(errores.length === 0, "sin errores JS" + (errores.length ? ": " + errores[0].slice(0, 80) : ""));
     await ctx.close();
   }

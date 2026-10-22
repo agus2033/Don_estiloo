@@ -812,6 +812,20 @@ select:focus-visible {
   flex-wrap: wrap;
   gap: 8px;
 }
+/* Lote 42: fila de DOS botones iguales (Reprogramar / Cancelar) en las
+   tarjetas de turno de Mis Turnos y del Inicio. Antes el Inicio no llevaba
+   la clase .pillb (y el tur sí, con estilos en línea): quedaban distintos. Con "dos" los dos
+   quedan idénticos: dos columnas iguales y el mismo alto táctil de 44px. */
+.chips.dos {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.chips.dos .pillb {
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 8px;
+  box-sizing: border-box;
+}
 .chips.t {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));

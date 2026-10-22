@@ -49,6 +49,16 @@ function env(){const o={};fs.readFileSync(path.join(__dirname,"..",".env.local")
       await b.close();
       process.exit(0);
     }
+    /* Lote 42: si quedó un modal abierto encima (caso visto el 21/10/26: la
+       cuenta CLIENTE promovida a barbero y con reglas viejas recibía un
+       permission-denied de lectura apenas entraba, y el cartel tapaba toda
+       la pantalla), se cierra con "Entendido" antes de seguir.  Un
+       permission-denied como modal lo muestra err() y el test no debe
+       colgarse por eso: lo que se prueba acá es el botón de "Ver la web". */
+    try {
+      if (await p.evaluate(() => { const m = document.querySelector("#mo"); return m && !m.hidden && !!document.querySelector("#mok"); }))
+        await p.click("#mok");
+    } catch (_) {}
     ck(await p.evaluate(()=>{const h=document.querySelector("body > header");
       return !!h&&getComputedStyle(h).display!=="none";}),"entra y aparece el header de la app");
     /* "Ver la web" ya no esta suelto en el encabezado del cliente: paso al

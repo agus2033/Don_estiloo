@@ -449,6 +449,20 @@ const wait = async (t, fn) => {
     busy(0);
   }
 };
+/* SHA-256 del email, en hex, para la colección "borrados".
+   Se guarda el HASH del correo y no el correo: la colección sirve para dos
+   cosas opuestas (chequear al crear cuenta y registrar la baja) y no tiene
+   que exponer datos de nadie. ERROR/fricción esperable: si el navegador
+   viejo no tiene crypto.subtle, la marca no se escribe y el check no corre;
+   en ese caso el registro vuelve a comportarse como antes (con puntos).
+   Los navegadores actuales de PC y celular, que son los que pidió el dueño,
+   la tienen. */
+const shaEm = async (email) => {
+  if (!email || !crypto || !crypto.subtle) return "";
+  const datos = new TextEncoder().encode(String(email).trim().toLowerCase());
+  const buf = await crypto.subtle.digest("SHA-256", datos);
+  return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
+};
 const pwRules = (p) => {
   return [
     ["Mínimo " + PW_MIN + " caracteres", p.length >= PW_MIN],
@@ -706,7 +720,8 @@ const ERR = {
      OJO: "Volvé a intentar" era un consejo inútil cuando el motivo es que las
      reglas de Firestore lo niegan, porque reintentar da exactamente lo mismo.
      Para eso está motivoFirestore() más abajo, que mira el error de verdad. */
-  "permission-denied": "No se pudo guardar ese cambio: la base de datos no lo permitió.",
+  "permission-denied":
+    "No se pudo leer ni guardar ese cambio: la base de datos no lo permitió.",
   "auth/network-request-failed":
     "Sin conexión. Revisá tu internet e intentá de nuevo.",
   "auth/too-many-requests":
@@ -792,7 +807,7 @@ function motivoFirestore(e) {
   if (/Failed to fetch|NetworkError|ERR_INTERNET_DISCONNECTED|ERR_NAME_NOT_RESOLVED|load failed/i.test(txt))
     return "No se pudo llegar a la base de datos. Revisá la conexión a internet e intentá de nuevo.";
   if (e && e.code === "permission-denied")
-    return "Las reglas de Firebase no dejaron guardar este dato. Si sos el dueño o el barbero, hay que revisar el archivo FIRESTORE_RULES.txt y publicarlo de nuevo en Firebase Console.";
+    return "Las reglas de Firebase no dejaron leer o guardar este dato. Hay que revisar el archivo FIRESTORE_RULES.txt y publicarlo de nuevo en Firebase Console. (Lote 42: la lista de reglas del repo ya permite reprogramar el turno y leer gastos del barbero; con publicar lo de acá alcanza.)";
   if (e && e.code === "unavailable")
     return "Firebase no respondió a tiempo. Es momentsáneo: intentá de nuevo en un momento.";
   if (e && e.code === "deadline-exceeded")
@@ -2232,11 +2247,15 @@ const W = {
       });
     const nm = $("#nm").value.trim(),
       ph = $("#ph").value.replace(/\D/g, "");
-    if (nm.length < 2 || nm.length > 40 || ph.length < 8 || ph.length > 15) {
+    /* Lote 43: el teléfono pasa a ser OPCIONAL (pedido del dueño: nombre
+       obligatorio, teléfono opcional). Si lo escriben, tiene que ser
+       válido: sólo números y entre 8 y 15 dígitos (sin código de país
+       escrito con + ni espacios, igual que antes). */
+    if (ph.length && (ph.length < 8 || ph.length > 15)) {
       return M({
         k: "w",
         h: "Revisá tus datos",
-        b: "Completá tu nombre (2 a 40 letras) y un teléfono válido, solo con números.",
+        b: "El teléfono es solo con números (8 a 15 dígitos), o dejalo vacío. El nombre sí es obligatorio.",
       });
     }
     if ($("#pw").value !== $("#pw2").value)
@@ -2259,18 +2278,34 @@ const W = {
         $("#em").value.trim(),
         $("#pw").value,
       );
+      /* Lote 43: los puntos de bienvenida SE CARGAN una sola vez por email.
+         Si ese email ya borró una cuenta antes, arranca en 0: que no pueda
+         farmear el regalo con el bucle de crear y borrar la cuenta (pedido
+         del dueño, 21/10/26). */
+      let pt0 = PTSRv;
+      try {
+        const sh = await shaEm($("#em").value);
+        if (sh) {
+          const marcada = await getDoc(doc(db, "borrados", sh));
+          if (marcada.exists()) pt0 = 0;
+        }
+      } catch (_) {}
       await setDoc(doc(db, "users", c.user.uid), {
         nm: nm,
         ph: ph,
         /* Los puntos de bienvenida salen de la configuración, no de un 20
            clavado. */
-        pt: PTSRv,
+        pt: pt0,
       });
       sendEmailVerification(c.user).catch(() => {});
       M({
         k: "ok",
         h: "¡Cuenta creada!",
-        b: "Te enviamos un email para verificar tu cuenta. Lo necesitás para reservar turnos.",
+        b:
+          "Te enviamos un email para verificar tu cuenta. Lo necesitás para reservar turnos." +
+          (pt0 === 0
+            ? " Como tu email ya tuvo una cuenta que se borró, esta nueva arranca sin puntos de bienvenida."
+            : ""),
       });
     } catch (e) {
       if (e.code === "auth/email-already-in-use")
@@ -3578,11 +3613,14 @@ Object.assign(W, {
   borrarAsk() {
     M({
       k: "q",
-      h: "¿Borrar tus datos?",
-      b: "Se borran tu nombre, teléfono y puntos, se cancelan tus turnos pendientes y perdés el acceso a esta cuenta. No se puede deshacer.",
-      ok: "Sí, borrar",
+      h: "¿Borrar tu cuenta?",
+      b:
+        "Se borra todo lo tuyo: tu perfil, tus puntos, tus turnos pendientes y tu teléfono. " +
+        "La barbería conserva su registro de cortes, pero sin tu nombre. " +
+        "Si algún día volvés a crear una cuenta con este mismo email, arrancás como usuario nuevo y SIN puntos de bienvenida. No se puede deshacer.",
+      ok: "Sí, borrar todo",
       no: "Conservar",
-      fn: () => wait("Borrando tus datos…", () => W.borrarCuenta()),
+      fn: () => wait("Borrando tu cuenta…", () => W.borrarCuenta()),
     });
   },
   async borrarCuenta() {
@@ -3599,15 +3637,36 @@ Object.assign(W, {
     T.filter((t) => t.st !== "pend").forEach((t) =>
       b.update(doc(db, "turnos", t.id), { nm: "Cliente eliminado" }),
     );
-    // espera, canjes, activos, perfil
+    // espera, canjes, activos y PERFIL
     const esp = await getDocs(query(collection(db, "espera"), where("uid", "==", me.uid)));
     esp.forEach((d) => b.delete(doc(db, "espera", d.id)));
     const cjs = await getDocs(query(collection(db, "canjes"), where("uid", "==", me.uid)));
     cjs.forEach((d) => b.delete(doc(db, "canjes", d.id)));
     [1, 2].forEach((n) => b.delete(doc(db, "activos", me.uid + "_" + n)));
-    b.set(doc(db, "users", me.uid), { nm: "", ph: "", pt: 0, borrado: true }, { merge: true });
+    /* Lote 43: el documento del perfil SE BORRA (antes quedaba con
+       "borrado: true" para excluirlo de la lista de clientes vivos). El
+       dueño conserva lo que le pertenece: los turnos quedan con los cobros
+       (con el nombre cambiado a "Cliente eliminado" cuando el turno ya no
+       está pendiente) y las reseñas siguen contando, con nombre anonimizado.
+       Queda como usuario nuevo: sin perfil, sin puntos, sin turnos pendientes.
+       De paso y CONSISTENTE con eso: el listado ya no depende del flag. */
+    b.delete(doc(db, "users", me.uid));
+    // reseñas propias: el texto y las estrellas quedan (las muestra la web),
+    // el nombre sale para que no quede dato personal visible del borrado.
+    const rvs = await getDocs(query(collection(db, "resenas"), where("uid", "==", me.uid)));
+    rvs.forEach((d) => b.update(doc(db, "resenas", d.id), { nm: "Cliente eliminado" }));
     try {
       await b.commit();
+      /* Huella anti-bucle: queda marcado el SHA-256 del email para que una
+         cuenta nueva con el MISMO correo no cobre otra vez los puntos de
+         bienvenida. Va aparte del batch y se intenta antes de borrar la
+         cuenta de Auth (con la sesión todavía activa). Si falla (sin la
+         regla publicada, o crypto sin soporte), el resto del borrado
+         IGUAL se consume: se pierde la marca anti-bucle, nada más. */
+      try {
+        const sh = await shaEm(me.email);
+        if (sh) await setDoc(doc(db, "borrados", sh), { t: now() });
+      } catch (_) {}
       await me.delete().catch(() => {});
       await signOut(auth).catch(() => {});
     } catch (e) {
@@ -3971,7 +4030,7 @@ function loginH() {
         <h1>CREÁ TU CUENTA</h1>
         <p class="sub">Reservá tu turno en menos de un minuto · Al registrarte te cargamos ${PTSRv} ${PTSRv === 1 ? "punto" : "puntos"}</p>
         <div class="campo"><label for="nm">Nombre</label><input class="entrada" id="nm" name="nombre" type="text" autocomplete="name" placeholder="Tu nombre"></div>
-        <div class="campo"><label for="ph">Teléfono</label><input class="entrada" id="ph" name="telefono" type="tel" autocomplete="tel" inputmode="tel" placeholder="Tu teléfono"></div>
+        <div class="campo"><label for="ph">Teléfono (opcional)</label><input class="entrada" id="ph" name="telefono" type="tel" autocomplete="tel" inputmode="tel" placeholder="Tu teléfono (opcional)"></div>
         <div class="campo"><label for="em">Email</label><input class="entrada" id="em" name="email" type="email" autocomplete="email" inputmode="email" placeholder="sofia@correo.com"></div>
         <div class="campo"><label for="pw">Contraseña</label><div class="clave"><input class="entrada" id="pw" name="password" type="password" autocomplete="new-password" placeholder="Tu contraseña" data-in="pwLive"><button type="button" class="ver" data-act="ver" data-args="${A("@el")}">Ver</button></div><ul class="reglas" id="pwl">${pwHtml("", "")}</ul></div>
         <div class="campo"><label for="pw2">Repetí la contraseña</label><div class="clave"><input class="entrada" id="pw2" name="password2" type="password" autocomplete="new-password" placeholder="Repetí la contraseña"><button type="button" class="ver" data-act="ver" data-args="${A("@el")}">Ver</button></div></div>
@@ -5401,7 +5460,7 @@ function homeH() {
       <div class="ini-etq">Próximo turno<span class="ini-badge">Confirmado</span></div>
       <div class="ini-serv"><span class="ini-serv-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M20 4L8.5 15.5M14.5 14.5L20 20M8.5 15.5L4 20"/></svg></span><div><b>${esc(s ? s.n : "Turno")}</b><small>${esc(s ? s.tx : "")}</small></div></div>
       <div class="ini-cuadro"><div><small>Día y hora</small><b>${esc(fd(prox.d))} · ${esc(prox.t)}hs</b></div><div><small>Barbero</small><b>${esc(nomBar || "—")}</b></div></div>
-      <div class="chips" style="margin-top:12px"><button data-act="reprogramar" data-args="${A(prox.id)}">Reprogramar</button><button data-act="askCancel" data-args="${A(prox.id)}">Cancelar turno</button></div>
+      <div class="chips dos" style="margin-top:12px"><button class="pillb" data-act="reprogramar" data-args="${A(prox.id)}">Reprogramar</button><button class="pillb" data-act="askCancel" data-args="${A(prox.id)}">Cancelar turno</button></div>
       ${/* El formulario de confirmación tiene que estar ACÁ. askCancel
            sólo pone cx = id y repinta: la confirmación se dibuja en línea,
            en la tarjeta del turno. En el Inicio faltaba, así que el botón
@@ -6322,7 +6381,7 @@ function turH() {
   const card = (t) => {
     const x = cx === t.id,
       pr = t.st === "hecho" && t.precio != null ? t.precio : sv(t).p;
-    return `<div class="card" style="margin-bottom:12px"><div class="appt" style="border:0;background:none;padding:0;margin:0"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font:700 34px 'Barlow Condensed'">${esc(t.t)}</b><span class="pill ${t.st === "hecho" ? "st-hecho" : t.st === "cancel" ? "st-cancel" : "st-pend"}">${ST[t.st]}</span></div><small style="color:var(--mut)">${esc(fd(t.d))}</small><br><b>${esc(sv(t).n)}</b><br><small>con ${esc(bn(t) || "—")} · ${esc(sv(t).tx)} · ${$$(pr)}</small></div>${t.st === "pend" && !x ? `<div class="chips" style="margin-top:12px"><button class="pillb" style="flex:1;padding:11px" data-act="reprogramar" data-args="${A(t.id)}">Reprogramar</button><button class="pillb" style="flex:1;padding:11px" data-act="askCancel" data-args="${A(t.id)}">Cancelar</button></div>` : ""}${x ? cxForm(t) : ""}</div>`;
+    return `<div class="card" style="margin-bottom:12px"><div class="appt" style="border:0;background:none;padding:0;margin:0"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font:700 34px 'Barlow Condensed'">${esc(t.t)}</b><span class="pill ${t.st === "hecho" ? "st-hecho" : t.st === "cancel" ? "st-cancel" : "st-pend"}">${ST[t.st]}</span></div><small style="color:var(--mut)">${esc(fd(t.d))}</small><br><b>${esc(sv(t).n)}</b><br><small>con ${esc(bn(t) || "—")} · ${esc(sv(t).tx)} · ${$$(pr)}</small></div>${t.st === "pend" && !x ? `<div class="chips dos" style="margin-top:12px"><button class="pillb" data-act="reprogramar" data-args="${A(t.id)}">Reprogramar</button><button class="pillb" data-act="askCancel" data-args="${A(t.id)}">Cancelar</button></div>` : ""}${x ? cxForm(t) : ""}</div>`;
   };
   return (
     `<h1>MIS TURNOS</h1>` +
@@ -6946,7 +7005,14 @@ function finH() {
        barbero" me quedaron fuera de la tarjeta por un `</div>` de más. Es
        largo, y por eso conviene copiar la expresión completa en vez de
        reescribirla de memoria. */
-        (fe
+        /* Lote 42: a esta tarjeta ya venía el editor de porcentajes para
+           TODOS los que-abren Finanzas, con lo que el barbero veía
+           "% del dueño por defecto", "SOS VOS" y "+ Agregar barbero sin
+           cuenta" que no le sirven para nada (y que las reglas le niegan:
+           cualquier "Guardar" le rebota con permission-denied). Lo pidió el
+           dueño viendo su panel de barbero. El comentario de abajo decía
+           "sólo lo ve el dueño": ahora el código lo cumple. */
+        (own && fe
           ? `<details style="padding:0 14px 14px"><summary style="cursor:pointer;color:var(--brass)">Editar porcentajes</summary><small>Porcentaje que se queda el dueño. Se aplica a los cobros nuevos; los anteriores conservan el suyo.</small><h3>% del dueño por defecto</h3><input id="fpd" inputmode="numeric" maxlength="3" value="${esc(fe.pd)}" data-in="feDef" data-args="${A("@el")}">${fe.bs.map((b, i) => {
             /* La fila del dueño se ve distinta y su porcentaje no se edita: es siempre
                100 (lote 36). Se calcula en bsnap() y además se clava al guardar.
@@ -7134,13 +7200,17 @@ function R() {
      del avatar para no perder la informacion. */
   const medE = $("#med");
   if (medE) { medE.title = mn2; medE.setAttribute("aria-label", mn2); }
-  $("#med").textContent = (mn2 || "?").trim()[0].toUpperCase();
-  (function () {
-    const foto = (SB && SB.foto) || (U && U.foto);
-    if (foto) {
-      document.querySelector("#med").innerHTML = `<img src="${esc(foto)}" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover;display:block">`;
-    }
-  })();
+  /* Lote 42: sin foto de perfil el avatar mostraba la INICIAL de la cuenta
+     (el "singuito A" que veía el dueño en la esquina de la web). Ahora cae
+     el LOGO de la barbería (LOGO de config.js) cuando no hay foto, y la
+     inicial queda como letter-fallback sólo si el logo también faltara.
+     El aria-label/title de arriba ya dicen quién es: la imagen es decorativa. */
+  if (medE) {
+    const fotoHd = (SB && SB.foto) || (U && U.foto);
+    medE.innerHTML = fotoHd
+      ? `<img src="${esc(fotoHd)}" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover;display:block">`
+      : `<img src="${esc(LOGO)}" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover;display:block;background:var(--card)">`;
+  }
   if (me && (!rd || (!isAdm() && !U))) {
     pnd = 1;
     busy(1, "Cargando tu cuenta…");

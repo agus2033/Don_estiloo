@@ -2926,6 +2926,84 @@ marcadores, o N fotos reales) y el no recorte se comprueba en los dos caminos.
   color sale del exit code — el final del `finally` (con `process.exitCode`)
   define el color, no el texto.
 
-**13 lotes sin publicar (29–41).** En `codigobarber.com.ar` está `sw.js` v11;
-acá va `barberia-v20`. Con la galería ya con contenido real, el despliegue gana
-una razón más: la galería ahora está bien, pero nadie la ve.
+**15 lotes sin publicar (29–43).** En `codigobarber.com.ar` está `sw.js` v11;
+acá va `barberia-v21`. Con la galería ya con contenido real, el despliegue
+gana una razón más: la galería ahora está bien, pero nadie la ve. Y con el
+42/43 se vuelve **urgente**: las reglas que están publicadas NO permiten
+reprogramar (la lista de claves del update no incluía el servicio), y el
+trabajo diario del barbero depende de publicar el `FIRESTORE_RULES.txt`
+actual.
+
+---
+
+## 42/43. Reprogramar trabado, panel del barbero limpio, cuenta que se borra de verdad
+
+Producto en **PRODUCT.md §42** (reglas + panel + avatar + botones). Acá la
+base técnica del par de lotes, que corren en un solo despliegue.
+
+### Reglas de `turnos`: la lista de claves no cubría reprogramar
+
+El update del cliente para un turno pendiente ahora acepta
+
+```
+hasOnly(['d','t','bid','bl','st','mot','por','canEn','s','sid','sn','sp','sm'])
+```
+
+más el `matches` de formato de `d`/`t` que ya tenía el create. **Trampa que
+evitar: si el write de reprogramar algún día suma otra clave, la regla
+vuelve a negar todo.** El test `tests/lote42.js` falla si desaparecen las
+cinco claves nuevas o si reaparece la lista vieja sin ellas. La rama `nm`
+para "borrar tus datos" quedó igual.
+
+### Colección `borrados/` (anti-bucle de puntos)
+
+- **Qué es:** documentos cuyo id es el **SHA-256 del email** (trim +
+  minúsculas) y cuyo cuerpo `{ t: <fecha> }`. NO guarda el email: sirve para
+  dos caminos, el alta (¿este email ya tuvo una cuenta borrada?) y la baja
+  (marcar el email). El hash se hace en el navegador con `crypto.subtle`
+  (`shaEm()` en `main.js`, después de `wait()`).
+- **Reglas:** `get` con sesión; `list` sólo dueño; `create` con
+  `keys hasOnly(['t'])` y `t number`; `update/delete` sólo dueño. Ojo:
+  hay que dejar get y list SEPARADOS — si se los uniera en
+  `read: isSignedIn()`, cualquier usuario podría listar la colección entera.
+- **App:** en `registro()`, después del `createUserWithEmailAndPassword`
+  (ahí la sesión YA existe) → `getDoc(borrados/shaEmail)`; si existe,
+  `pt0 = 0` en el doc `users`. Fail-open a favor del usuario si
+  `crypto.subtle` no existe: la marca no se escribe, el check no corre.
+- **Al borrar la cuenta** (`W.borrarCuenta`): el `batch` borra `users/{uid}`
+  (antes quedaba con `borrado: true`), cancela pendientes, anonimiza
+  historial y va tras `resenas` propias para reescribir `nm`. El
+  `setDoc(borrados/sh)` va FUERA del batch, antes de `me.delete()`, porque
+  la sesión hace falta viva. Si esa escritura falla, el resto del borrado
+  no se revierte (se pierde la marca, nada más — error menor y documentado).
+
+### El drift de cuentas de prueba (21/10/26)
+
+**La cuenta CLIENTE tiene documento `staff/`.** Nadie del suite lo escribió
+(los únicos tests que tocan `staff/` son `sembrar.js`, que no corre solo).
+Consecuencia: esa cuenta entra como `#/agenda` (barbero), el panel le abre
+`permission-denied` en las lecturas (las reglas viejas solo dejan gastos al
+dueño), y **`err()` abre el modal que tapa la pantalla**.
+`landing.reglas.js` lo detecta por hash y **salta con ATENCIÓN** (el
+comprobante de reseña queda sin cubrir), y `landing.web.js` cierra ese
+modal con `#mok` antes de seguir. Arreglo del lado del dueño: panel >
+Clientes > "Hacer cliente", o borrar `staff/{uid}` a mano. Mientras siga
+promovida, la foto del BARBERO tampoco se prueba (la cuenta BARBERO sigue
+sin `staff/`, o sea entrando como cliente — las dos están cruzadas con sus
+nombres).
+
+### Detalles para el que siga
+
+- `sw.js` va v21 (los lotes 39/40 tocaban index/landing.css, y el 42/43
+  toca main.js/styles.css/reglas: hay que desplegar con cache limpia).
+- `tests/lote42.js` es del tipo SIN navegador: lee fuentes y reglas con
+  `fs`, no abre python ni Playwright. En `run.js` fue entre `galeria` y
+  `perf`.
+- El modal (#mo) se cierra programáticamente apretando `#mok` ("Entendido";
+  visible si `#mo.hidden == false`). El `Mx()` del código vacía el
+  contenido además de esconderlo: los tests no lo invocan, hacen el click.
+- En `styles.css` la fila es `.chips.dos` (grid de 2 columnas, `.pillb` con
+  `min-height: 44px`). Si algún día van TRES botones en fila, no reutilices
+  la fila: clase nueva `.chips.tres` o `repeat(auto-fit, minmax(...))`.
+- El `shaEm()` requiere `crypto.subtle` (HTTPS + localhost). En `file://`
+  no existe: todos los test y producción van por HTTP(S) con dominio.

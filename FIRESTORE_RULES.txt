@@ -308,13 +308,36 @@ function isOwner() { return isSignedIn() && request.auth.uid == 'LQ7IkEfxEKNXajx
       // turnos que ya no están pendientes con { nm: "Cliente eliminado" }. Sin
       // ella no podría borrar su cuenta, porque la lista de arriba no incluía
       // "nm" y se caía el lote entero.
+      //
+      // Lote 42: "Reprogramar" cambia TAMBIÉN el servicio, y el lote de
+      // reprogramar escribe s, sid, sn, sp y sm (nombre, id, precio y texto
+      // del servicio, que el asistente toma de config/servicios). Con la
+      // lista anterior el write denegaba SIEMPRE con permission-denied: el
+      // dueño lo probó publicado el 21/10/26 ("no me deja reprogramar el
+      // turno"). La lista vieja servía para cancelar y cambiar hora, pero no
+      // para la mitad de los casos de uso de "Reprogramar".
+      //
+      // Va hasOnly EN CONJUNTO porque reprogramar manda TODO en un solo
+      // updateDoc (misma política que cancelar: se aceptan esas claves y
+      // nada más). El riesgo de abrir 'sp' es que el cliente se invente el
+      // precio de SU turno pendiente: queda cosmético, porque el cobro lo
+      // carga el barbero con su propio precio (y si el barbero no lo toca,
+      // usa el de config igual). Es el mismo nivel de confianza que ya se
+      // aceptaba: el cliente ya podía cambiar d, t, bid y bl de su turno.
+      //
+      // Con las claves 'd' y 't' en juego, entra la misma validación de
+      // formato del create, para que el update tampoco reciba HTML en la
+      // fecha ni la hora.
       allow update: if isBarberoOrOwner()
                     || (isSignedIn()
                         && resource.data.uid == request.auth.uid
                         && ((resource.data.st == 'pend'
                              && request.resource.data.st in ['pend', 'cancel']
+                             && request.resource.data.t.matches('^[0-2][0-9]:[0-5][0-9]$')
+                             && request.resource.data.d.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
                              && request.resource.data.diff(resource.data).affectedKeys()
-                                  .hasOnly(['d', 't', 'bid', 'bl', 'st', 'mot', 'por', 'canEn']))
+                                  .hasOnly(['d', 't', 'bid', 'bl', 'st', 'mot', 'por', 'canEn',
+                                            's', 'sid', 'sn', 'sp', 'sm']))
                             || (resource.data.st != 'pend'
                                 && request.resource.data.diff(resource.data).affectedKeys()
                                      .hasOnly(['nm']))));
@@ -372,6 +395,31 @@ function isOwner() { return isSignedIn() && request.auth.uid == 'LQ7IkEfxEKNXajx
     match /gastos/{id} {
       allow read: if isSignedIn();
       allow create, update, delete: if isOwner();
+    }
+
+    // ---------- cuentas borradas ----------
+    //
+    // CADA documento es el SHA-256 de UN email (trim + minúsculas), y no
+    // contiene el email ni ningún otro dato de la persona: sólo la fecha.
+    //
+    // La app lo usa al crear una cuenta: si el email ya tuvo una cuenta y se
+    // la borró, el registro vuelve a entrar acá y NO le carga los puntos de
+    // bienvenida. Sin esto, el cliente se armaba un bucle: creaba cuenta con
+    // los puntos de regalo, borraba la cuenta y volvía a crearla con el
+    // mismo correo, y volvía a partir de los puntos gratis que ya se llevó
+    // (pedido del dueño, 21/10/26: "para que no se sumen puntos a su cuenta
+    // ... porque sino se genera un bucle que puede aprovechar el usuario").
+    //
+    // El get con sesión alcanza para el check del registro (la sesión de
+    // Firebase ya existe cuando se lee: createUser devuelve la cuenta antes
+    // de escribir el perfil). El LISTAR todo queda para el dueño solamente:
+    // que un usuario curioso no pueda recorrer la lista de hashes.
+    match /borrados/{id} {
+      allow get: if isSignedIn();
+      allow list: if isOwner();
+      allow create: if isSignedIn() && request.resource.data.t is number
+                    && request.resource.data.keys().hasOnly(['t']);
+      allow update, delete: if isOwner();
     }
   }
 }
