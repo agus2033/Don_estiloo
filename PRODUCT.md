@@ -1876,3 +1876,29 @@ exactamente el mismo código, ya probado; el camino del panel necesita una
 cuenta de cliente desbloqueada (el doc de rol sigue en `staff/` hasta que
 lo arregles — ver Pendientes). Cuando esté, miralo en el celu: es la
 pieza más nueva del Inicio.
+
+## 49. El toggle de tema de la landing es el mismo SquishSwitch de la app
+
+Lo pediste al confirmar la tanda: el interruptor de goma de la cabecera
+del panel también en la luna/sol de la esquina de la landing.
+
+- Misma pieza, mismos gestos: clic limpio, arrastre de punta a punta con
+  solta-a-la-mitad, chicle al apretar, rebote si va rápido, y teclado
+  (Enter/Espacio) intacto por ser un botón.
+- El estado sigue siendo el de siempre: el tema claro se guarda en el
+  navegador y queda al recargar. Los íconos (luna en oscuro, sol en
+  claro) ahora viajan con el knob, como en la app.
+- El viejo círculo de 48px con los íconos desvanecidos se fue de una vez:
+  no quedan dos toggles distintos en el proyecto.
+- En claro el nuevo track va marfil (el tono del resto de la página) y no
+  blanco puro — la misma lección del interruptor de la app.
+
+### Pruebas
+
+`tests/lote49.js` (**14 checks**) + sonda manual con base viva
+`tests/lbtema-probe.js` (**7/7**, capturas `tmp_shots/49-tema-*.png`):
+monta, cambia una sola vez por clic (el mouse no duplica el estado), el
+knob y el aria-checked acompañan, y queda guardado al recargar. El
+encabezado de la app no cambio ni un botón de orden (header.js sigue
+verde); `ACT.lbTema` quedó dormido a propósito — lo usa el lote 25 como
+límite de corte.

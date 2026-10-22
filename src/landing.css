@@ -359,45 +359,17 @@ body[data-theme="light"] {
   outline-offset: 2px;
 }
 
-/* toggle claro/oscuro */
+/* toggle claro/oscuro (lote 49): es el MISMO SquishSwitch que el header de
+   la app — el botón ES el track 64x34 con el knob viajero, y los px/colores
+   viven en styles.css (#thm comparte bloque con #lbTema). Acá queda lo
+   específico de la landing. */
 .lb-tema {
-  width: 48px;
-  height: 48px;
-  display: grid;
-  place-content: center;
-  background: none;
-  border: 1px solid var(--lb-line);
-  border-radius: var(--lb-r-sm);
-  color: var(--lb-ink);
-  cursor: pointer;
   flex: 0 0 auto;
-  transition: border-color var(--lb-t-fast) var(--lb-ease),
-    color var(--lb-t-fast) var(--lb-ease);
 }
-.lb-tema:hover {
-  border-color: var(--lb-brass);
-  color: var(--lb-brass);
-}
-.lb-tema:focus-visible {
-  outline: 2px solid var(--lb-brass);
-  outline-offset: 2px;
-}
-/* los dos íconos se cruzan con un fade corto: sin bounce */
-.lb-tema svg {
-  grid-area: 1 / 1;
-  transition: opacity var(--lb-t) var(--lb-ease), transform var(--lb-t) var(--lb-ease);
-}
-.lb-ico-sol {
-  opacity: 0;
-  transform: rotate(-60deg) scale(0.7);
-}
-body[data-theme="light"] .lb-ico-luna {
-  opacity: 0;
-  transform: rotate(60deg) scale(0.7);
-}
-body[data-theme="light"] .lb-ico-sol {
-  opacity: 1;
-  transform: none;
+/* Lección del lote 45: el track en claro NO va blanco puro sobre la landing —
+   va marfil (el fondo de la página), que es el tono del resto. */
+body[data-theme="light"] .lb-tema {
+  background: var(--bg);
 }
 
 /* panel móvil */

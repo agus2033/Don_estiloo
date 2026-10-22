@@ -3231,3 +3231,37 @@ Producto en **PRODUCT.md §48**. Lo técnico para el que siga:
   hay cuenta de cliente desbloqueada (doc de rol en `staff/` — pendiente
   del dueño). El camino del panel y el anónimo comparten todo el código
   (libreRes → lbAbreReserva), probado por la sonda en el modal.
+
+## 49. SquishSwitch en el toggle de la landing (#lbTema)
+
+Producto en **PRODUCT.md §49**. Lo técnico para el que siga:
+
+- **Plantilla** (`landingH`, el bloque del encabezado): `#lbTema` perdió el
+  `data-act="lbTema"` y ganó `role="switch"` + `aria-checked` + un
+  `.ssw-kn` con los dos SVG (cuando no hay knob, `sswMontar` sale con
+  null). El aria-label NO cambió ("Cambiar entre tema claro y oscuro").
+- **Montaje**: `lbMontarTema()` corre en el post-pintado de `R()`
+  (después de `lbCargarMapas` y `setupReveal`, antes de `footer`). El
+  innerHTML reconstruye el botón en cada pintado, así que el montaje por
+  repintado es el diseño, no un bug; el guard `btn.dataset.ssw` cubre
+  llamadas dobles del mismo pintado. `inicial` lee `body.dataset.theme`
+  al vuelo, y `onChange` es la MISMA pareja token+localStorage de `#thm`.
+- **CSS**: los selectores del SquishSwitch se comparten — el bloque base,
+  hover, focus-visible, `[data-on="1"]`, la visibilidad `ssw-ico--luna/
+  --sol` y el `::after` del knob ahora listan `#thm, #lbTema`. Los px
+  unitarios (64x34 track, knob 26) viven UNA vez en styles.css; en
+  landing.css quedó sólo `flex: 0 0 auto` + el override de claro
+  (`background: var(--bg)` — marfil, la lección del lote 45). Las reglas
+  muertas del fade (.lb-ico-sol/luna, círculo 48px) están ELIMINADAS, no
+  comentadas.
+- **ACT.lbTema quedó DORMIDO**: no lo borres — `lote25.js` (L60) corta el
+  cuerpo de `lbReservar` usando `\n  lbTema() {` como límite. Sin el
+  handler, ese regex rompería todo el lote 25. El comentario en el
+  propio handler lo dice; es el único caso de handler dormido a propósito.
+- **Pruebas**: `tests/lote49.js` (14 checks fs) + fila tras `lote48`.
+  Sonda manual `tests/lbtema-probe.js` (7/7): page.click del mouse real
+  (pointerdown/up + click detail>=1 — el switch descarta ese click para
+  no duplicar, el flip ya lo tomó `decide`), aria-checked y transform del
+  knob acompañan, persistencia que aguanta el recargue y regreso. Capturas
+  `tmp_shots/49-tema-1.png` / `49-tema-2.png`.
+- **sw.js** sigue `barberia-v22` (misma tanda sin publicar).

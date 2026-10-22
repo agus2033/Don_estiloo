@@ -1149,7 +1149,8 @@ nav .on {
 /* ====== SquishSwitch (lote 45): el toggle claro/oscuro ======
    La mecánica vive en src/ssw.js; acá están los px y los colores.
    Sigue siendo #thm entre #web y #mebadge (orden exigido por header.js).
-   El botón ES el track: 64x34, knob de 26 con sol/luna adentro.
+   Lote 49: el MISMO switch vive en la landing (#lbTema) — mismo track 64x34,
+   mismo knob; el detalle por-superficie va en landing.css.
    landing.tema.js lee el backgroundColor del #thm: constante con var(), y
    en claro NO queda blanco puro (queda el track del mismo tono del resto). */
 #web {
@@ -1168,7 +1169,8 @@ nav .on {
     transform 0.16s ease,
     border-color 0.16s ease;
 }
-#thm {
+#thm,
+#lbTema {
   display: inline-flex;
   align-items: center;
   width: 64px;
@@ -1186,14 +1188,17 @@ nav .on {
     border-color 0.16s ease,
     background 0.24s ease;
 }
-#thm:hover:not(:disabled) {
+#thm:hover:not(:disabled),
+#lbTema:hover:not(:disabled) {
   border-color: var(--brass);
 }
-#thm:focus-visible {
+#thm:focus-visible,
+#lbTema:focus-visible {
   outline: 2px solid var(--brass);
   outline-offset: 2px;
 }
-#thm[data-on="1"] {
+#thm[data-on="1"],
+#lbTema[data-on="1"] {
   border-color: var(--brass);
 }
 .ssw-kn {
@@ -1223,10 +1228,12 @@ body[data-theme="light"] .ssw-kn {
 .ssw-kn .ssw-ico--luna {
   display: none;
 }
-#thm[data-on="0"] .ssw-ico--sol {
+#thm[data-on="0"] .ssw-ico--sol,
+#lbTema[data-on="0"] .ssw-ico--sol {
   display: none;
 }
-#thm[data-on="0"] .ssw-ico--luna {
+#thm[data-on="0"] .ssw-ico--luna,
+#lbTema[data-on="0"] .ssw-ico--luna {
   display: block;
 }
 /* --- squish --- */
@@ -1247,7 +1254,9 @@ body[data-theme="light"] .ssw-kn {
   transform: none; /* el hover no levanta el botón entero durante el drag */
 }
 #thm[data-on="0"] .ssw-kn::after,
-#thm[data-on="1"] .ssw-kn::after {
+#thm[data-on="1"] .ssw-kn::after,
+#lbTema[data-on="0"] .ssw-kn::after,
+#lbTema[data-on="1"] .ssw-kn::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -1267,12 +1276,14 @@ body[data-theme="light"] .ssw-kn {
   display: none;
 }
 #web:hover:not(:disabled),
-#thm:hover:not(:disabled) {
+#thm:hover:not(:disabled),
+#lbTema:hover:not(:disabled) {
   transform: translateY(-1px);
   border-color: var(--brass);
 }
 #web:active:not(:disabled),
-#thm:active:not(:disabled) {
+#thm:active:not(:disabled),
+#lbTema:active:not(:disabled) {
   transform: scale(0.97);
 }
 #web svg {

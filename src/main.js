@@ -4952,9 +4952,30 @@ const quien = isAdm() ? (SB && SB.n) || "Dueño" : (U && U.nm) || "Cliente";
         }
         ${lbCta("lb-hd-res")}
       </div>
-      <button class="lb-tema" id="lbTema" type="button" data-act="lbTema" aria-label="Cambiar entre tema claro y oscuro">
-        <svg class="lb-ico-luna" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
-        <svg class="lb-ico-sol" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <!-- Lote 49: el toggle de la landing es el MISMO SquishSwitch del
+           header de la app (src/ssw.js). El botón ES el track y lleva el
+           knob (.ssw-kn) con los dos íconos; el data-act va fuera a
+           propósito: es el switch el dueño del estado (ACT.lbTema quedó
+           dormido para no voltear el estado dos por un clic). -->
+      <button class="lb-tema" id="lbTema" type="button" role="switch" aria-checked="false" aria-label="Cambiar entre tema claro y oscuro">
+        <span class="ssw-kn">
+          <svg class="ssw-ico ssw-ico--luna" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20.6 14.2A8.9 8.9 0 0 1 9.8 3.4 9 9 0 1 0 20.6 14.2Z" fill="currentColor" />
+          </svg>
+          <svg class="ssw-ico ssw-ico--sol" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="4.6" fill="currentColor" />
+            <g stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none">
+              <line x1="12" y1="2.4" x2="12" y2="5.1" />
+              <line x1="12" y1="18.9" x2="12" y2="21.6" />
+              <line x1="2.4" y1="12" x2="5.1" y2="12" />
+              <line x1="18.9" y1="12" x2="21.6" y2="12" />
+              <line x1="5.3" y1="5.3" x2="7.2" y2="7.2" />
+              <line x1="16.8" y1="16.8" x2="18.7" y2="18.7" />
+              <line x1="5.3" y1="18.7" x2="7.2" y2="16.8" />
+              <line x1="16.8" y1="7.2" x2="18.7" y2="5.3" />
+            </g>
+          </svg>
+        </span>
       </button>
       <button class="lb-burger" id="lbBurg" type="button" data-act="lbMenu" aria-label="Abrir menú" aria-expanded="false" aria-controls="lbPanel">
         <span></span><span></span><span></span>
@@ -5362,6 +5383,12 @@ Object.assign(ACT, {
   /* Mismo contrato que el toggle global #thm (localStorage "theme" +
      body[data-theme]), replicado para la landing, que no tiene header global. */
   lbTema() {
+    /* Lote 49: este handler quedó DORMIDO — el botón #lbTema ahora monta
+       sswMontar (src/ssw.js) y el estado cambia por onChange del switch
+       (igual que #thm en la app, que nunca tuvo data-act). No lo borres:
+       lote25 corta el cuerpo de lbReservar usando esta función como
+       límite. Y si el switch no llegara a montar, el toggle no cambia
+       nada igual que en la app: es el mismo fallo, sin plan B. */
     const next = document.body.dataset.theme === "light" ? "" : "light";
     document.body.dataset.theme = next;
     try {
@@ -7323,6 +7350,30 @@ function menuPerfil() {
   );
   return items.join("");
 }
+/* Lote 49: el toggle claro/oscuro de la LANDING busca ser el MISMO
+   SquishSwitch del header de la app. La mecánica vive en src/ssw.js; el
+   ESTADO sigue siendo el de siempre: body[data-theme] + localStorage
+   "theme" — el mismo contrato de #thm (data-on="1" = claro).
+   Se monta en cada repintado: el innerHTML de la landing reconstruye el
+   botón, así que cada R() trae uno nuevo. El guard del dataset es para
+   llamadas dobles en el mismo pintado. */
+function lbMontarTema() {
+  const btn = document.getElementById("lbTema");
+  if (!btn || btn.dataset.ssw === "1") return;
+  btn.dataset.ssw = "1";
+  sswMontar(btn, {
+    inicial: document.body.dataset.theme === "light",
+    onChange: (claro) => {
+      document.body.dataset.theme = claro ? "light" : "";
+      try {
+        localStorage.setItem("theme", claro ? "light" : "");
+      } catch (e) {
+        /* modo privado: el toggle igual cambia en esta sesión */
+      }
+    },
+  });
+}
+
 function R() {
   let h,
     nv = "",
@@ -7505,6 +7556,7 @@ function R() {
      cargaba nunca ni al scrollear hasta la sección. */
   lbCargarMapas();
   setupReveal();
+  lbMontarTema();
   footer();
   msg = "";
   if (aid) {
