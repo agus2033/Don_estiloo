@@ -1753,3 +1753,32 @@ flick rápido = cambia, Enter y Espacio flipean — **10/10**, capturas
 `tmp_shots/45-ssw-*.png`. La mecánica viaja en `src/ssw.js` para que la
 landing pueda montar el mismo componente más adelante sin duplicar nada.
 `sw.js` v22 (cambió main/index).
+
+## 46. El asistente de reserva con el Stepper: el paso pasado se vuelve check
+
+Otro componente de la tanda del dueño: el **Stepper**. Aplicado al header
+del asistente de reserva (los 6 pasos: Servicio, Barbero, Día, Turno,
+Horario, Resumen):
+
+- El paso **ya recorrido** muestra **✓ dorado** en vez del número. La fila
+  de progreso que ya existía (el borde superior de cada paso) sigue ahí para
+  que se lea de un tirón hasta dónde se llegó.
+- El paso **activo** conserva su número grande. **Esto sí importa**: varios
+  tests (landing.barberos, landing.login, landing.modal, landing.registro)
+  leen `.wz-paso.on b` esperando el número, y ahí sigue estando.
+- En celular, donde la fila no muestra los títulos, la línea "Paso 6 de 6"
+  ahora dice de qué paso se trata: **"Paso 6 de 6 · Resumen"** (antes solo
+  ponía el número, sin contexto).
+- **Sin animación de entrada en el header**, y es a propósito: el asistente
+  repinta el header en cada selección (tocar un día, un horario), y una
+  animación CSS se re-ejecutaría en cada repintado — los checks "saltarían"
+  a cada rato. El estado habla solo.
+
+### Pruebas
+
+`tests/lote46.js` (**8 checks**, archivo → sin navegador). El recorrido
+completo del asistente siguió pasando: `landing.wizard` corre los 6 pasos en
+celular → EXIT 0 (la captura `tmp_shots/WZ-6-resumen.png` muestra los cinco
+checks + el 6 activo), `landing.audit` EXIT 0. La fila nueva entra a `run.js`
+después de `lote45`. `sw.js` sigue v22 (los lotes 44-46 comparten
+despliegue).

@@ -2133,6 +2133,14 @@ body.wz-abierto {
 .wz-paso.he {
   border-top-color: color-mix(in srgb, var(--lb-brass) 45%, var(--lb-line));
 }
+/* Lote 46 (Stepper del dueño, adaptado): el número del paso ya recorrido
+   muta en check dorado. SIN animación de entrada: el asistente repinta el
+   header en cada selección dentro del paso, y una animación CSS se
+   re-ejecuta en cada repintado (los checks "saltarían" cada vez que tocás
+   un día). El estado habla solo, sin música. */
+.wz-paso.he b {
+  color: var(--lb-brass);
+}
 .wz-paso.on {
   color: var(--lb-brass);
   border-top-color: var(--lb-brass);

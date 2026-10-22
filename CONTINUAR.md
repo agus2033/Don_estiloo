@@ -3093,3 +3093,28 @@ Producto en **PRODUCT.md §45**. Lo técnico para el que siga:
   knob es otra fuente de contraste que mantener.
 - `sw.js` v22. El deploy NO se hizo todavía: cuando el dueño despliegue,
   v21 y v22 van juntos (los lotes 42-45 caben en un solo despliegue).
+
+---
+
+## 46. Stepper del asistente: check en pasos pasados, número en el activo
+
+Producto en **PRODUCT.md §46**. Lo técnico para el que siga:
+
+- El cambio es SOLO el template de `wzCabeza()` (main.js, bloque
+  `WZ_PASOS` + `wzCabeza` a ~L5663): el `<b>${n}</b>` pasó a
+  `<b>${WZ.paso > n ? "✓" : n}</b>`. El activo NO cambia (los tests leen
+  `.wz-paso.on b` con el número: landing.barberos L321, landing.login
+  L85, landing.modal L141, landing.registro L167).
+- **No agregar animaciones al header de pasos** sin leer el aviso: el
+  asistente llamaría a `wzCabeza` en cada repintado (la selección de un
+  día/hora repinta TODO el wizard, no un subtree diff). Una @keyframes en
+  `.he b` se re-pasaría cada vez. Si algún día se quiere pop, hay que
+  mover el header afuera del repintado general (por ej. sin re-render si
+  `WZ.paso` no cambió) — no tocarlo a ciegas.
+- El mini de celular ahora lleva el nombre de paso: `Paso ${WZ.paso} de 6 ·
+  ${WZ_PASOS[WZ.paso - 1][1]}`. landing.audit.js mide `.wz-mini` como
+  texto visible (contraste) → la cadena creció; en los anchos viejos
+  seguía cabiendo 390px (verificado: el audit no marca overflow).
+- `tests/lote46.js` (8 checks fs) + fila en run.js después de `lote45`.
+  El recorrido visual del wizard es de `tests/landing.wizard.js`: corre los
+  6 pasos con Playwright y saca capturas (WZ-3..WZ-6).

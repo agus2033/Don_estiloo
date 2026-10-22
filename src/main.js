@@ -5671,9 +5671,13 @@ const WZ_PASOS = [
 const wzCabeza = () => `<div class="wz-head">
   <div class="wz-pasos">${WZ_PASOS.map(
     ([n, t]) =>
-      `<span class="wz-paso${WZ.paso === n ? " on" : ""}${WZ.paso > n ? " he" : ""}"${WZ.paso === n ? ' aria-current="step"' : ""}><b>${n}</b>${t}</span>`,
+      /* Lote 46 (Stepper): el paso YA PASADO muestra un check en vez del
+         número y va en braser. El paso ACTIVO conserva su número: los tests
+         (landing.barberos, landing.login, landing.modal, landing.registro)
+         leen .wz-paso.on b y esperan el número. */
+      `<span class="wz-paso${WZ.paso === n ? " on" : ""}${WZ.paso > n ? " he" : ""}"${WZ.paso === n ? ' aria-current="step"' : ""}><b>${WZ.paso > n ? "✓" : n}</b>${t}</span>`,
   ).join("")}</div>
-  <p class="wz-mini">Paso ${WZ.paso} de 6</p>
+  <p class="wz-mini">Paso ${WZ.paso} de 6 · ${WZ_PASOS[WZ.paso - 1][1]}</p>
 </div>`;
 
 /* En el celular NO hay botón de "continuar": al tocar una opción se pasa
