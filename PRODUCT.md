@@ -1936,3 +1936,33 @@ sección nueva tras el clic, se apaga con el activo en la bandeja y cambia
 de tono con el tema (dorado claro fijo en celular, donde la barra es
 oscura en los dos temas; sobre el header claro en escritorio). `header.js`
 sigue verde: la barra sigue siendo 3 fichas + tres rayitas en celular.
+
+## 51. El título de Google dice "Barbería en Puerto Iguazú"
+
+Volviste sobre el lote 40: el título que Google enseña ahora es
+**SSJ Barber | Barbería en Puerto Iguazú** (40 caracteres, entra completo
+sin recortar). En el lote 40 se había dejado corto —"SSJ Barber | Puerto
+Iguazú"— y la palabra "Barbería" vivía sólo en la description; pediste
+que el título también la diga.
+
+- El cambio va en las cuatro superficies que tienen que coincidir: el
+  `<title>`, `og:title` (lo que se ve al compartir por WhatsApp),
+  `twitter:title` y la pestaña MIENTRAS se usa la app. Esta última es la
+  que estaba rota de fondo: la app pisaba el título con "SSJ Barber"
+  pelado en cada repintado (`document.title = NOMBRE`), así que el título
+  largo del HTML duraba hasta el primer cambio de pantalla. Ahora el
+  título sale de un solo lugar (`TITULO` en `src/config.js`) y las cuatro
+  superficies dicen exactamente lo mismo.
+- La marca no se toca: sigue "SSJ Barber", sin tilde, y el JSON-LD sigue
+  con `name: "SSJ Barber"` (el nombre del negocio, no el título de la
+  pestaña).
+- La description no cambió.
+
+### Pruebas
+
+`seo.js` (80 checks) y `seo2.js` (44) siguen en verde con el título
+nuevo: largo dentro del rango, nombra la ciudad, arranca con la marca y
+dice "barbería". El comentario de `seo.js` que documentaba la decisión
+corta del lote 40 quedó actualizado para que no mienta. `lote51.js`
+(23 checks) vigila que las cuatro superficies digan lo mismo y que
+ninguna vuelva a pisar el título con el nombre pelado.

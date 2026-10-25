@@ -40,6 +40,7 @@ import {
   firebaseConfig,
   ADMIN_UID,
   NOMBRE,
+  TITULO,
   AUTOR,
   S as S0,
   PTS,
@@ -7434,7 +7435,11 @@ function R() {
     nm = "";
   $("#brand").textContent = NOMBRE;
   $("#lg").src = LOGO;
-  document.title = NOMBRE;
+  /* Lote 51: el título NO es el nombre pelado. Antes esto pisaba el <title>
+     del index.html con "SSJ Barber" en cada pintado, así que la pestaña (y
+     Google al renderizar) perdían "Barbería en Puerto Iguazú". Ahora sale de
+     TITULO (config.js), la misma cadena que el <title> y las metas. */
+  document.title = TITULO;
   const hd0 = document.querySelector("header");
   if (hd0) hd0.style.display = me && !verWeb ? "" : "none";
   const ft0 = $("#ft");

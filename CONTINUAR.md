@@ -3322,3 +3322,42 @@ Producto en **PRODUCT.md §50**. Lo técnico para el que siga:
   fondo duro. Capturas `tmp_shots/50-goma-{1440,390}-{a,b,clara}.png` y
   `50-goma-390-c.png` (bandeja). `header.js` sigue verde (3 fichas +
   rayitas en celular).
+
+## 51. Título con "Barbería en Puerto Iguazú"
+
+Producto en **PRODUCT.md §51**. Lo técnico para el que siga:
+
+- **Cuatro superficies, una sola cadena**: `index.html` L19 `<title>`, L52
+  `og:title`, L63 `twitter:title` y el `document.title` que la app asigna
+  en cada pintado. Las tres primeras pasaron de "SSJ Barber | Puerto
+  Iguazú" a "SSJ Barber | Barbería en Puerto Iguazú".
+- **La cuarta era la que rompía de verdad**: `R()` (main.js) hacía
+  `document.title = NOMBRE` en CADA repintado. O sea que el `<title>` del
+  HTML se veía sólo hasta el primer cambio de pantalla; después la pestaña
+  (y Google al renderizar) leía "SSJ Barber" pelado. Ahora `src/config.js`
+  exporta `TITULO` (justo debajo de `NOMBRE`) y `R()` hace
+  `document.title = TITULO`. Es la fuente única: si mañana cambia el
+  título, se cambia en config.js Y en las tres metas del index.html —
+  `tests/lote51.js` falla si se separan.
+- **Por qué vuelve sobre el lote 40**: ahí el dueño había pedido el título
+  corto y "Barbería en…" quedó sólo en la description. Ahora pidió que el
+  título lo diga; la description NO cambió.
+- **El `seo.js` tenía un comentario que contaba la decisión del 40** como
+  si fuera definitiva. Se actualizó para reflejar la del 51 — el código de
+  la prueba no necesitó cambios (largo 25-65, ciudad, arranca con NOMBRE
+  y "barber" ya lo cumplía la marca).
+- **Nada más se toca**: JSON-LD `name` sigue "SSJ Barber"; manifest y
+  sitemap no llevan título. `sw.js` sigue `barberia-v22` (misma tanda sin
+  publicar).
+- **Pruebas**: `tests/lote51.js` (23 checks, fs) — TITULO único, las tres
+  metas iguales a él, `document.title = TITULO`, ningún
+  `document.title = NOMBRE`, marca sin tilde, largo y ciudad. Fila
+  `lote51` tras `lote50` en `run.js`. Sonda manual
+  `tests/titulo-probe.js` (8/8, servidor 8765): el `<title>` ya viene
+  completo apenas carga la página y sigue completo después de que R()
+  pinta y de un repintado más.
+- **Google seguirá mostrando el título viejo hasta que re-indexe**: el
+  título correcto ya está en la web publicada desde el lote 40, y el
+  "✅ SSJ Barber" de la captura no existe en ninguna versión del repo (se
+  verificó commit por commit). Es caché del índice: Search Console →
+  Inspeccionar URL → Solicitar indexación.
