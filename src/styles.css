@@ -1113,6 +1113,11 @@ nav button {
   align-items: center;
   gap: 3px;
   font-size: 11px;
+  /* Lote 50: el botón va ENCIMA del pulgar (.nav-th), que es el que pinta
+     el fondo de la ficha activa. Sin esto, el pulgar absoluto taparía el
+     texto del botón activo. */
+  position: relative;
+  z-index: 1;
 }
 nav button svg {
   width: 20px;
@@ -1124,6 +1129,37 @@ nav button:hover:not(:disabled) {
 nav .on {
   color: var(--brass);
   box-shadow: inset 0 -3px var(--brass);
+}
+/* Lote 50: el pulgar de goma de la barra de fichas. La ficha que marca la
+   sección activa ya no es un fondo quieto del botón: es UN elemento que
+   viaja de ficha en ficha con la curva del RubberSegment (misma del .seg-th
+   del lote 44). La geometría la mide nvTh() en main.js, botón por botón:
+   en escritorio los anchos NO son iguales (Dashboard 101px, Galería 76px),
+   así que nada de calc(/N) a ciegas. El activo puede vivir en la bandeja:
+   ahí el pulgar se apaga (opacity 0). El primer pintado va con .nav-th--pau
+   para que no barra desde 0,0 como si viniera de la esquina. */
+.nav-th {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--brass) 16%, var(--bg));
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+  transition:
+    transform 300ms cubic-bezier(0.23, 1, 0.32, 1),
+    width 200ms ease,
+    height 200ms ease,
+    opacity 160ms ease;
+}
+.nav-th--pau {
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-th {
+    transition: none;
+  }
 }
 
 /* ---------- FILA DERECHA DEL HEADER: casita, toggle, foto ----------
@@ -1308,8 +1344,12 @@ body[data-theme="light"] .ssw-kn {
    contenido contra 1120 disponibles). Antes era 1060, cuando eran 7 secciones
    y alcanzaban 1007 px. */
 @media (max-width: 1159px) {
-  /* El dueño: 3 secciones y el botón de tres rayitas en la cuarta ranura. */
-  #nav.nav-mas3 > button:not(.nav-mas):nth-child(n + 4) {
+  /* El dueño: 3 secciones y el botón de tres rayitas en la cuarta ranura.
+     El primer hijo es el pulgar (.nav-th, decorativo): sin contarlo, el
+     corte n+4 escondería la ficha EN la cuarta ranura (el pulgar la lleva
+     una posición). Es el descalce que trajo el lote 50 y corrigió la
+     sonda del pulgar en vivo. */
+  #nav.nav-mas3 > button:not(.nav-mas):nth-child(n + 5) {
     display: none;
   }
   #nav.nav-mas3 > button.nav-mas {
@@ -1417,10 +1457,14 @@ body[data-theme="light"] header #nav button {
        dorado OSCURO (sirve para escribir sobre el header claro), y como la
        barra de celular es oscura en los dos temas, el activo quedaba en
        2.55:1, ilegible. Con el dorado claro sobre su propio tinte al 18%
-       quedan 5.21:1, igual que en tema oscuro. */
+       quedan 5.21:1, igual que en tema oscuro. El TINTE lo pinta el pulgar
+       (abajo); la raya interior se fue con él: doble sombra sobre la ficha
+       no aporta nada. */
     color: #c9a24b;
+  }
+  body[data-theme="light"] #nav .nav-th {
     background: color-mix(in srgb, #c9a24b 18%, transparent);
-    box-shadow: inset 0 -3px #c9a24b;
+    border-radius: 14px;
   }
 }
 
@@ -1435,8 +1479,10 @@ body[data-theme="light"] header #nav button {
   }
   body[data-theme="light"] header #nav button.on {
     color: var(--brass);
+  }
+  body[data-theme="light"] #nav .nav-th {
     background: color-mix(in srgb, var(--brass) 10%, transparent);
-    box-shadow: inset 0 -3px var(--brass);
+    border-radius: 6px;
   }
 }
 @media (min-width: 860px) {
@@ -1507,12 +1553,15 @@ body[data-theme="light"] header #nav button {
     height: 18px;
   }
   nav .on {
-    /* El fondo estaba clavado en un azul oscuro (#2b3644). En modo claro se
-       combinaba con la tinta oscura y el botón activo quedaba ilegible
-       (ratio 1,4:1). Ahora es un tinte del dorado sobre el fondo del tema. */
-    background: color-mix(in srgb, var(--brass) 16%, var(--bg));
+    /* El tinte de la ficha activa lo PINTA el pulgar (.nav-th, al final del
+       bloque): el botón queda sin fondo para que la ficha pueda VIAJAR de
+       sección a sección. El color del texto sigue acá. */
     color: var(--brass);
     box-shadow: none;
+  }
+  #nav .nav-th {
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--brass) 16%, var(--bg));
   }
 }
 
@@ -2403,11 +2452,17 @@ h1::after {
      Ojo: sin el `body:not(.adm)` que tenía antes. La barra es igual para
      todos los roles, así que el resaltado también. */
   nav .on {
+    /* El TINTE lo pinta el pulgar (.nav-th, abajo): el botón queda sin
+       fondo pero conserva su margen y su altura, que son los que definen
+       el footprint de la ficha (el pulgar pinta exactamente esa caja). */
     box-shadow: none;
-    background: color-mix(in srgb, var(--brass) 18%, transparent);
     border-radius: 14px;
     margin: 6px 8px;
     min-height: 48px;
+  }
+  #nav .nav-th {
+    background: color-mix(in srgb, var(--brass) 18%, transparent);
+    border-radius: 14px;
   }
   #nmenu:empty {
     display: none;

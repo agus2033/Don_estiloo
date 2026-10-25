@@ -7374,6 +7374,60 @@ function lbMontarTema() {
   });
 }
 
+/* Lote 50: posiciona el pulgar (.nav-th) de la barra de fichas sobre la
+   ficha activa. Mide botón por botón porque los anchos NO son iguales en
+   escritorio, y se apaga si el activo vive en la bandeja (no está
+   visible). `desde` es la posición de la ficha activa ANTES del repintado:
+   el pulgar arranca ahí (sin animación) y cae al destino con la curva de
+   goma — así se ve el viaje aunque el innerHTML reconstruya la fila
+   entera. Sin `desde` (primer pintado, resize, cambio de breakpoint) va
+   con .nav-th--pau: aparece ya en su lugar, sin barrer desde 0,0. */
+function nvTh(desde) {
+  const nav = document.getElementById("nav"),
+    th = nav && nav.querySelector(".nav-th");
+  if (!th) return;
+  const act = nav.querySelector("button.on");
+  if (!act || !act.getClientRects().length) {
+    th.style.opacity = "0";
+    return;
+  }
+  /* La referencia del translate es la CAJA DE PADDING del nav: el anclaje
+     "absolute top:0" cae debajo del borde superior, que en la barra de
+     celular son 3px de dorado, mientras que getBoundingClientRect mide
+     desde el borde exterior. Sin restar el clientTop el pulgar queda 3px
+     corrido para abajo en celular — es lo que midió la sonda del lote 50. */
+  const bT = nav.clientTop,
+    bL = nav.clientLeft,
+    n = nav.getBoundingClientRect(),
+    r = act.getBoundingClientRect(),
+    pos = {
+      x: Math.round(r.left - n.left - bL),
+      y: Math.round(r.top - n.top - bT),
+      w: Math.round(r.width),
+      h: Math.round(r.height),
+    };
+  const pinta = (p) => {
+    th.style.width = p.w + "px";
+    th.style.height = p.h + "px";
+    th.style.transform = "translate(" + p.x + "px," + p.y + "px)";
+    th.style.opacity = "1";
+  };
+  if (desde) {
+    th.classList.add("nav-th--pau");
+    pinta(desde);
+    th.offsetHeight; /* el reflow congela el punto de partida */
+    th.classList.remove("nav-th--pau");
+    pinta(pos);
+  } else {
+    th.classList.add("nav-th--pau");
+    pinta(pos);
+    requestAnimationFrame(() => th.classList.remove("nav-th--pau"));
+  }
+}
+/* El pulgar no mide por magia: si la ventana cambia de tamaño (o rota el
+   celu), la fila se recalcula y la posición guardada queda vieja. */
+window.addEventListener("resize", () => nvTh());
+
 function R() {
   let h,
     nv = "",
@@ -7530,8 +7584,32 @@ function R() {
   const ae = document.activeElement,
     aid = ae && ae.tagName === "INPUT" ? ae.id : "";
   const navE = $("#nav");
-  navE.innerHTML = nv;
+  /* Lote 50: el pulgar de goma. ANTES de repintar mido dónde está la ficha
+     activa vieja; el innerHTML reconstruye la fila entera, así que el viaje
+     del pulgar entre secciones se consigue pasándole esa posición como
+     punto de partida a nvTh(). Sin esta medición el pulgar nacería ya en
+     el destino y la goma no se vería nunca. */
+  const navAntes = (() => {
+    const b = navE.querySelector("button.on");
+    if (!b || !b.getClientRects().length) return null;
+    /* El mismo marco de nvTh(): relativo a la caja de padding, no al borde
+       exterior; si no, el punto de partida llegaría corrido 3px y el
+       viaje de goma arrancaría con un salto feo. */
+    const n = navE.getBoundingClientRect(),
+      r = b.getBoundingClientRect();
+    return {
+      x: Math.round(r.left - n.left - navE.clientLeft),
+      y: Math.round(r.top - n.top - navE.clientTop),
+      w: Math.round(r.width),
+      h: Math.round(r.height),
+    };
+  })();
+  /* El span del pulgar entra sólo si hay fichas: en la vista de ingreso el
+     nav queda vacío y el CSS lo apaga con :empty — un span huérfano
+     rompería esa regla y dejaría una barrita flotando abajo. */
+  navE.innerHTML = nv ? `<span class="nav-th" aria-hidden="true"></span>` + nv : nv;
   navE.className = claseNav;
+  nvTh(navAntes);
   /* La bandeja de la barra de celular (la abre el botón de tres rayitas). */
   const nmE = $("#nmenu");
   nmE.innerHTML = nm;

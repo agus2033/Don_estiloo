@@ -3265,3 +3265,60 @@ Producto en **PRODUCT.md §49**. Lo técnico para el que siga:
   knob acompañan, persistencia que aguanta el recargue y regreso. Capturas
   `tmp_shots/49-tema-1.png` / `49-tema-2.png`.
 - **sw.js** sigue `barberia-v22` (misma tanda sin publicar).
+
+## 50. El pulgar de goma de la barra de fichas (.nav-th)
+
+Producto en **PRODUCT.md §50**. Lo técnico para el que siga:
+
+- **Un solo span, una sola medición por pintado**: `R()` inyecta
+  `<span class="nav-th" aria-hidden="true">` como PRIMER hijo de `#nav`
+  (sólo si `nv` trae fichas: con el nav vacío del ingreso, el span rompería
+  `nav:empty` y dejaría una barrita flotando). Antes del `innerHTML` se
+  mide la ficha activa VIEJA (`navAntes`); después se llama `nvTh(prev)`.
+  Ese `prev` es el truco clave: el innerHTML reconstruye la fila entera en
+  cada repintado, así que sin punto de partida la píldora nacería en el
+  destino y el viaje no se vería jamás.
+- **nvTh()** (main.js, justo antes de `R()`): busca `#nav .nav-th` y
+  `button.on` al vuelo. Si el activo no tiene `getClientRects()` (vive en
+  la bandeja) apaga el pulgar por `opacity:0` — el elemento queda en el
+  DOM medible. Si hay activo: mide `getBoundingClientRect()` del botón
+  contra el del nav y pinta width/height/transform. **Nada de calc(/N)**:
+  en escritorio las fichas son `flex:none` con anchos desparejos (101 px
+  Dashboard vs 76 px Galería, medido en vivo), en celular son `flex:1`.
+- **La trampa del borde**: el `translate` ancla en la caja de PADDING (el
+  `absolute top:0` cae debajo del borde), pero `getBoundingClientRect`
+  mide desde el borde exterior. La barra de celular tiene `border-top:
+  3px` dorado: sin restar `nav.clientTop/clientLeft` la píldora quedaba
+  3 px corrida (la sonda lo midió exacto; `navAntes` usa el mismo marco).
+- **La trampa del nth-child**: el span es el primer hijo. La regla
+  `#nav.nav-mas3 > button:not(.nav-mas):nth-child(n+4)` de la bandeja
+  (max-width 1159) empezó a esconder Clientes en vez de Barberos. Ahora es
+  `nth-child(n + 5)`. Si mañana se agrega otro elemento antes de las
+  fichas, este número se mueve otra vez — está comentado en el CSS.
+- **La goma**: `.nav-th` base en styles.css después del `nav .on` base:
+  `position:absolute; pointer-events:none; z-index:0; opacity:0;
+  transition: transform 300ms cubic-bezier(0.23,1,0.32,1)` (la MISMA curva
+  del `.seg-th` del lote 44, con width/height en 200ms ease y opacity
+  160ms). `.nav-th--pau` corta la transición para el primer pintado y para
+  el resize (sin él la píldora barrería desde 0,0). Con
+  `prefers-reduced-motion: reduce` no viaja.
+- **Los botones van encima**: `nav button` ganó `position: relative;
+  z-index: 1` (si no, el pulgar absoluto tapaba el texto).
+- **El tinte se mudó en las 4 superficies** (lo que antes era el fondo de
+  `nav .on`): celular oscuro `var(--brass) 18% transparent` radius 14;
+  escritorio oscuro `var(--brass) 16% var(--bg)` radius 6; claro celular
+  `#c9a24b 18% transparent` (clavado: el `--brass` de claro es `#7d621b`
+  y sobre la barra oscura quedaba en 2.55:1) radius 14; claro escritorio
+  `var(--brass) 10% transparent` radius 6. Los `.on` conservan color y
+  `box-shadow: none`; el subrayado `inset 0 -3px` del base quedó como
+  estaba (ya lo pisaban las dos media).
+- **resize**: listener suelto `window.addEventListener("resize", () =>
+  nvTh())` sin `desde` → recalibra sin animar (rotar el celu no dispara un
+  viaje falso).
+- **Pruebas**: `tests/lote50.js` (30 checks fs) + fila `lote50` tras
+  `lote49`. Sonda manual `tests/nv-probe.js` (17/17, servidor 8765 +
+  sesión del dueño): calce exacto en 1440 y 390 antes y después del clic,
+  activo en bandeja apaga, tema claro por superficie y ningún botón con
+  fondo duro. Capturas `tmp_shots/50-goma-{1440,390}-{a,b,clara}.png` y
+  `50-goma-390-c.png` (bandeja). `header.js` sigue verde (3 fichas +
+  rayitas en celular).

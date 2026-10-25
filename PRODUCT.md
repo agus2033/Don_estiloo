@@ -1902,3 +1902,37 @@ knob y el aria-checked acompañan, y queda guardado al recargar. El
 encabezado de la app no cambio ni un botón de orden (header.js sigue
 verde); `ACT.lbTema` quedó dormido a propósito — lo usa el lote 25 como
 límite de corte.
+
+## 50. La pestaña activa del panel viaja con goma
+
+Lo pediste al cerrar la tanda: la ficha dorada de la barra (arriba en
+escritorio, abajo en celular) no cambia de golpe, se desliza de sección a
+sección con la misma goma del filtro de Mis Turnos (lote 44).
+
+- La ficha activa ya no es un fondo quieto de cada botón: es UNA sola
+  píldora que viaja. Al tocar otra sección arranca donde estaba, se estira
+  y cae en la nueva con la curva de goma (300 ms).
+- Funciona igual en los tres roles y en los dos temas. En escritorio las
+  fichas NO miden lo mismo (Dashboard 101 px, Galería 76 px): la píldora
+  mide el botón real en cada momento en vez de repartir por cantidad.
+- Si la sección activa vive en la bandeja de tres rayitas (el caso
+  Mensajes en celular), la píldora se apaga: no queda marcada ninguna
+  ficha visible, igual que antes.
+- Con "reducir movimiento" del sistema no viaja: aparece directo en su
+  lugar.
+- Dos trampas que la sonda en vivo encontró y quedan documentadas: el
+  borde dorado de 3 px de la barra de celular corría la píldora hacia
+  abajo (se descuenta el borde al medir), y el nuevo elemento es el primer
+  hijo de la barra, así que el corte de la bandeja pasó de esconder desde
+  la cuarta ficha a esconder desde la quinta — sin eso Mensajes se comía a
+  Clientes.
+
+### Pruebas
+
+`tests/lote50.js` (**30 checks**) + sonda manual con sesión del dueño
+`tests/nv-probe.js` (**17/17**, capturas `tmp_shots/50-goma-*.png`): la
+píldora calza exacta sobre la activa en 1440 y en 390, aterriza en la
+sección nueva tras el clic, se apaga con el activo en la bandeja y cambia
+de tono con el tema (dorado claro fijo en celular, donde la barra es
+oscura en los dos temas; sobre el header claro en escritorio). `header.js`
+sigue verde: la barra sigue siendo 3 fichas + tres rayitas en celular.
