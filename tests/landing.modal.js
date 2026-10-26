@@ -207,9 +207,10 @@ const irPaso = async (n, ms = 2500) => {
       console.log("\n=== SALTADO (sin fallos) ===");
       return;
     }
-    await p.click(".wz-item--bar");
-    await p.waitForTimeout(250);
-
+    /* Se mide ANTES del clic: en celular el asistente auto-avanza solo a los
+       280 ms de elegir barbero (wzAvanzaSolo) y esta medición quedaba a 30 ms
+       de esa carrera: con la caché fría el paso ya había cambiado y la lista
+       daba 0. El clic sólo marca .on; las fotos y los nombres no cambian. */
     const bars = await p.evaluate(() => {
       const items = [...document.querySelectorAll(".wz-item--bar")];
       return {
@@ -229,6 +230,8 @@ const irPaso = async (n, ms = 2500) => {
         }),
       };
     });
+    await p.click(".wz-item--bar");
+    await p.waitForTimeout(250);
     check(bars.n > 0, "el paso 2 lista barberos con avatar (" + bars.n + ")");
     check(bars.filas.every((f) => f.conCaja), "cada barbero tiene su caja de foto");
     check(bars.filas.every((f) => f.tam >= 40), "las fotos se ven a tamaño real");

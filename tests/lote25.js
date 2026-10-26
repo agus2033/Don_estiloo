@@ -1517,6 +1517,46 @@ await p39.evaluate(
   { DUE39, OTRO39 },
 );
 await p39.waitForTimeout(1400);
+await p39.waitForTimeout(1400);
+
+/* Se anota cuánto vendió HOY la base de verdad ANTES de inyectar: el panel
+   mezcla los cobros reales del día con los de prueba (van por el mismo uid
+   y la misma fecha). La cuenta no es "$35.000 y punto" sino "lo que ya había
+   más $35.000". Antes el número redondo salía siempre porque ningún día había
+   ventas reales del dueño; el 25/10 el dueño facturó de verdad y la prueba
+   daba rojo por datos reales, no por un bug. */
+const medir39 = () =>
+  p39.evaluate(() => {
+    const entero = (s) => {
+      const t = String(s).replace(/\u2212/g, "-").replace(/[^0-9-]/g, "");
+      return t === "" || t === "-" ? 0 : parseInt(t, 10) || 0;
+    };
+    const kpi = (re) => {
+      const x = [...document.querySelectorAll(".kpi")]
+        .map((k) => k.innerText.replace(/\s+/g, " ").trim())
+        .find((y) => re.test(y));
+      if (!x) return 0;
+      const m = x.match(/(-?[0-9][0-9.]*)/);
+      return m ? entero(m[1]) : 0;
+    };
+    const fila = (re) => {
+      const x = [...document.querySelectorAll(".clin:not(.chead)")]
+        .map((f) => f.innerText.replace(/\s+/g, " ").trim())
+        .find((y) => re.test(y));
+      if (!x) return 0;
+      const m = x.match(/(-?[0-9][0-9.]*)/);
+      return m ? entero(m[1]) : 0;
+    };
+    return {
+      tarjetas: [...document.querySelectorAll(".kpi")].map((k) => k.innerText.replace(/\s+/g, " ").trim()),
+      filas: [...document.querySelectorAll(".clin:not(.chead)")].map((x) => x.innerText.replace(/\s+/g, " ").trim()),
+      facturado: kpi(/^FACTURADO/),
+      juan: fila(/^Juan/),
+      bar: fila(/^Barbero/),
+    };
+  });
+const real39 = await medir39();
+
 await p39.evaluate(
   ({ OTRO39, DUE39, HOY39 }) =>
     window.__test.setVentas([
@@ -1528,24 +1568,22 @@ await p39.evaluate(
 );
 await p39.waitForTimeout(1800);
 
-const antes39 = await p39.evaluate(() => ({
-  tarjetas: [...document.querySelectorAll(".kpi")].map((k) => k.innerText.replace(/\s+/g, " ").trim()),
-  filas: [...document.querySelectorAll(".clin:not(.chead)")].map((x) => x.innerText.replace(/\s+/g, " ").trim()),
-}));
+const antes39 = await medir39();
+const sube39 = (cam, cuantito) => antes39[cam] - real39[cam] === cuantito;
 ok(
-  antes39.tarjetas.some((x) => /35\.000/.test(x)),
-  "con los cobros de prueba, lo facturado es $35.000",
-  JSON.stringify(antes39.tarjetas),
+  sube39("facturado", 35000),
+  "con los cobros de prueba, lo facturado SUBE $35.000 (lo real del día va aparte)",
+  `antes: ${real39.facturado} ($${real39.facturado.toLocaleString("es-AR")}), después: ${antes39.facturado} ($${antes39.facturado.toLocaleString("es-AR")}); tarjetas ${JSON.stringify(antes39.tarjetas)}`,
 );
 ok(
-  antes39.filas.some((x) => /^Juan/.test(x) && /25\.000/.test(x)),
-  "el dueño facturó $25.000: lo suyo ($15.000) más la mitad de lo del barbero ($10.000)",
-  JSON.stringify(antes39.filas),
+  sube39("juan", 25000),
+  "el dueño suma $25.000: lo suyo ($15.000) más la mitad de lo del barbero ($10.000)",
+  `antes: ${real39.juan}, después: ${antes39.juan}; filas ${JSON.stringify(antes39.filas)}`,
 );
 ok(
-  antes39.filas.some((x) => /^Barbero/.test(x) && /10\.000/.test(x)),
-  "y el barbero facturó $10.000: la mitad de sus $20.000",
-  JSON.stringify(antes39.filas),
+  sube39("bar", 10000),
+  "y el barbero suma $10.000: la mitad de sus $20.000",
+  `antes: ${real39.bar}, después: ${antes39.bar}; filas ${JSON.stringify(antes39.filas)}`,
 );
 
 /* Un gasto de cada uno, que es lo que hace falta para que el reparto se vea. */

@@ -3361,3 +3361,47 @@ Producto en **PRODUCT.md §51**. Lo técnico para el que siga:
   "✅ SSJ Barber" de la captura no existe en ninguna versión del repo (se
   verificó commit por commit). Es caché del índice: Search Console →
   Inspeccionar URL → Solicitar indexación.
+
+## 52. La foto de Google: cache-bust del logo (?v=2)
+
+Producto en **PRODUCT.md §52**. Lo técnico para el que siga:
+
+- **La foto del resultado va por URL, no por bytes**: el dueño captó el
+  resultado con el título NUEVO y la foto VIEJA ("CODIGO Barber"). Se
+  bajó `https://www.codigobarber.com.ar/assets/logo-256.png` y es idéntico
+  byte a byte al repo (109.946 bytes). El lote 37 (`4a71b72`, 16/10)
+  reemplazó el PNG sin cambiar la ruta — Google flushea el texto con cada
+  recrawl pero su índice de imágenes es aparte y va por URL, así que la
+  miniatura quedó pegada a la copia vieja.
+- **Arreglo**: `?v=2` en las CUATRO URLs del logo que leen rastreadores:
+  `og:image` (L58), `twitter:image` (L68), JSON-LD `image` (L104) y
+  JSON-LD `logo` (L105). El servidor estático ignora el query: es el mismo
+  archivo. Al cambiar el logo de nuevo, subir a `v=3` en las cuatro (está
+  comentado en el HTML).
+- **No se toca**: `<link rel="icon">` y `apple-touch-icon` (seo2.js los
+  pide exactos; además el favicon de Google sale de `favicon.ico`, que
+  genera tests/favicon.js desde el mismo PNG), el `LOGO` de config.js y el
+  `<img>` del splash (L250), que muestran el logo en pantalla y no pasan
+  por el índice de fotos de Google.
+- **tests/lote52.js** (16 checks, fs): las cuatro URLs versionadas,
+  ninguna `logo-256.png` pelada en el `<head>` (el texto de los comentarios
+  y el splash se excluyen a propósito), los íconos intactos, y
+  `tests/seo.js` aserta la URL versionada. Fila `lote52` tras `lote51`.
+- **seo.js** se actualizó: el regex de `og:image` ahora pide exactamente
+  `assets/logo-256.png?v=2`.
+
+### Las dos rojas de esa corrida (eran de las pruebas, no del sitio)
+
+- **landing.modal — "el paso 2 lista barberos con avatar (0)"**: la
+  prueba medía la lista 250 ms después de elegir barbero, y el asistente
+  auto-avanza solo a los 280 ms (`wzAvanzaSolo`) en celular — 30 ms de
+  margen; en el pase oscuro (caché frío) ya había cambiado de paso. El
+  clic sólo agrega `.on`, así que la lista ahora se mide ANTES del clic.
+  Reproducido (oscuro 0 / claro 1) y quedada verde en los dos temas.
+- **lote25 — "lo facturado es $35.000"**: los cobros de prueba se
+  inyectan por memoria (`window.__test.setVentas`) pero el panel los
+  MEZCLA con los cobros reales del día (mismo uid, misma fecha). El
+  25/10 el dueño facturó de verdad $15.000 y el total daba $50.000 —
+  datos reales, no bug. Ahora la prueba mide lo que ya había ANTES de
+  inyectar (`real39`) y aserta el DELTA: facturado +$35.000, dueño
+  +$25.000, barbero +$10.000. Verde con `TODO VERDE` a lo completo.

@@ -1966,3 +1966,41 @@ dice "barbería". El comentario de `seo.js` que documentaba la decisión
 corta del lote 40 quedó actualizado para que no mienta. `lote51.js`
 (23 checks) vigila que las cuatro superficies digan lo mismo y que
 ninguna vuelva a pisar el título con el nombre pelado.
+
+## 52. La foto que Google enseña: ya no queda la vieja
+
+Volvió a pasar lo del lote 51, pero con la foto: el título nuevo se
+mostró en el resultado y **la imagen seguía siendo el logo viejo
+("CODIGO Barber")**. La causa no es el sitio — el `logo-256.png` reemplazó
+sus bytes por el logo SSJ Barber el 16/10 (lote 37); se bajó la foto que
+sirve la web y es exactamente la del repo — sino que Google guarda la foto
+de un resultado **por URL**: si la URL no cambia, sigue mostrando la copia
+vieja que ya tiene, aunque el sitio sirva otros bytes. El texto se
+actualiza solo en cada recrawl, la imagen no.
+
+- Arreglo: `?v=2` en las cuatro URLs del logo que leen los buscadores:
+  `og:image`, `twitter:image`, el `image` y el `logo` del JSON-LD.
+  URL nueva = Google tiene que pedirla de nuevo y va a bajar la foto
+  SSJ Barber. El archivo es el mismo (el servidor ignora el query); cuando
+  se cambie el logo de nuevo, se sube a `v=3` en las cuatro.
+- Lo que NO se toca a propósito: los links de icono y el `LOGO` de
+  `config.js` (muestran el logo en la app, no cuentan en el índice de
+  fotos de Google).
+
+### Pruebas
+
+`lote52.js` (16 checks) vigila las cuatro URLs versionadas, que no quede
+ninguna pelada en el head y que la prueba de `seo.js` pida la versión.
+`seo.js` (80) y `seo2.js` (44) en verde.
+
+### Notas de la suite (no son de la foto)
+
+La corrida completa dejó dos rojos que eran de las pruebas, no del sitio:
+
+- `landing.modal` listaba 0 barberos en el primer pase: medía a los 250 ms
+  y el asistente auto-avanza a los 280 ms de elegir barbero — una carrera
+  con 30 ms de margen. Mide antes del clic y quedó verde.
+- `lote25` contaba "$35.000 de facturado y punto": el dueño facturó
+  $15.000 reales ese día y el panel los mezcla con los de prueba. Ahora
+  mide lo real antes de inyectar y pide el DELTA (+$35.000 / +$25.000 /
+  +$10.000).

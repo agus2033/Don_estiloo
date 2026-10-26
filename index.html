@@ -55,7 +55,7 @@
       content="SSJ Barber, barbería en Puerto Iguazú, Misiones. Corte de pelo, perfilado de barba y corte + barba. Reservá tu turno online por WhatsApp."
     />
     <meta property="og:url" content="https://codigobarber.com.ar/" />
-    <meta property="og:image" content="https://codigobarber.com.ar/assets/logo-256.png" />
+    <meta property="og:image" content="https://codigobarber.com.ar/assets/logo-256.png?v=2" />
     <meta property="og:image:width" content="256" />
     <meta property="og:image:height" content="256" />
     <meta property="og:image:alt" content="SSJ Barber, barbería en Puerto Iguazú" />
@@ -65,7 +65,7 @@
       name="twitter:description"
       content="SSJ Barber, barbería en Puerto Iguazú, Misiones. Corte de pelo, perfilado de barba y corte + barba. Reservá tu turno online por WhatsApp."
     />
-    <meta name="twitter:image" content="https://codigobarber.com.ar/assets/logo-256.png" />
+    <meta name="twitter:image" content="https://codigobarber.com.ar/assets/logo-256.png?v=2" />
 
     <!-- ============ DATOS ESTRUCTURADOS (Schema.org / BarberShop) ============
          BarberShop es el tipo correcto: hereda de HairSalon y de LocalBusiness,
@@ -86,6 +86,13 @@
               teléfono falso en el JSON-LD es lo peor que se puede hacer en
               SEO local, porque Google lo contrasta contra Maps y contra las
               reseñas y te desalinea el negocio. -->
+    <!-- El ?v=2 en las cuatro URLs del logo (og:image, twitter:image,
+         JSON-LD image y JSON-LD logo) es cache-bust (lote 52): el lote 37
+         reemplazó los bytes del PNG SIN cambiar la URL y Google siguió
+         mostrando la foto vieja en el resultado, porque su caché de
+         imágenes va por URL. URL nueva = Google descarga la foto nueva.
+         Cuando se cambie el logo de nuevo, se sube a v=3 en las cuatro.
+         El archivo es el mismo; el servidor ignora el query. -->
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -94,8 +101,8 @@
         "name": "SSJ Barber",
         "description": "Barbería en Puerto Iguazú, Misiones. Corte de pelo, perfilado de barba y corte + barba, con reserva de turno online.",
         "url": "https://codigobarber.com.ar/",
-        "image": ["https://codigobarber.com.ar/assets/logo-256.png"],
-        "logo": "https://codigobarber.com.ar/assets/logo-256.png",
+        "image": ["https://codigobarber.com.ar/assets/logo-256.png?v=2"],
+        "logo": "https://codigobarber.com.ar/assets/logo-256.png?v=2",
         "telephone": "+5493757699335",
         "contactPoint": [
           {

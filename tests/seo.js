@@ -179,7 +179,11 @@ ok(og.locale === "es_AR", "og:locale es es_AR", og.locale);
 ok(og.site_name === NOMBRE, "og:site_name es el NOMBRE de config.js", og.site_name);
 ok(og.url === DOMINIO + "/", "og:url es el dominio de config.js", og.url);
 ok(String(og.image).startsWith(DOMINIO), "og:image es del dominio", og.image);
-ok(/^https:\/\/codigobarber\.com\.ar\/assets\/logo-256\.png$/.test(String(og.image)), "og:image apunta al logo que existe");
+/* El og:image lleva ?v=2 (lote 52, cache-bust): el lote 37 cambió los bytes
+   del PNG sin cambiar la URL y Google siguió enseñando la foto vieja. La
+   prueba pide EXACTAMENTE esta URL versionada, así que al cambiar el logo de
+   nuevo hay que subir a v=3 acá y en las cuatro URLs del index.html. */
+ok(/^https:\/\/codigobarber\.com\.ar\/assets\/logo-256\.png\?v=2$/.test(String(og.image)), "og:image apunta al logo que existe, con la versión 2", og.image);
 
 /* Ninguna meta repetida: dos <meta property="og:x"> con la misma clave hace
    que la segunda no sirva para nada, en silencio.
