@@ -3405,3 +3405,88 @@ Producto en **PRODUCT.md §52**. Lo técnico para el que siga:
   datos reales, no bug. Ahora la prueba mide lo que ya había ANTES de
   inyectar (`real39`) y aserta el DELTA: facturado +$35.000, dueño
   +$25.000, barbero +$10.000. Verde con `TODO VERDE` a lo completo.
+
+## 53. Piloto de carga a producción: 1000 usuarios, la escalera completa
+
+Qué se pidió ("sobrecarga con mil usuarios") y cómo se acotó: es
+producción, así que el piloto es **sólo GET** a
+`https://www.codigobarber.com.ar/` + 3 assets fijos
+(`assets/logo-256.png?v=2`, `manifest.json`, `favicon.ico`). Nada de
+logins (el rate limit de Firebase Auth es por IP: lo taparía al dueño),
+nada de writes ni de endpoints de Firebase/Cloudinary. User-Agent
+identificable: `SSJPiloto/1.0 (prueba de carga pedida por el dueño)`.
+
+### `tests/carga.js` (manual; NO va en run.js)
+
+- Olas de 50 / 100 / 250 / 500 / 1000 usuarios, rampa de arranque
+  `min(45, 10 + n/25)` s, techo de 200 sockets simultáneos (no es un
+  ataque, es una medición), 120–300 ms de pensar entre pedidos por
+  usuario.
+- Criterios de aborto por ola: cualquier 5xx, cualquier 429, o p95 del
+  HTML > 4000 ms. Si salta, no se sube más.
+- Pre-vuelo: 2 GETs exigiendo 200 + `<title>SSJ Barber` en los primeros
+  4096 bytes.
+
+**Resultado medido (evidencia `tmp_shots/carga.json`):**
+
+| Ola | Requests | Estados | HTML ttfb p50/p95/p99 (ms) |
+|-----|----------|---------|----------------------------|
+| 50  | 200      | `{"200":200}`    | 36 / 115 / 224 |
+| 100 | 400      | `{"200":400}`    | 36 / 58 / 104 |
+| 250 | 1000     | `{"200":1000}`   | 41 / 68 / 222 |
+| 500 | 2000     | `{"200":2000}`   | 36 / 67 / 138 |
+| 1000 | 4000    | `{"200":4000}`   | 40 / 63 / 137 |
+
+4000 requests, 100% HTTP 200, cero errores de red (los `errores` de cada
+ola salieron `{}`), el aborto nunca se activó. Tráfico Vercel:
+`X-Vercel-Cache` MISS->HIT según el borde; ninguna ola degradó latencias
+de la anterior (indicador de que sirvió cache del borde, no de origen).
+Bajados 131,3 MB en total en toda la escalera.
+
+### `tests/pesos-visita.js` (manual; NO va en run.js): una visita real
+
+El piloto HTTP no ejecuta JS: no ve Firestore ni Cloudinary. Una visita
+real de navegador (viewport 390x844, anónima, contra el 8765 local)
+mide eso. Detalles de automatización que costaron:
+
+- La landing **nunca abre el asistente sola**: hay que tocar
+  `[data-act="lbReservar"]` (hay 4; el del encabezado está oculto a 390px
+  — se toca el primero con `getClientRects().length`), y después la
+  pantalla de intro con "ELEGIR MI TURNO". Recién ahí lista servicios
+  (`.wz-item--svc`).
+- La app re-pinta / el SW recarga justo en ese clic y destruye el
+  contexto de `evaluate`: bucle de 6 reintentos alrededor de cada clic.
+- `networkidle` jamás llega: Firestore mantiene canales abiertos. La
+  cola de conteo es fija (8 s tras el paso 1).
+
+**Medición de la visita completa:** paso 1 del asistente listo en
+**0,7 s** en red local; 22 pedidos locales + 12 fonts + 6 gstatic +
+**2 canales Firestore** + SDK = 8 pedidos Firebase; **11 pedidos
+Cloudinary** (8 en la corrida de ayer: difiere con la galería viva);
+**~3,3 MB** de peso total.
+
+### Estimaciones a 1000 usuarios reales (de evidencia del repo, NO medidas)
+
+- **Firestore:** la landing anónima abre ~5 `onSnapshot` (`config/barberos`
+  L1302, `fotoBarbero` L1340, `config/horario` L1360, `galeria` L1367,
+  `resenas` L1373 de `src/main.js`). Un listener vivo >10 min factura de
+  nuevo cada 10 min: 1000 usuarios *con la web abierta sostenida* se
+  pueda aproximar al techo de Spark (50k lecturas/día). En ráfaga de
+  minutos, el consumo es 1 sola vez por listener.
+- **Cloudinary:** las URLs transformadas son idénticas entre visitantes
+  (`f_auto,q_auto,w_300` ×3 / `w_800` ×5): la cache de la CDN Cloudinary
+  absorbe todas las visitas menos la primera de cada transformación. El
+  costo real es banda de entrega (~8 fotos/visita).
+- **Vercel:** HTML ~26 KB/pedido en el piloto; 1000 visitas reales ×
+  ~3,3 MB ≈ 3 GB/día, muy lejos de los límites.
+
+### Conclusión
+
+El pico de 1000 lo sostiene el borde sin/inmutarse. El riesgo real de
+"1000 usuarios" es de cuota de lectura de Firestore con sesiones
+sostenidas (>10 min por visitante). Pendiente del dueño (sin cambios en
+este lote): reglas `FIRESTORE_RULES.txt` por publicar, rotar las 3
+contraseñas filtradas, desactivar el proveedor de Facebook, restringir
+la apiKey por dominio, completar `EMAIL` en `src/config.js`,
+Search Console re-indexar la foto (el título ya quedó).
+

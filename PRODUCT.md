@@ -2004,3 +2004,65 @@ La corrida completa dejó dos rojos que eran de las pruebas, no del sitio:
   $15.000 reales ese día y el panel los mezcla con los de prueba. Ahora
   mide lo real antes de inyectar y pide el DELTA (+$35.000 / +$25.000 /
   +$10.000).
+
+## 53. Prueba piloto: mil usuarios de golpe y la web no se cae
+
+Lo que se pidió: "una sobrecarga con mil usuarios y ver si falla". Se
+hizo un piloto con reglas de cuidado, porque es la web de producción:
+
+- **Sólo lectura.** Nada de logins (el freno de Firebase Auth es por IP y
+  habría tapado al propio dueño) ni de datos.
+- **Escalonado.** Olas de 50, 100, 250, 500 y 1000 visitantes virtuales,
+  con arranque suave y condición de corte: si aparecía un error 5xx, un
+  429 o el sitio ponía lento por encima de 4 segundos, la escalera se
+  cortaba ahí.
+- **Identificado.** Todo salió con User-Agent `SSJPiloto/1.0`.
+
+### Resultado medido: la escalera completa, sin cortes
+
+- **4000 pedidos totales**, de la primer ola a la de los mil usuarios.
+- **100% contestados con 200 OK.** Cero errores, cero frenos, el corte no
+  se activó nunca.
+- El sitio contestó **entre 36 y 41 milisegundos** el promedio, y el "p95"
+  (el 5% más lento) quedó entre 58 y 115 ms en todas las olas — es decir,
+  subir de 50 a 1000 usuarios concurrentes **no lo puso más lento**.
+- Por visitante virtual: cada uno bajó la página y tres imágenes fijas;
+  en total 131 MB de la prueba. Una visita real pesa ~3,3 MB, así que
+  mil visitas reales de un día rondan los 3 GB — lejísimo de los límites
+  de Vercel.
+
+### Lo que este piloto mide bien, y lo que se midió por otro lado
+
+El piloto midió el **borde** (Vercel sirviendo la página y las imágenes
+fijas), donde la visita apenas el navegador abre la web. Eso es lo que
+rompe primero en un pico de afortunados — y aguantó pareja.
+
+Lo que el piloto **no puede medir** (no muestra JavaScript, no abre una
+app) se midió aparte con una visita real de navegador, y son estimaciones
+de lo que pasaría con 1000 usuarios reales:
+
+- **Firebase:** cada visitante abre ~5 suscripciones en vivo (barberos,
+  fotos, horarios, galería, reseñas). Están abiertas más de 10 minutos,
+  cuenta de nuevo como lectura — con **1000 usuarios con la web abierta
+  mucho**, se puede aproximar al techo diario del plan gratuito (50.000
+  lecturas). En pico de un rato breve, no pasa nada.
+- **Cloudinary:** cada visita pide ~8 a 11 fotos transformadas, pero como
+  TODOS los visitantes piden las mismas direcciones, la cache de la red
+  Cloudinary sirve las demás desde la primera visita — lo que suma es la
+  banda (las fotos mismas), no el procesamiento.
+
+### Conclusión
+
+Para "mil usuarios de golpe", la web aguanta: la parte del borde corriendo
+la prueba entera salió sin una sola caída. El punto de cuidado de mil
+usuarios REALES no es el pico: es la gente que deja la web abierta mucho
+y a Firebase cada 10 minutos. Nada que arreglar hoy; si algún día hay
+avalancha, cuesta centavos el paso del plan gratuito al Blaze.
+
+### Archivos del lote
+
+- `tests/carga.js` — el piloto (manual, NO va en la suite: pega a producción).
+- `tests/pesos-visita.js` — la visita de navegador real que mide lo que el
+  piloto no ve (también manual).
+- Evidencia cruda en `tmp_shots/carga.json` y `tmp_shots/visita.json`.
+
