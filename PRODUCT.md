@@ -2066,3 +2066,23 @@ avalancha, cuesta centavos el paso del plan gratuito al Blaze.
   piloto no ve (también manual).
 - Evidencia cruda en `tmp_shots/carga.json` y `tmp_shots/visita.json`.
 
+## 54. El título de Google como lo pedís: "Barberia en Puerto Iguazu | SSJ Barber"
+
+Google lo mostraba al revés: "SSJ Barber" solo y "barbería en Puerto
+Iguazú" abajo, en la descripción. Lo que se pidió ahora: el título como
+**"Barberia en Puerto Iguazu | SSJ Barber"** — sin tildes y con la marca
+al final.
+
+- Cambiado en la única fuente (`src/config.js`) y en las tres metas del
+  `index.html` (título de pestaña, el de Facebook/WhatsApp y el de
+  Twitter). Nada más: las descripciones siguen nombrando "Puerto Iguazú"
+  con tilde, porque ahí es la ciudad, no el título.
+- Las tres pruebas que vigilan el título se actualizaron y quedaron
+  verdes: `lote51` (23), `seo` (todo verde) y la sonda de navegador que
+  confirma que la app no lo pisa cuando pinta (8/8).
+- En Google no cambia en el momento: hay que pedir re-indexación en
+  Search Console (Inspección de URLs → `https://www.codigobarber.com.ar/`
+  → Solicitar indexación) y darle días. El check verde de la captura es
+  un adorno de Google, no está en la web.
+
+

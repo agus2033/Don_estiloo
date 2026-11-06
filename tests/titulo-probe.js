@@ -8,7 +8,7 @@
    Sale con código 1 si el título se pisó. */
 const { chromium } = require("../.opencode/skills/playwright-skill/node_modules/playwright/index.js");
 
-const ESPERADO = "SSJ Barber | Barbería en Puerto Iguazú";
+const ESPERADO = "Barberia en Puerto Iguazu | SSJ Barber";
 const BASE = "http://127.0.0.1:8765/index.html";
 
 (async () => {

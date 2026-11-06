@@ -3490,3 +3490,43 @@ contraseñas filtradas, desactivar el proveedor de Facebook, restringir
 la apiKey por dominio, completar `EMAIL` en `src/config.js`,
 Search Console re-indexar la foto (el título ya quedó).
 
+## 54. Título pedido de nuevo: "Barberia en Puerto Iguazu | SSJ Barber"
+
+El dueño (6/11/26) pidió el texto al revés y sin tildes, con la marca al
+final. El lote 51 lo había dejado "SSJ Barber | Barbería en Puerto
+Iguazú"; lo pedido ahora manda.
+
+### Cambios
+
+- `src/config.js` L37: `TITULO = "Barberia en Puerto Iguazu | SSJ Barber"`
+  (38 caracteres; sigue en el rango 25–65 y <=60 del corte de Google).
+  Comment actualizado con la decisión y fecha.
+- `index.html`: las 4 superficies que contienen la cadena vieja — L19
+  `<title>`, L52 `og:title`, L63 `twitter:title` — reemplazo exacto por
+  split/join. NO se tocan: descriptions (L30/55/66), og:image:alt (L61),
+  JSON-LD description (L102), geo.placename/localidad — ahí la tilde es
+  de la ciudad y el dueño sólo pidió el título.
+- `tests/lote51.js`: exact-string de TITULO + mensaje con fecha del
+  pedido; "arranca con la marca" pasa a `endsWith("SSJ Barber")`; los
+  checks de tilde ahora exigen la ausencia de tildes. 23/23 verde.
+- `tests/seo.js`: el check de ciudad ahora regex sin tilde (`/Puerto
+  Iguazu/i`) y `title.indexOf(NOMBRE)===0` pasa a
+  `title.endsWith(NOMBRE)`. VERDE completo.
+- `tests/titulo-probe.js`: `ESPERADO` nuevo. 8/8 Verde en el navegador,
+  incluido el repintado (el title no vuelve a "SSJ Barber").
+
+### Precaución
+
+`document.title = TITULO` (main.js L7442) no cambió: la fuente única
+sigue funcionando. La suite completa (run.js) re-corrió para certificar
+que ninguna otra prueba asentaba el texto viejo — único grep previo
+confirmó que las citas restantes eran comentarios de lote51/titulo-probe.
+
+### Pendiente del dueño (repetido del 51/52)
+
+En Google esto no es instantáneo: tras deploy, Search Console →
+Inspección de URLs → `https://www.codigobarber.com.ar/` → Solicitar
+indexación. Y el check verde de la captura es adorno de la UI de Google
+(no está en el repo; verificado commit por commit en el lote 51).
+
+

@@ -129,14 +129,14 @@ if (ld) {
 console.log("\nhead:");
 const title = (html.match(/<title>([^<]*)<\/title>/) || [])[1] || "";
 ok(!!title, "hay <title>");
-/* El title es la decisión del dueño (lote 51, que vuelve sobre el 40):
-   "SSJ Barber | Barbería en Puerto Iguazú" son 40 caracteres. El lote 40 lo
-   había dejado corto ("SSJ Barber | Puerto Iguazú") y el "Barbería en…" vivía
-   sólo en la description; el dueño pidió que el título también lo diga. Sigue
-   entrando completo en Google (el tope de esta prueba es 65). */
+/* El title es la decisión del dueño, pedida dos veces: en el lote 51 pidió
+   que el título también lo diga la ciudad, y el 6/11/26 (lote 54) la pidió
+   al revés y SIN tildes: "Barberia en Puerto Iguazu | SSJ Barber" (38 ca-
+   racteres). Sigue entrando completo en Google (el tope de esta prueba es
+   65); la marca NOMBRE ahora va al final. */
 ok(title.length >= 25 && title.length <= 65, "el title tiene largo de SEO (25-65)", `${title.length}: "${title}"`);
-ok(/Puerto Iguazú/i.test(title), "el title nombra la ciudad", title);
-ok(title.indexOf(NOMBRE) === 0, "el title arranca con el NOMBRE de config.js", title);
+ok(/Puerto Iguazu/i.test(title), "el title nombra la ciudad", title);
+ok(title.endsWith(NOMBRE), "el title cierra con el NOMBRE de config.js", title);
 
 const desc = (html.match(/<meta\s+name="description"\s+content="([^"]*)"/) || [])[1] || "";
 ok(!!desc, "hay meta description");

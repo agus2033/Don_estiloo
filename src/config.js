@@ -33,8 +33,10 @@ export const ADMIN_UID = "LQ7IkEfxEKNXajx4SEs378n390i2"; // Roman, dueño
       // TITULO: el título de la pestaña y el que Google enseña. Es el MISMO
       // texto que el <title> / og:title / twitter:title de index.html (lote 51):
       // si cambia acá, se cambian los tres de allá. tests/lote51.js vigila que
-      // no se separen. La marca (NOMBRE) va primero y sin tilde.
-      export const TITULO = "SSJ Barber | Barbería en Puerto Iguazú";
+      // no se separen. El dueño volvió a pedirlo (6/11/26, lote 54): ahora va
+      // "Barberia en Puerto Iguazu | SSJ Barber", SIN tildes y con la marca
+      // al final (antes era "SSJ Barber | Barbería en Puerto Iguazú").
+      export const TITULO = "Barberia en Puerto Iguazu | SSJ Barber";
 // TODO(dueño, 16/10/26): me dijiste "SSJ BARBER" en mayúsculas. Está guardado en
 // mixed case, como estaba el nombre anterior. Los lugares que muestran el logo en
 // versalita lo pasan a mayúsculas solos por CSS. Si lo querés TODO en mayúscula

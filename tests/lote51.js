@@ -6,6 +6,8 @@
    navegador la pestaña terminaba en "SSJ Barber" pelado y el título largo
    del HTML duraba hasta el primer repintado. Ahora el título sale de UNA
    sola fuente, TITULO en config.js, y el HTML tiene que decir exactamente
+   lo mismo (el dueño volvió a pedir el texto el 6/11/26: ahora es
+   "Barberia en Puerto Iguazu | SSJ Barber", sin tildes y marca al final):
    lo mismo.
 
    Este test vigila las dos mitades:
@@ -53,8 +55,8 @@ ok(
   String((cf.match(/export const TITULO\b/g) || []).length),
 );
 ok(
-  TITULO === "SSJ Barber | Barbería en Puerto Iguazú",
-  "TITULO es el texto que pidió el dueño (con tilde)",
+  TITULO === "Barberia en Puerto Iguazu | SSJ Barber",
+  "TITULO es el texto que pidió el dueño (6/11/26: sin tildes, marca al final)",
   JSON.stringify(TITULO),
 );
 ok(!!cf.match(/export const NOMBRE = "SSJ Barber";/), "NOMBRE sigue siendo la marca pelada");
@@ -106,9 +108,9 @@ ok(!/SSJ Bárber/i.test(html), "la marca no lleva tilde en ninguna parte del HTM
 /* ---- 5. sigue siendo un título sano para Google ---- */
 ok(TITULO.length >= 25 && TITULO.length <= 65, "el título tiene largo de SEO (25-65)", `${TITULO.length}`);
 ok(TITULO.length <= 60, "y además entra sin recortar en el corte clásico de Google (<=60)", `${TITULO.length}`);
-ok(TITULO.indexOf("SSJ Barber") === 0, "el título arranca con la marca", TITULO);
-ok(/Barbería/.test(TITULO), "el título dice Barbería", TITULO);
-ok(/Puerto Iguazú/.test(TITULO), "el título nombra la ciudad con tilde", TITULO);
+ok(TITULO.endsWith("SSJ Barber"), "el título cierra con la marca (el dueño la pidió al final)", TITULO);
+ok(/Barberia en Puerto Iguazu/.test(TITULO), "el título dice Barberia en Puerto Iguazu, sin tildes", TITULO);
+ok(!/Barbería|Iguazú/.test(TITULO), "y sin tildes (el dueño fue explícito)", TITULO);
 ok(!/✅/.test(title), "no hay check ni emoji pegado en el título (era caché de Google)");
 
 /* ---- 6. la fila de la suite ---- */
