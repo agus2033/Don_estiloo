@@ -211,6 +211,16 @@ const irPaso = async (n, ms = 2500) => {
        280 ms de elegir barbero (wzAvanzaSolo) y esta medición quedaba a 30 ms
        de esa carrera: con la caché fría el paso ya había cambiado y la lista
        daba 0. El clic sólo marca .on; las fotos y los nombres no cambian. */
+    /* Antes de medir se espera la foto cargada: el repintado del tema claro
+       puede recién entonces crear el `<img>`, y medir de una daba la falsa
+       "FOTO ROTA" (naturalWidth 0 en una imagen que recién arranca). Si de
+       verdad está rota, se cae el timeout y abajo se cuenta tal cual. */
+    await p
+      .waitForFunction(
+        () => [...document.querySelectorAll(".wz-item--bar img")].every((i) => i.complete && i.naturalWidth > 0),
+        { timeout: 10000 },
+      )
+      .catch(() => {});
     const bars = await p.evaluate(() => {
       const items = [...document.querySelectorAll(".wz-item--bar")];
       return {
@@ -339,9 +349,17 @@ const irPaso = async (n, ms = 2500) => {
       cal.scrollW + " <= client " + cal.clientW + ")");
     check(cal.dentro, "la última columna cae dentro de la hoja");
     check(cal.nPistas === 7, "son 7 columnas de " + Math.round(cal.anchoPista) + "px");
-    const filasMalas = cal.filas.filter((n) => n !== 7);
-    check(filasMalas.length === 0, "todas las filas del calendario tienen 7 celdas",
+    /* La UTIMA fila puede tener menos de 7: si el mes termina a mitad de
+       semana, trae sólo esos días (nov-2026: 7,7,7,7,2 — el 29/11 es domin-
+       go); el grid los cae en su columna del día correcto. Lo que NO puede
+       pasar es una fila de 0 o de más de 7 (eso era el bug que esta prueba
+       cazaba), y el total tiene que dar el mes entero (28..31 días + hasta
+       6 huecos del arranque). */
+    const filasMalas = cal.filas.filter((n) => n > 7 || n < 1);
+    check(filasMalas.length === 0, "ninguna fila del calendario pasa de 7 celdas (la última puede traer menos si el mes termina a mitad de semana)",
       "filas: " + cal.filas.join(","));
+    check(cal.celdas >= 28 && cal.celdas <= 37, "el calendario trae el mes entero",
+      cal.celdas + " celdas");
     const sc = await p.$(".wz-sheet");
     if (sc) await sc.screenshot({ path: path.join(__dirname, "..", "tmp_shots", `MOD-${theme}-calendario.png`) });
 

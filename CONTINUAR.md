@@ -3518,9 +3518,29 @@ Iguazú"; lo pedido ahora manda.
 ### Precaución
 
 `document.title = TITULO` (main.js L7442) no cambió: la fuente única
-sigue funcionando. La suite completa (run.js) re-corrió para certificar
-que ninguna otra prueba asentaba el texto viejo — único grep previo
-confirmó que las citas restantes eran comentarios de lote51/titulo-probe.
+sigue funcionando. La primer suite completa encontró 4 rojos; los 4
+resueltos en este mismo lote:
+
+- `seo2` (regresión del título): buscaba `CIUDAD` ("Puerto Iguazú", con
+  tilde) en el título, y el título nuevo la escribe sin tilde. Ahora
+  busca la ciudad en versiones sin tildes de ambos lados (`normalize
+  ("NFD")`) — sólo para el título; el resto del HTML rige la tilde.
+- `lote25` (regresión): asentaba `/<title>SSJ Barber \| /` (formato del
+  51). Ahora el `<title>` nuevo exacto.
+- `landing.modal`: el assertion "todas las filas del calendario tienen
+  7 celdas" era aritmética de calendario dependiente del mes — en
+  oct-2026 daba exactamente 5×7 y pasaba de casualidad; nov-2026 trae
+  última fila de 2 (29 y 30, domingo y lunes). El render está BIEN (los
+  huecos del arranque se rellenan, main.js L5870, y el grid cae los
+  últimos días en su columna del día correcto): la prueba ahora exige
+  ninguna fila >7 o 0, y el mes entero (28..37 celdas). Además: contaba
+  un fallo EN SILENCIO (`fallos++` L241 sin mensaje) cuando la foto del
+  barbero no había cargado a la hora de medir en claro — el repintado
+  del tema crea el `<img>` recién ahí; ahora se espera la carga de las
+  fotos antes de medir (patrón del lote 52).
+- `landing.reglas`: `name: 'Error'` en suite, VERDE aislado al repetirla.
+  Flake de sesión (misma familia que `panel.quitar`, rate limit por IP
+  con varios logins seguidos). No es código.
 
 ### Pendiente del dueño (repetido del 51/52)
 

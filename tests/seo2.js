@@ -110,7 +110,16 @@ console.log("\n3. QUE SE ENCUENTRE (marca + ciudad)\n");
 {
   const tit = meta(/<title>([^<]*)<\/title>/);
   ok(tit.indexOf(NOMBRE) >= 0, "el título tiene el nombre", tit);
-  ok(new RegExp(CIUDAD).test(tit), "el título tiene la ciudad");
+  /* El título lo escribió el dueño SIN tildes (6/11/26: "Barberia en
+     Puerto Iguazu | SSJ Barber"), así que la ciudad se busca en una
+     versión sin tildes de ambos lados. En el resto del HTML la ciudad
+     sigue con tilde y se busca con CIUDAD tal cual. */
+  const sinTildes = (s) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  ok(
+    sinTildes(tit).toLowerCase().indexOf(sinTildes(CIUDAD).toLowerCase()) >= 0,
+    "el título tiene la ciudad (con o sin tilde)",
+    tit,
+  );
   ok(new RegExp("barber", "i").test(tit), "el título dice barbería");
   ok(tit.length <= 60, "el título entra sin recortar en Google", tit.length + " caracteres");
 

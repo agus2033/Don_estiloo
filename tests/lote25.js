@@ -905,7 +905,10 @@ ok(
       .join(" · "),
   );
   ok(
-    /export const NOMBRE = "SSJ Barber"/.test(conf) && /<title>SSJ Barber \| /.test(html),
+    /export const NOMBRE = "SSJ Barber"/.test(conf) &&
+      /* El título lo pidió el dueño de nuevo (6/11/26, lote 54): marca al
+         final y sin tildes. El lote 51 lo tenía como "SSJ Barber | ...". */
+      /<title>Barberia en Puerto Iguazu \| SSJ Barber<\/title>/.test(html),
     "NOMBRE y el <title> son los nuevos",
   );
   ok(
